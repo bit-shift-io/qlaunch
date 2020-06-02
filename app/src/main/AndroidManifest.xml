@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    package="bitshift.qlaunch"
+    android:versionCode="9"
+    android:versionName="1.0" >
+
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <!--<uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT"></uses-permission>-->
+
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="true"
+        android:backupAgent="bitshift.qlaunch.CloudBackup"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme"
+        android:stateNotNeeded="true"
+        android:clearTaskOnLaunch="true">
+
+        <activity
+            android:name="bitshift.qlaunch.MainActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:fitsSystemWindows="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/LauncherTheme">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <activity
+            android:name="bitshift.qlaunch.SettingsActivity"
+            android:label="@string/app_name"
+            android:parentActivityName="bitshift.qlaunch.MainActivity"
+            android:theme="@style/AppTheme">
+        </activity>
+
+        <activity
+            android:name="bitshift.qlaunch.GroupEditorActivity"
+            android:label="@string/title_activity_group"
+            android:parentActivityName="bitshift.qlaunch.MainActivity"
+            android:theme="@style/AppTheme">
+        </activity>
+
+        <activity
+            android:name="bitshift.qlaunch.ShortcutActivity"
+            android:label="@string/title_activity_shortcut"
+            android:parentActivityName="bitshift.qlaunch.MainActivity"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_SHORTCUT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="bitshift.qlaunch.IntentActivity"
+            android:label="@string/title_activity_wallpaper"
+            android:icon="@drawable/black"
+            android:parentActivityName="bitshift.qlaunch.MainActivity"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.SET_WALLPAPER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="bitshift.qlaunch.action.VIEW_GROUP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="bitshift.qlaunch.action.LOCK_DEVICE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <receiver android:name="bitshift.qlaunch.IntentMgr" >
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_REMOVED" />
+                <data android:scheme="package" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.android.launcher.action.INSTALL_SHORTCUT" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+        <receiver android:name="bitshift.qlaunch.DeviceAdminMgr"
+            android:label="@string/app_name"
+            android:description="@string/device_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+        -->
+
+        <service
+            android:name="bitshift.qlaunch.SettingsTileService"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_settings_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action
+                    android:name="android.service.quicksettings.action.QS_TILE"/>
+            </intent-filter>
+        </service>
+
+    </application>
+</manifest>

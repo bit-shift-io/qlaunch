@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string-array name="game_categories">
+        <item>Action</item>
+        <item>Adventure</item>
+        <item>Board</item>
+        <item>Card</item>
+        <item>Casio</item>
+        <item>Casual</item>
+        <item>Educational</item>
+        <item>Music</item>
+        <item>Puzzle</item>
+        <item>Racing</item>
+        <item>Role Playing</item>
+        <item>Simulation</item>
+        <item>Sports</item>
+        <item>Strategy</item>
+        <item>Trivia</item>
+        <item>Word</item>
+
+        <item>Ages 5 &amp; Under</item>
+        <item>Ages 6-8</item>
+        <item>Ages 9 &amp; Up</item>
+        <item>Action &amp; Adventure</item>
+        <item>Brain Games</item>
+        <item>Creativity</item>
+        <item>Education</item>
+        <item>Music &amp; Video</item>
+        <item>Pretend Play</item>
+    </string-array>
+
+</resources>
