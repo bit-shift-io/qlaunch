@@ -1,14 +1,12 @@
 <resources>
 
-    <style name="LauncherTheme" parent="android:Theme.Material.Wallpaper.NoTitleBar">
+    <style name="LauncherTheme" parent="@android:style/Theme.Wallpaper.NoTitleBar">
         <item name="android:windowTranslucentStatus">true</item>
-        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 
     <style name="AppTheme" parent="android:Theme.Material">
-    </style>
-
-    <style name="NoTheme" parent="android:Theme.NoDisplay">
     </style>
 
 </resources>
