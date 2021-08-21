@@ -173,6 +173,11 @@ public class SettingsMgr implements SharedPreferences.OnSharedPreferenceChangeLi
         return preferences().getBoolean("key_proximity_lock", false);
     }
 
+    boolean toggleStatusBar()
+    {
+        return preferences().getBoolean("key_toggle_status_bar", false);
+    }
+
     int gridWidth()
     {
         int gridWidth = parseInt("key_grid_width", 4, 1, 100);

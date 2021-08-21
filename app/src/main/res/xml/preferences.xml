@@ -149,10 +149,10 @@
 	
 	
     <PreferenceScreen
-        android:title="@string/pref_screen_sensors_security">
+        android:title="@string/pref_screen_general">
 		    
 	    <PreferenceCategory
-	            android:title="@string/pref_category_sensors"> 
+	            android:title="@string/pref_category_sensors">
 	            
 		    <ListPreference
 		        android:defaultValue="0"
@@ -169,6 +169,12 @@
 		        android:key="key_proximity_lock"
 		        android:summary="@string/pref_description_proximity_lock"
 		        android:title="@string/pref_title_proximity_lock" />
+
+			<CheckBoxPreference
+				android:defaultValue="false"
+				android:key="key_toggle_status_bar"
+				android:summary="@string/pref_description_toggle_status_bar"
+				android:title="@string/pref_title_toggle_status_bar" />
 
         </PreferenceCategory>
         <PreferenceCategory

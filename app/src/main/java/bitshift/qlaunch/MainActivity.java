@@ -866,6 +866,10 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
 
     public void toggleStatusBar()
     {
+        if (!SettingsMgr.instance().toggleStatusBar()) {
+            return;
+        }
+
         if (mStatusBarState == StatusBarState.Closed) {
             expandStatusBar();
             mStatusBarState = StatusBarState.Open;

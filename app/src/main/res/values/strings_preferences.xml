@@ -3,7 +3,7 @@
     <string name="title_activity_settings">Settings</string>
     
     <string name="pref_screen_display">Display</string>
-    <string name="pref_screen_sensors_security">Sensors and Security</string>
+    <string name="pref_screen_general">General</string>
     <string name="pref_screen_advanced">Advanced</string>
     <string name="pref_screen_groups">Groups</string>
 
@@ -90,6 +90,9 @@
     
     <string name="pref_title_proximity_lock">Proximity Lock</string>
     <string name="pref_description_proximity_lock">Check proximity sensor before launching application</string>
+
+    <string name="pref_title_toggle_status_bar">Toggle Status Bar</string>
+    <string name="pref_description_toggle_status_bar">Toggle status bar on pressing home button</string>
 
     <string name="pref_title_pin_lock">Disable Long Press</string>
     <string name="pref_description_pin_lock">Disable editing apps</string>
