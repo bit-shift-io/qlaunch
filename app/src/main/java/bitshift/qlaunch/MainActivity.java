@@ -230,6 +230,10 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
         mConfigurationChangedListeners.add(listener);
     }
 
+    public void onWindowFocusChanged(boolean hasFocus) {
+        mInFocus = hasFocus;
+    }
+
     // A method to find height of the status bar
     public int getStatusBarHeight() {
         int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
@@ -351,7 +355,7 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
         drawBackground();
 
         updateSettings();
-        goHomeScreen();
+        //goHomeScreen();
 
         // polling for package changes
         // Create the Handler object (on the main thread by default)
@@ -722,7 +726,7 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
     {
         super.onRestart();
         setPollingEnabled(true);
-        mInFocus = true;
+        //mInFocus = true;
     }
 
     // triggered when other app takes focus
@@ -731,7 +735,7 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
     {
         super.onStop();
         setPollingEnabled(false);
-        mInFocus = false;
+        //mInFocus = false;
     }
 
     public void clearApplicationData() {
@@ -851,8 +855,9 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
     protected void onNewIntent(Intent intent)
     {
         super.onNewIntent(intent);
-        if (mInFocus)
+        if (mInFocus) {
             goHomeScreen();
+        }
     }
 
     public void toggleStatusBar()
