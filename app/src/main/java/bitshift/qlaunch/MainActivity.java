@@ -841,7 +841,7 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
         switch(keyCode) // change from false to not allow android to continue doing what it does
         {
             case KeyEvent.KEYCODE_BACK: {
-                goHomeScreen();
+                //goHomeScreen();
                 return true;
             }
         }
