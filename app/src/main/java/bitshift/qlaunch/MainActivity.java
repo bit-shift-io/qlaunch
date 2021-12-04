@@ -355,7 +355,7 @@ public class MainActivity extends FragmentActivity implements Group.GroupChangeL
         drawBackground();
 
         updateSettings();
-        //goHomeScreen();
+        goHomeScreen();
 
         // polling for package changes
         // Create the Handler object (on the main thread by default)
