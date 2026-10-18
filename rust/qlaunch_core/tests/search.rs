@@ -127,6 +127,16 @@ fn emoji_label_is_matched_by_its_emoji_without_panicking() {
 }
 
 #[test]
+fn multibyte_bytes_in_order_without_matching_chars_do_not_match() {
+    // "é" is UTF-8 C3 A9. The label "ã©" is UTF-8 C3 A3 C2 A9: its bytes
+    // contain C3 ... A9 in order (positions 0 and 3), so a byte-wise
+    // subsequence scan would match. As characters, "é" is not in "ã©", so
+    // the char-wise scan must not match.
+    let cs = cands(&["ã©"]);
+    assert!(search(&cs, "é").is_empty());
+}
+
+#[test]
 fn query_longer_than_label_returns_nothing() {
     let cs = cands(&["ab"]);
     assert!(search(&cs, "abc").is_empty());
