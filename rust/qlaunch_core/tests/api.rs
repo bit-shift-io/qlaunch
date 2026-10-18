@@ -9,7 +9,7 @@ use std::time::Duration;
 use flutter_rust_bridge::for_generated::futures::executor::block_on;
 use qlaunch_core::api::api::{self, ModelSnapshot};
 use qlaunch_core::api::events::{CoreEvent, EventBus};
-use qlaunch_core::model::{AppCategory, AppEntry, AppRef, GroupRole};
+use qlaunch_core::model::{AppCategory, AppEntry, AppRef, GroupRole, Item, Model};
 use qlaunch_core::platform::{AppSource, FakeSource, LaunchError, PlatformError, WatchHandle};
 use qlaunch_core::settings::SettingsPatch;
 use tempfile::tempdir;
@@ -435,6 +435,78 @@ fn init_loads_before_it_saves_so_a_document_that_must_be_kept_is_kept() {
     assert_eq!(snap.page_ids.len(), 4);
     assert!(fs::read_to_string(&document).unwrap().contains("Chat"));
     assert_eq!(fs::read(&kept).unwrap(), seed);
+}
+
+/// What a consumer does with a snapshot: keep one group's items, as they come.
+fn items_of(snap: &ModelSnapshot, group: &str) -> Vec<Item> {
+    snap.items
+        .iter()
+        .filter(|i| i.group_id == group)
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn a_snapshot_lists_each_groups_items_in_display_order() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    // Inserted as Zed, Mid, Alpha (apps) and Racer, Kart (games), which is
+    // neither alphabetical nor the order the moves below will produce.
+    let source = FakeSource::new(vec![
+        entry("org.zed", "Zed", AppCategory::App),
+        entry("org.mid", "Mid", AppCategory::App),
+        entry("org.alpha", "Alpha", AppCategory::App),
+        entry("org.racer", "Racer", AppCategory::Game),
+        entry("org.kart", "Kart", AppCategory::Game),
+    ]);
+    let first = api::init_with_source(Some(dir.path().to_path_buf()), Box::new(source), Vec::new())
+        .unwrap();
+    let apps = group_id(&first, GroupRole::Apps);
+    let games = group_id(&first, GroupRole::Games);
+    let id_of = |package: &str| {
+        first
+            .items
+            .iter()
+            .find(|i| i.app.as_ref() == Some(&app_ref(package)))
+            .unwrap()
+            .id
+            .clone()
+    };
+
+    // A model that gets the same operations, as the reference for the order.
+    let mut reference = Model {
+        root_group_id: first.root_group_id.clone(),
+        groups: first.groups.clone(),
+        items: first.items.clone(),
+    };
+    let check = |snap: &ModelSnapshot, reference: &Model| {
+        for group in [&apps, &games] {
+            let expected: Vec<Item> = reference.items_in(group).into_iter().cloned().collect();
+            assert_eq!(items_of(snap, group), expected);
+        }
+        assert_eq!(snap.items.len(), reference.items.len());
+    };
+    check(&first, &reference);
+
+    // Move a game to the front of the apps, and an app to the middle of games.
+    let snap = block_on(api::move_item(id_of("org.racer"), apps.clone(), 0)).unwrap();
+    reference.move_item(&id_of("org.racer"), &apps, 0).unwrap();
+    check(&snap, &reference);
+    let snap = block_on(api::move_item(id_of("org.mid"), games.clone(), 1)).unwrap();
+    reference.move_item(&id_of("org.mid"), &games, 1).unwrap();
+    check(&snap, &reference);
+
+    // Sorting rewrites the order of the group and moves nothing in the model.
+    let snap = block_on(api::sort_group(apps.clone())).unwrap();
+    reference.sort_group(&apps).unwrap();
+    check(&snap, &reference);
+    let labels: Vec<String> = items_of(&snap, &apps)
+        .into_iter()
+        .map(|i| i.label)
+        .collect();
+    assert_eq!(labels, ["Alpha", "Racer", "Zed"]);
+
+    assert_eq!(block_on(api::snapshot()).unwrap(), snap);
 }
 
 #[test]

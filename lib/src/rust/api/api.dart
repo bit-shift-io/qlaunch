@@ -115,12 +115,19 @@ Stream<CoreEvent> events() => RustLib.instance.api.crateApiApiEvents();
 /// Everything Dart needs to draw the launcher.
 ///
 /// `page_ids` is the page order, computed by Rust from `Model::pages()`; Dart
-/// must not recompute it. `warnings` is what is wrong right now (for example
+/// must not recompute it. `items` is in display order within each group (see
+/// the field). `warnings` is what is wrong right now (for example
 /// that changes are not being saved), and does not grow from call to call.
 class ModelSnapshot {
   final String rootGroupId;
   final List<String> pageIds;
   final List<Group> groups;
+
+  /// Every item, in **display order within its group**: filtering by
+  /// `group_id` yields exactly what `Model::items_in` returns for that group.
+  /// Consumers filter by group and must not sort again, since that would
+  /// duplicate the model's ordering rule. The order *between* groups is
+  /// unspecified.
   final List<Item> items;
   final Settings settings;
   final List<String> warnings;

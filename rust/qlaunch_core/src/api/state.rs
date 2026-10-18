@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::model::{Model, ModelError};
+use crate::model::{Item, Model, ModelError};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
 use crate::reconcile::reconcile;
 use crate::settings::Settings;
@@ -108,6 +108,17 @@ pub(crate) fn launch_error(e: &LaunchError) -> String {
     format!("{tag}: {e}")
 }
 
+/// Every item, ordered by `(group_id, order)`. The sort is stable, so items
+/// with equal `order` keep their `Vec` order, which is exactly how
+/// `Model::items_in` breaks ties. Filtering the result by a group id therefore
+/// gives `items_in(group)`. The model's own `Vec` is not in display order,
+/// because the mutations rewrite `order` and never move anything.
+fn items_in_display_order(model: &Model) -> Vec<Item> {
+    let mut items = model.items.clone();
+    items.sort_by(|a, b| a.group_id.cmp(&b.group_id).then(a.order.cmp(&b.order)));
+    items
+}
+
 /// Builds the snapshot Dart sees. The warnings are the startup ones plus
 /// whatever is wrong right now, worked out afresh from the flags on `app`, so
 /// the list does not grow with every call.
@@ -123,7 +134,7 @@ pub(crate) fn snapshot_of(app: &App) -> ModelSnapshot {
         root_group_id: app.model.root_group_id.clone(),
         page_ids: app.model.pages().iter().map(|g| g.id.clone()).collect(),
         groups: app.model.groups.clone(),
-        items: app.model.items.clone(),
+        items: items_in_display_order(&app.model),
         settings: app.settings.clone(),
         warnings,
     }
