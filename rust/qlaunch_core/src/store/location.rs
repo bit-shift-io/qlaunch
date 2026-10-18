@@ -13,7 +13,8 @@ const APP_DIR: &str = "qlaunch";
 /// `xdg_config_home` is used only when it is an absolute path: the XDG Base
 /// Directory specification requires that, and an empty or relative value would
 /// put the configuration wherever the launcher happened to be started. Such a
-/// value is ignored in favour of `<home>/.config`. With neither, there is no
+/// value is ignored in favour of `<home>/.config`, and a relative `home` is
+/// treated as not available for the same reason. With neither, there is no
 /// place to keep anything and the result is an error.
 pub fn config_root_from(
     xdg_config_home: Option<&Path>,
@@ -22,10 +23,11 @@ pub fn config_root_from(
     let base = match xdg_config_home.filter(|p| p.is_absolute()) {
         Some(xdg) => xdg.to_path_buf(),
         None => home
+            .filter(|p| p.is_absolute())
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::NotFound,
-                    "neither XDG_CONFIG_HOME nor a home directory is available",
+                    "neither an absolute XDG_CONFIG_HOME nor an absolute home directory is available",
                 )
             })?
             .join(".config"),

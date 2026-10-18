@@ -586,11 +586,13 @@ fn save_writes_nothing_at_all_for_an_invalid_model() {
 }
 
 #[test]
-fn an_unreadable_document_is_an_error_not_a_reason_to_overwrite() {
+fn an_unreadable_document_is_a_warning_not_a_reason_to_overwrite() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
     std::fs::create_dir(s.document_path()).unwrap();
-    assert!(matches!(s.load(), Err(StoreError::Io(_))));
+    let loaded = s.load().unwrap();
+    loaded.model.validate().unwrap();
+    assert!(!loaded.warnings.is_empty());
     assert!(s.document_path().is_dir());
     assert!(!dir.path().join("qlaunch.json.corrupt").exists());
 }

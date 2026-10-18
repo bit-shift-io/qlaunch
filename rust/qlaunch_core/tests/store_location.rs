@@ -52,6 +52,20 @@ fn a_relative_xdg_config_home_falls_back() {
 }
 
 #[test]
+fn a_relative_home_is_unavailable() {
+    for xdg in [None, Some(""), Some("relative/path")] {
+        assert!(
+            matches!(root(xdg, Some("home")), Err(StoreError::Io(_))),
+            "XDG_CONFIG_HOME={xdg:?}"
+        );
+    }
+    assert_eq!(
+        root(Some("/tmp/xdg-test"), Some("home")).unwrap(),
+        PathBuf::from("/tmp/xdg-test/bitshift/qlaunch")
+    );
+}
+
+#[test]
 fn no_usable_xdg_path_and_no_home_is_an_error() {
     for xdg in [None, Some(""), Some("relative/path")] {
         assert!(
@@ -104,4 +118,53 @@ fn a_corrupt_document_is_still_quarantined_and_reported_when_the_defaults_cannot
         loaded.warnings
     );
     assert!(loaded.warnings.len() >= 2, "{:?}", loaded.warnings);
+}
+
+#[test]
+fn a_document_that_exists_but_cannot_be_read_is_left_untouched() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().unwrap();
+    let store = Store::new(dir.path().to_path_buf());
+    let original = br#"{"schema": 1, "this": "is somebody's real document"}"#;
+    fs::write(store.document_path(), original).unwrap();
+    fs::set_permissions(store.document_path(), fs::Permissions::from_mode(0o000)).unwrap();
+    if fs::read(store.document_path()).is_ok() {
+        // Running as root: mode 000 does not stop reads, so nothing to test.
+        return;
+    }
+
+    let loaded = store.load().unwrap();
+
+    fs::set_permissions(store.document_path(), fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(fs::read(store.document_path()).unwrap(), original);
+    loaded.model.validate().unwrap();
+    assert!(!loaded.warnings.is_empty());
+    let mut names: Vec<_> = fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["qlaunch.json"], "nothing else is created or moved");
+}
+
+#[test]
+fn a_corrupt_but_readable_document_is_still_quarantined() {
+    let dir = tempdir().unwrap();
+    let store = Store::new(dir.path().to_path_buf());
+    fs::write(store.document_path(), b"{ not json").unwrap();
+
+    let loaded = store.load().unwrap();
+
+    assert_eq!(
+        fs::read(dir.path().join("qlaunch.json.corrupt")).unwrap(),
+        b"{ not json"
+    );
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|w| w.contains("qlaunch.json.corrupt"))
+    );
+    assert_eq!(store.load().unwrap().warnings, Vec::<String>::new());
 }

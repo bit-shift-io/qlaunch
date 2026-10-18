@@ -95,9 +95,24 @@ impl Store {
         Ok(self.icons_dir().join(name))
     }
 
-    /// Reads the document. When there is none, writes and returns the defaults.
-    /// If they cannot be written (the store directory is read-only, or cannot
-    /// be created) the defaults are returned all the same, with a warning.
+    /// Reads the document, and decides what the read means. The three cases
+    /// are kept strictly apart, because only the last two may touch the disk:
+    ///
+    /// - **Absent**: reading fails with `NotFound`, or with `NotADirectory`
+    ///   (a directory above the document is a file, so no document can exist).
+    ///   The defaults are written and returned. This is the only case in which
+    ///   a document is created from nothing. If the write fails (the store
+    ///   directory is read-only, or cannot be created) the defaults are
+    ///   returned all the same, with a warning.
+    /// - **Unreadable**: reading fails any other way (permission denied, the
+    ///   path is a directory, any other I/O error). The file may be someone's
+    ///   real document, so nothing is written, replaced or quarantined. The
+    ///   in-memory defaults are returned with a warning, and the caller should
+    ///   not save over it without the user's say-so.
+    /// - **Read**: the bytes were read. If they are corrupt or not a valid
+    ///   model the document is quarantined (see below); otherwise it is used,
+    ///   and repaired if need be. Quarantine moves a file aside, so it only
+    ///   ever runs on a file that was read successfully.
     ///
     /// What counts as damage and what counts as repairable, for the clamped
     /// numeric settings:
@@ -114,8 +129,7 @@ impl Store {
     /// A document that is corrupt, or that is not a valid model, is moved aside
     /// (see [`Store::quarantine`]), replaced by the defaults, and described in
     /// `warnings`. That holds even when the defaults then cannot be written:
-    /// the quarantine has happened and is reported. A document that cannot be *read* (permissions, not a file)
-    /// is an error and is left alone.
+    /// the quarantine has happened and is reported.
     ///
     /// Settings are clamped on the way in. If the document that results differs
     /// from the one that was read (settings clamped, duplicate `AppRef`s
@@ -130,7 +144,7 @@ impl Store {
         let bytes = match fs::read(self.document_path()) {
             Ok(bytes) => bytes,
             Err(e) if is_absent(&e) => return Ok(self.write_defaults(Vec::new())),
-            Err(e) => return Err(e.into()),
+            Err(e) => return Ok(self.unreadable(&e)),
         };
         match interpret(&bytes) {
             Ok((mut loaded, repaired)) => {
@@ -237,6 +251,19 @@ impl Store {
             Err(e) => loaded.warnings.push(format!(
                 "The saved layout needs repair, but its original could not be kept ({e}), so it was left as it is."
             )),
+        }
+    }
+
+    /// The defaults for a document that is there but could not be read. Writes
+    /// nothing: see [`Store::load`].
+    fn unreadable(&self, e: &io::Error) -> Loaded {
+        Loaded {
+            model: Model::new_default(),
+            settings: Settings::default(),
+            warnings: vec![format!(
+                "The saved layout at {} could not be read ({e}). It was left as it is, and a temporary default layout is being used.",
+                self.document_path().display()
+            )],
         }
     }
 
