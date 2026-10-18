@@ -58,19 +58,32 @@ pub fn resolve_icon(icon: &str, size_px: u32, dirs: &[PathBuf]) -> Option<PathBu
 /// `<root>/<theme>/<size>/apps/<name>.<ext>`, and a flat directory with
 /// `<root>/<name>.<ext>`. The themes are `theme` (when given and a plain
 /// name) and then `hicolor`; neither's `Inherits` chain is followed, and other
-/// themes are not scanned. Within one theme, across all roots, the winner is
-/// the first of:
+/// themes are not scanned.
+///
+/// The winner among the themed candidates, across all searched themes and all
+/// roots at once, is the first of:
 ///
 /// 1. a `png`, of the best-fitting size;
 /// 2. an `svg`, then an `xpm`, each of the best-fitting size;
 /// 3. one under `scalable`;
 /// 4. one under `symbolic`.
 ///
+/// Version 1 cannot rasterise a vector, so an `svg` renders as no icon at all:
+/// a usable `png` therefore wins over one wherever it is, in another size
+/// (`128x128` over a `48x48` svg) or in another theme (`hicolor` over the
+/// named theme). An `svg` is resolution-independent, so its size is no
+/// constraint, which makes it better than an `xpm` at any pixel size.
+///
 /// The best-fitting size is the smallest at or above `size_px`, or the largest
-/// available when every size is below it. A size segment is `48x48` or `48`
-/// (the first number counts) with any `@2x`-style suffix dropped; one that is
-/// not a number is skipped. Ties go to the earlier root. A flat directory is
-/// the last resort, after every theme, and prefers `png`, `svg`, `xpm`.
+/// available when every size is below it. Size outranks theme: with a 48 `png`
+/// in the named theme and a 256 `png` in `hicolor`, a request for 128 is the
+/// 256 one. Only an exact tie (the same class, extension and size) goes to the
+/// named theme before `hicolor`, then to the earlier root. A size segment is
+/// `48x48` or `48` (the first number counts) with any `@2x`-style suffix
+/// dropped; one that is not a number is skipped.
+///
+/// A flat directory is the last resort, tried only when no theme has the
+/// icon, and prefers `png`, `svg`, `xpm`.
 ///
 /// Only regular files count: a directory, a dangling symlink or a symlink
 /// loop named like an icon is skipped.
@@ -89,16 +102,12 @@ pub fn resolve_icon_themed(
     }
 
     let file_names = file_names(icon);
-    let themes = theme
+    let themes: Vec<&str> = theme
         .filter(|t| is_plain_name(t) && *t != FALLBACK_THEME)
         .into_iter()
-        .chain([FALLBACK_THEME]);
-    for theme in themes {
-        if let Some(found) = best_in_theme(dirs, theme, size_px, &file_names) {
-            return Some(found);
-        }
-    }
-    best_flat(dirs, &file_names)
+        .chain([FALLBACK_THEME])
+        .collect();
+    best_in_themes(dirs, &themes, size_px, &file_names).or_else(|| best_flat(dirs, &file_names))
 }
 
 fn file_names(icon: &str) -> Vec<String> {
@@ -119,14 +128,19 @@ enum Class {
 /// Lower is better; compared field by field, so the class decides first.
 type Key = (Class, usize, u8, u32);
 
-fn best_in_theme(
+/// Candidates are visited theme by theme, then root by root, and only a
+/// strictly better key replaces the one held, so that order breaks exact ties.
+fn best_in_themes(
     dirs: &[PathBuf],
-    theme: &str,
+    themes: &[&str],
     size_px: u32,
     file_names: &[String],
 ) -> Option<PathBuf> {
     let mut best: Option<(Key, PathBuf)> = None;
-    for root in dirs {
+    for (theme, root) in themes
+        .iter()
+        .flat_map(|theme| dirs.iter().map(move |root| (theme, root)))
+    {
         let theme_dir = root.join(theme);
         for segment in subdirectory_names(&theme_dir) {
             let (class, size) = match segment.as_str() {

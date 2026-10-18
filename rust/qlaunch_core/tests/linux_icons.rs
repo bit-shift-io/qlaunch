@@ -235,6 +235,38 @@ fn the_named_theme_is_searched_before_hicolor() {
 }
 
 #[test]
+fn a_png_in_hicolor_beats_an_svg_in_the_named_theme() {
+    // Custom has only 128x128/apps/cross-svg.svg; hicolor has a 48x48 png.
+    assert_eq!(
+        resolve_icon_themed("cross-svg", 128, &themed(), Some("Custom")),
+        in_themed("hicolor/48x48/apps/cross-svg.png")
+    );
+    assert_eq!(
+        resolve_icon_themed("cross-svg", 128, &themed(), None),
+        in_themed("hicolor/48x48/apps/cross-svg.png")
+    );
+}
+
+#[test]
+fn size_outranks_theme_order_among_pngs() {
+    // Custom has a 48 png, hicolor a 256 one. For 128 the smallest size at or
+    // above it is the hicolor 256, not the first theme's 48.
+    let custom = Some("Custom");
+    assert_eq!(
+        resolve_icon_themed("cross-sizes", 128, &themed(), custom),
+        in_themed("hicolor/256x256/apps/cross-sizes.png")
+    );
+    assert_eq!(
+        resolve_icon_themed("cross-sizes", 48, &themed(), custom),
+        in_themed("Custom/48x48/apps/cross-sizes.png")
+    );
+    assert_eq!(
+        resolve_icon_themed("cross-sizes", 1024, &themed(), custom),
+        in_themed("hicolor/256x256/apps/cross-sizes.png")
+    );
+}
+
+#[test]
 fn an_icon_missing_from_the_named_theme_falls_back_to_hicolor() {
     assert_eq!(
         resolve_icon_themed("foo", 128, &themed(), Some("Custom")),
