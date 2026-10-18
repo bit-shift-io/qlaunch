@@ -314,7 +314,6 @@ fn duplicate_app_refs_are_deduplicated_with_a_warning() {
         0,
     ));
     write_document(&s, &m, &Settings::default());
-    let on_disk = std::fs::read(s.document_path()).unwrap();
 
     let loaded = s.load().unwrap();
 
@@ -353,7 +352,15 @@ fn duplicate_app_refs_are_deduplicated_with_a_warning() {
         assert!(w.contains(label), "{w}");
     }
     assert!(!dir.path().join("qlaunch.json.corrupt").exists());
-    assert_eq!(std::fs::read(s.document_path()).unwrap(), on_disk);
+    // The repair is persisted, so it is reported once.
+    let on_disk = read_json(&s);
+    let stored: Vec<&str> = on_disk["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(stored, ["first", "between", "last"]);
 }
 
 #[test]
@@ -557,6 +564,22 @@ fn save_refuses_a_model_that_load_would_reject() {
 }
 
 #[test]
+fn save_writes_nothing_at_all_for_an_invalid_model() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut bad = Model::new_default();
+    let apps = group_of(&bad, GroupRole::Apps);
+    bad.items.push(app_item("a", &apps, "A", "dup", 0));
+    bad.items.push(app_item("b", &apps, "B", "dup", 1));
+
+    let err = s.save(&bad, &Settings::default()).unwrap_err();
+    assert!(matches!(err, StoreError::Invalid(_)), "{err:?}");
+    assert!(!s.document_path().exists());
+    assert!(!dir.path().join("icons").exists());
+    assert!(leftover_temp_files(dir.path()).is_empty());
+}
+
+#[test]
 fn an_unreadable_document_is_an_error_not_a_reason_to_overwrite() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
@@ -567,7 +590,7 @@ fn an_unreadable_document_is_an_error_not_a_reason_to_overwrite() {
 }
 
 #[test]
-fn quarantine_moves_the_file_aside_and_replaces_an_earlier_quarantine() {
+fn quarantine_moves_the_file_aside_and_never_overwrites_an_earlier_one() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
     let corrupt = dir.path().join("qlaunch.json.corrupt");
@@ -578,10 +601,216 @@ fn quarantine_moves_the_file_aside_and_replaces_an_earlier_quarantine() {
     assert_eq!(std::fs::read(&corrupt).unwrap(), b"one");
 
     std::fs::write(s.document_path(), b"two").unwrap();
-    s.quarantine().unwrap();
-    assert_eq!(std::fs::read(&corrupt).unwrap(), b"two");
+    let second = s.quarantine().unwrap();
+    assert_eq!(second, dir.path().join("qlaunch.json.corrupt.1"));
+    std::fs::write(s.document_path(), b"three").unwrap();
+    let third = s.quarantine().unwrap();
+    assert_eq!(third, dir.path().join("qlaunch.json.corrupt.2"));
+
+    // The first corruption, the precious one, is intact.
+    assert_eq!(std::fs::read(&corrupt).unwrap(), b"one");
+    assert_eq!(std::fs::read(&second).unwrap(), b"two");
+    assert_eq!(std::fs::read(&third).unwrap(), b"three");
 
     assert!(matches!(s.quarantine(), Err(StoreError::Io(_))));
+}
+
+#[test]
+fn a_second_corruption_during_load_keeps_the_first_quarantined_file() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+
+    std::fs::write(s.document_path(), b"{ the user's first mess").unwrap();
+    let first = s.load().unwrap();
+    assert!(first.warnings[0].contains("qlaunch.json.corrupt"));
+
+    std::fs::write(s.document_path(), b"{ a second mess").unwrap();
+    let second = s.load().unwrap();
+    assert!(second.warnings[0].contains("qlaunch.json.corrupt.1"));
+
+    assert_eq!(
+        std::fs::read(dir.path().join("qlaunch.json.corrupt")).unwrap(),
+        b"{ the user's first mess"
+    );
+    assert_eq!(
+        std::fs::read(dir.path().join("qlaunch.json.corrupt.1")).unwrap(),
+        b"{ a second mess"
+    );
+}
+
+#[test]
+fn an_out_of_range_number_is_clamped_and_the_model_survives() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut m = Model::new_default();
+    let mine = m.add_group("My hand-arranged group");
+    let apps = group_of(&m, GroupRole::Apps);
+    m.items
+        .push(app_item("i1", &apps, "My renamed app", "p", 0));
+    s.save(&m, &Settings::default()).unwrap();
+    let mut doc = read_json(&s);
+    doc["settings"]["icon_size"] = json!(-5);
+    doc["settings"]["wallpaper_alpha"] = json!(999);
+    std::fs::write(s.document_path(), serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert_eq!(loaded.settings.icon_size, 0);
+    assert_eq!(loaded.settings.wallpaper_alpha, 100);
+    assert!(
+        loaded.warnings.iter().any(|w| w.contains("icon_size")),
+        "{:?}",
+        loaded.warnings
+    );
+    // Not rebuilt from defaults: the user's group and item are still there.
+    assert_eq!(loaded.model, m);
+    assert!(loaded.model.groups.iter().any(|g| g.id == mine));
+    assert_eq!(
+        loaded.model.item(&"i1".to_string()).unwrap().label,
+        "My renamed app"
+    );
+    assert!(!dir.path().join("qlaunch.json.corrupt").exists());
+}
+
+#[test]
+fn a_number_field_of_the_wrong_json_type_is_quarantined() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut m = Model::new_default();
+    m.add_group("Mine");
+    s.save(&m, &Settings::default()).unwrap();
+    let mut doc = read_json(&s);
+    doc["settings"]["icon_size"] = json!("big");
+    let original = serde_json::to_vec_pretty(&doc).unwrap();
+    std::fs::write(s.document_path(), &original).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert!(!loaded.warnings.is_empty());
+    assert_ne!(loaded.model, m);
+    assert_eq!(
+        std::fs::read(dir.path().join("qlaunch.json.corrupt")).unwrap(),
+        original
+    );
+}
+
+#[test]
+fn a_hand_written_android_shortcut_may_omit_its_lists() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut m = Model::new_default();
+    let home = group_of(&m, GroupRole::Home);
+    let mut item = app_item("sc", &home, "Hand written", "p", 0);
+    item.app = None;
+    item.shortcut = Some(ShortcutPayload::Android {
+        action: Some("android.intent.action.VIEW".into()),
+        data: None,
+        mime_type: None,
+        categories: Vec::new(),
+        package: None,
+        component: None,
+        flags: 0,
+        extras: Vec::new(),
+    });
+    m.items.push(item);
+    s.save(&m, &Settings::default()).unwrap();
+    let mut doc = read_json(&s);
+    let shortcut = doc["items"][0]["shortcut"].as_object_mut().unwrap();
+    shortcut.remove("categories");
+    shortcut.remove("extras");
+    std::fs::write(s.document_path(), serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    assert_eq!(loaded.model, m);
+    assert!(!dir.path().join("qlaunch.json.corrupt").exists());
+}
+
+#[test]
+fn load_persists_its_repairs_and_reports_them_once() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut m = Model::new_default();
+    let apps = group_of(&m, GroupRole::Apps);
+    m.items.push(app_item("a", &apps, "Kept", "dup.pkg", 0));
+    m.items.push(app_item("b", &apps, "Copy", "dup.pkg", 1));
+    let settings = Settings {
+        grid_columns_portrait: 0,
+        icon_size: -5,
+        label_size: 500,
+        ..Settings::default()
+    };
+    write_document(&s, &m, &settings);
+
+    let first = s.load().unwrap();
+    assert_eq!(first.warnings.len(), 4, "{:?}", first.warnings);
+    for needle in ["grid_columns_portrait", "icon_size", "label_size", "Copy"] {
+        assert!(
+            first.warnings.iter().any(|w| w.contains(needle)),
+            "{needle}: {:?}",
+            first.warnings
+        );
+    }
+    assert_eq!(first.settings.grid_columns_portrait, 1);
+    assert_eq!(first.settings.icon_size, 0);
+    assert_eq!(first.settings.label_size, 100);
+    assert_eq!(first.model.items.len(), 1);
+
+    let on_disk = read_json(&s);
+    assert_eq!(on_disk["settings"]["grid_columns_portrait"], json!(1));
+    assert_eq!(on_disk["settings"]["icon_size"], json!(0));
+    assert_eq!(on_disk["settings"]["label_size"], json!(100));
+    assert_eq!(on_disk["items"].as_array().unwrap().len(), 1);
+
+    let second = s.load().unwrap();
+    assert!(second.warnings.is_empty(), "{:?}", second.warnings);
+    assert_eq!(second.model, first.model);
+    assert_eq!(second.settings, first.settings);
+    assert!(!dir.path().join("qlaunch.json.corrupt").exists());
+}
+
+#[test]
+fn a_clean_document_is_not_rewritten_by_load() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut m = Model::new_default();
+    m.add_group("Mine");
+    // Hand-formatted, so a rewrite would change the bytes.
+    write_document(&s, &m, &Settings::default());
+    let mut bytes = std::fs::read(s.document_path()).unwrap();
+    bytes.extend_from_slice(b"\n\n");
+    std::fs::write(s.document_path(), &bytes).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert!(loaded.warnings.is_empty());
+    assert_eq!(std::fs::read(s.document_path()).unwrap(), bytes);
+}
+
+#[test]
+fn a_repair_that_cannot_be_written_still_returns_the_model_with_a_warning() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut m = Model::new_default();
+    m.add_group("Mine");
+    let settings = Settings {
+        icon_size: 500,
+        ..Settings::default()
+    };
+    write_document(&s, &m, &settings);
+    let before = std::fs::read(s.document_path()).unwrap();
+    // A directory where the temp file goes makes the atomic write fail.
+    std::fs::create_dir(dir.path().join(".qlaunch.json.tmp")).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert_eq!(loaded.model, m);
+    assert_eq!(loaded.settings.icon_size, 100);
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|w| w.contains("could not be saved")),
+        "{:?}",
+        loaded.warnings
+    );
+    assert_eq!(std::fs::read(s.document_path()).unwrap(), before);
 }
 
 #[test]

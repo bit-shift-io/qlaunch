@@ -92,9 +92,24 @@ impl Store {
     }
 
     /// Reads the document. When there is none, writes and returns the defaults.
-    /// A document that cannot be used is moved aside (see [`Store::quarantine`]),
-    /// replaced by the defaults, and described in `warnings`. A document that
-    /// cannot be *read* (permissions, not a file) is an error: it is left alone.
+    ///
+    /// What counts as damage and what counts as repairable:
+    /// **a value of the correct JSON type that is outside the permitted range
+    /// is repaired by clamping; a value of the wrong JSON type (`"big"` where a
+    /// number belongs) is corruption and is quarantined.** Clamping keeps the
+    /// nearest bound, so the user's entry is not thrown away.
+    ///
+    /// A document that is corrupt, or that is not a valid model, is moved aside
+    /// (see [`Store::quarantine`]), replaced by the defaults, and described in
+    /// `warnings`. A document that cannot be *read* (permissions, not a file)
+    /// is an error and is left alone.
+    ///
+    /// Settings are clamped on the way in. If the document that results differs
+    /// from the one that was read (settings clamped, duplicate `AppRef`s
+    /// removed, or the schema migrated), the repaired document is written back
+    /// at once, so each warning is reported once. A clean document is not
+    /// rewritten. If that write fails the repaired model is still returned,
+    /// with a further warning.
     pub fn load(&self) -> Result<Loaded, StoreError> {
         let bytes = match fs::read(self.document_path()) {
             Ok(bytes) => bytes,
@@ -104,7 +119,14 @@ impl Store {
             Err(e) => return Err(e.into()),
         };
         match interpret(&bytes) {
-            Ok(loaded) => Ok(loaded),
+            Ok((mut loaded, repaired)) => {
+                if repaired && let Err(e) = self.save(&loaded.model, &loaded.settings) {
+                    loaded.warnings.push(format!(
+                        "The repaired layout could not be saved ({e}); it will be repaired again next time."
+                    ));
+                }
+                Ok(loaded)
+            }
             Err(reason) => {
                 let kept = self.quarantine()?;
                 let warning = format!(
@@ -146,10 +168,19 @@ impl Store {
         Ok(name)
     }
 
-    /// Moves the document to `qlaunch.json.corrupt` beside it, replacing any
-    /// earlier quarantined file, and returns that path.
+    /// Moves the document aside and returns the path it was moved to.
+    ///
+    /// The first quarantine is `qlaunch.json.corrupt`. An earlier quarantine is
+    /// never overwritten: later ones take the first free name in the series
+    /// `qlaunch.json.corrupt.1`, `.2`, and so on. The earliest file is the one
+    /// most likely to hold the user's real setup.
     pub fn quarantine(&self) -> Result<PathBuf, StoreError> {
-        let to = self.root.join(QUARANTINE_NAME);
+        let mut to = self.root.join(QUARANTINE_NAME);
+        let mut n = 0u32;
+        while path_taken(&to)? {
+            n += 1;
+            to = self.root.join(format!("{QUARANTINE_NAME}.{n}"));
+        }
         fs::rename(self.document_path(), &to)?;
         atomic::sync_dir(&self.root)?;
         Ok(to)
@@ -167,33 +198,83 @@ impl Store {
     }
 }
 
-/// Turns the bytes of a document into a usable model, or says why not.
-fn interpret(bytes: &[u8]) -> Result<Loaded, StoreError> {
+/// Whether anything (even a dangling symlink) is at `path`.
+fn path_taken(path: &Path) -> Result<bool, StoreError> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Turns the bytes of a document into a usable model, or says why not. The
+/// flag says whether the result differs from what was read, so it needs
+/// writing back.
+fn interpret(bytes: &[u8]) -> Result<(Loaded, bool), StoreError> {
     let mut value: Value = serde_json::from_slice(bytes)?;
     let found = value
         .get("schema")
         .and_then(Value::as_u64)
         .and_then(|n| u32::try_from(n).ok());
+    let mut migrated = false;
     if let Some(schema) = found.filter(|&n| n != SCHEMA_VERSION) {
         value = migrate::migrate(schema, value)?;
+        migrated = true;
     }
     let document: Document = serde_json::from_value(value)?;
     if document.schema != SCHEMA_VERSION {
         return Err(StoreError::UnsupportedSchema(document.schema));
     }
+    let read = document.clone();
 
+    let mut settings = document.settings;
+    let mut warnings = clamp_settings(&mut settings);
     let mut model = Model {
         root_group_id: document.root_group_id,
         groups: document.groups,
         items: document.items,
     };
-    let warnings = dedupe_app_refs(&mut model);
+    warnings.extend(dedupe_app_refs(&mut model));
     model.validate()?;
-    Ok(Loaded {
-        model,
-        settings: document.settings,
-        warnings,
-    })
+
+    let repaired = migrated
+        || settings != read.settings
+        || model.groups != read.groups
+        || model.items != read.items;
+    Ok((
+        Loaded {
+            model,
+            settings,
+            warnings,
+        },
+        repaired,
+    ))
+}
+
+/// Clamps `settings` and describes each value that had to move.
+fn clamp_settings(settings: &mut Settings) -> Vec<String> {
+    let before = settings.clone();
+    settings.clamp();
+    let mut warnings = Vec::new();
+    macro_rules! report {
+        ($($field:ident),* $(,)?) => {
+            $(if before.$field != settings.$field {
+                warnings.push(format!(
+                    "Setting {} was {}, outside its permitted range; it was set to {}.",
+                    stringify!($field), before.$field, settings.$field
+                ));
+            })*
+        };
+    }
+    report!(
+        grid_columns_portrait,
+        grid_columns_landscape,
+        icon_size,
+        label_size,
+        wallpaper_alpha,
+        icon_alpha,
+    );
+    warnings
 }
 
 /// Two items cannot refer to the same application. Keeps the first in the

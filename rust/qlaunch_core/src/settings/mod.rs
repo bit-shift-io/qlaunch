@@ -45,17 +45,17 @@ pub enum Orientation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
-    pub grid_columns_portrait: u32,
-    pub grid_columns_landscape: u32,
+    pub grid_columns_portrait: i64,
+    pub grid_columns_landscape: i64,
     pub layout: LayoutStyle,
     pub tab_visibility: TabVisibility,
-    pub wallpaper_alpha: u32,
+    pub wallpaper_alpha: i64,
     pub status_bar_visible: bool,
     pub icons_visible: bool,
-    pub icon_size: u32,
-    pub icon_alpha: u32,
+    pub icon_size: i64,
+    pub icon_alpha: i64,
     pub labels_visible: bool,
-    pub label_size: u32,
+    pub label_size: i64,
     pub label_typeface: Typeface,
     pub label_colour: LabelColour,
     pub label_shadow: bool,
@@ -64,17 +64,17 @@ pub struct Settings {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SettingsPatch {
-    pub grid_columns_portrait: Option<u32>,
-    pub grid_columns_landscape: Option<u32>,
+    pub grid_columns_portrait: Option<i64>,
+    pub grid_columns_landscape: Option<i64>,
     pub layout: Option<LayoutStyle>,
     pub tab_visibility: Option<TabVisibility>,
-    pub wallpaper_alpha: Option<u32>,
+    pub wallpaper_alpha: Option<i64>,
     pub status_bar_visible: Option<bool>,
     pub icons_visible: Option<bool>,
-    pub icon_size: Option<u32>,
-    pub icon_alpha: Option<u32>,
+    pub icon_size: Option<i64>,
+    pub icon_alpha: Option<i64>,
     pub labels_visible: Option<bool>,
-    pub label_size: Option<u32>,
+    pub label_size: Option<i64>,
     pub label_typeface: Option<Typeface>,
     pub label_colour: Option<LabelColour>,
     pub label_shadow: Option<bool>,
@@ -109,10 +109,10 @@ impl Settings {
     pub fn clamp(&mut self) {
         self.grid_columns_portrait = self.grid_columns_portrait.clamp(1, 12);
         self.grid_columns_landscape = self.grid_columns_landscape.clamp(1, 12);
-        self.wallpaper_alpha = self.wallpaper_alpha.min(100);
-        self.icon_size = self.icon_size.min(100);
-        self.icon_alpha = self.icon_alpha.min(100);
-        self.label_size = self.label_size.min(100);
+        self.wallpaper_alpha = self.wallpaper_alpha.clamp(0, 100);
+        self.icon_size = self.icon_size.clamp(0, 100);
+        self.icon_alpha = self.icon_alpha.clamp(0, 100);
+        self.label_size = self.label_size.clamp(0, 100);
     }
 
     /// Overwrites the fields the patch sets. Does not clamp; call

@@ -50,10 +50,12 @@ pub enum ShortcutPayload {
         action: Option<String>,
         data: Option<String>,
         mime_type: Option<String>,
+        #[serde(default)]
         categories: Vec<String>,
         package: Option<String>,
         component: Option<String>,
         flags: i32,
+        #[serde(default)]
         extras: Vec<Extra>,
     },
     Command {

@@ -50,9 +50,9 @@ fn grid_columns_clamp_to_one_through_twelve() {
 fn every_ranged_field_clamps_to_its_maximum() {
     let mut s = Settings {
         wallpaper_alpha: 255,
-        icon_size: u32::MAX,
+        icon_size: i64::MAX,
         icon_alpha: 255,
-        label_size: u32::MAX,
+        label_size: i64::MAX,
         ..Settings::default()
     };
     s.clamp();
@@ -227,4 +227,24 @@ fn missing_keys_fill_in_from_the_defaults() {
     );
     let empty: Settings = serde_json::from_str("{}").unwrap();
     assert_eq!(empty, Settings::default());
+}
+
+#[test]
+fn negative_values_clamp_up_to_the_minimum() {
+    let mut s = Settings {
+        grid_columns_portrait: -3,
+        grid_columns_landscape: i64::MIN,
+        wallpaper_alpha: -1,
+        icon_size: -5,
+        icon_alpha: i64::MIN,
+        label_size: -100,
+        ..Settings::default()
+    };
+    s.clamp();
+    assert_eq!(s.grid_columns_portrait, 1);
+    assert_eq!(s.grid_columns_landscape, 1);
+    assert_eq!(s.wallpaper_alpha, 0);
+    assert_eq!(s.icon_size, 0);
+    assert_eq!(s.icon_alpha, 0);
+    assert_eq!(s.label_size, 0);
 }
