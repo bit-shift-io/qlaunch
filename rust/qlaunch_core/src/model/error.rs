@@ -22,4 +22,16 @@ pub enum ModelError {
     GroupHoldsRole(Id),
     #[error("group {0} is not a page")]
     NotAPage(Id),
+    #[error("more than one group has id {0}")]
+    DuplicateGroupId(Id),
+    #[error("more than one item has id {0}")]
+    DuplicateItemId(Id),
+    #[error("the root group {0} has a parent")]
+    RootHasParent(Id),
+    #[error("group {0} has no parent but is not the root")]
+    SecondRoot(Id),
+    #[error("group {0} is not a child of the root group")]
+    NotChildOfRoot(Id),
+    #[error("item {0} is in the root group")]
+    ItemInRoot(Id),
 }

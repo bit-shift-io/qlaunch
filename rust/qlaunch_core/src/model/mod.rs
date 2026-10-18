@@ -136,6 +136,19 @@ impl Model {
             return Err(ModelError::MissingRoot);
         }
 
+        let mut seen_groups: HashSet<&str> = HashSet::new();
+        for group in &self.groups {
+            if !seen_groups.insert(group.id.as_str()) {
+                return Err(ModelError::DuplicateGroupId(group.id.clone()));
+            }
+        }
+        let mut seen_items: HashSet<&str> = HashSet::new();
+        for item in &self.items {
+            if !seen_items.insert(item.id.as_str()) {
+                return Err(ModelError::DuplicateItemId(item.id.clone()));
+            }
+        }
+
         for role in [
             GroupRole::Root,
             GroupRole::Hidden,
@@ -152,14 +165,26 @@ impl Model {
             }
         }
 
-        let group_ids: HashSet<&str> = self.groups.iter().map(|g| g.id.as_str()).collect();
-        for parent in self.groups.iter().filter_map(|g| g.parent_id.as_ref()) {
-            if !group_ids.contains(parent.as_str()) {
-                return Err(ModelError::UnknownGroup(parent.clone()));
+        for group in &self.groups {
+            match (&group.parent_id, group.id == self.root_group_id) {
+                (Some(_), true) => return Err(ModelError::RootHasParent(group.id.clone())),
+                (None, true) => {}
+                (None, false) => return Err(ModelError::SecondRoot(group.id.clone())),
+                (Some(parent), false) => {
+                    if !seen_groups.contains(parent.as_str()) {
+                        return Err(ModelError::UnknownGroup(parent.clone()));
+                    }
+                    if *parent != self.root_group_id {
+                        return Err(ModelError::NotChildOfRoot(group.id.clone()));
+                    }
+                }
             }
         }
         for item in &self.items {
-            if !group_ids.contains(item.group_id.as_str()) {
+            if item.group_id == self.root_group_id {
+                return Err(ModelError::ItemInRoot(item.id.clone()));
+            }
+            if !seen_groups.contains(item.group_id.as_str()) {
                 return Err(ModelError::UnknownGroup(item.group_id.clone()));
             }
         }

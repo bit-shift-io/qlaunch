@@ -114,10 +114,7 @@ fn home_role_is_optional() {
 fn missing_required_role_is_rejected() {
     let mut m = Model::new_default();
     m.groups.retain(|g| g.role != Some(GroupRole::Games));
-    assert_eq!(
-        m.validate(),
-        Err(ModelError::MissingRole(GroupRole::Games))
-    );
+    assert_eq!(m.validate(), Err(ModelError::MissingRole(GroupRole::Games)));
 }
 
 #[test]
@@ -190,4 +187,77 @@ fn group_with_unknown_parent_is_rejected() {
         m.validate(),
         Err(ModelError::UnknownGroup("nowhere".into()))
     );
+}
+
+#[test]
+fn duplicate_group_id_is_rejected() {
+    let mut m = Model::new_default();
+    let mut dup = m.role_holder(GroupRole::Apps).unwrap().clone();
+    let id = dup.id.clone();
+    dup.role = None;
+    m.groups.push(dup);
+    assert_eq!(m.validate(), Err(ModelError::DuplicateGroupId(id)));
+}
+
+#[test]
+fn duplicate_item_id_is_rejected() {
+    let mut m = Model::new_default();
+    let g = m.role_holder(GroupRole::Apps).unwrap().id.clone();
+    m.items.push(app_item("same", &g, "a", "x"));
+    m.items.push(app_item("same", &g, "a", "y"));
+    assert_eq!(
+        m.validate(),
+        Err(ModelError::DuplicateItemId("same".into()))
+    );
+}
+
+#[test]
+fn group_whose_parent_is_not_the_root_is_rejected() {
+    let mut m = Model::new_default();
+    let apps = m.role_holder(GroupRole::Apps).unwrap().id.clone();
+    m.groups.push(Group {
+        id: "nested".into(),
+        label: "Nested".into(),
+        parent_id: Some(apps),
+        role: None,
+        order: 5,
+    });
+    assert_eq!(
+        m.validate(),
+        Err(ModelError::NotChildOfRoot("nested".into()))
+    );
+}
+
+#[test]
+fn second_group_without_a_parent_is_rejected() {
+    let mut m = Model::new_default();
+    m.groups.push(Group {
+        id: "floating".into(),
+        label: "Floating".into(),
+        parent_id: None,
+        role: None,
+        order: 5,
+    });
+    assert_eq!(m.validate(), Err(ModelError::SecondRoot("floating".into())));
+}
+
+#[test]
+fn root_with_a_parent_is_rejected() {
+    let mut m = Model::new_default();
+    let apps = m.role_holder(GroupRole::Apps).unwrap().id.clone();
+    let root_id = m.root_group_id.clone();
+    m.groups
+        .iter_mut()
+        .find(|g| g.id == root_id)
+        .unwrap()
+        .parent_id = Some(apps);
+    assert_eq!(m.validate(), Err(ModelError::RootHasParent(root_id)));
+}
+
+#[test]
+fn item_in_the_root_group_is_rejected() {
+    let mut m = Model::new_default();
+    let root = m.root_group_id.clone();
+    m.items.push(app_item("i1", &root, "a", "b"));
+    assert_eq!(m.validate(), Err(ModelError::ItemInRoot("i1".into())));
 }
