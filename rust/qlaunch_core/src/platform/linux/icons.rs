@@ -60,30 +60,32 @@ pub fn resolve_icon(icon: &str, size_px: u32, dirs: &[PathBuf]) -> Option<PathBu
 /// name) and then `hicolor`; neither's `Inherits` chain is followed, and other
 /// themes are not scanned.
 ///
-/// The winner among the themed candidates, across all searched themes and all
-/// roots at once, is the first of:
+/// Every candidate competes in one ranking, whichever theme or directory it
+/// comes from. The winner is the first of:
 ///
-/// 1. a `png`, of the best-fitting size;
-/// 2. an `svg`, then an `xpm`, each of the best-fitting size;
-/// 3. one under `scalable`;
-/// 4. one under `symbolic`.
+/// 1. a `png`, then
+/// 2. an `svg`, then
+/// 3. an `xpm`;
 ///
-/// Version 1 cannot rasterise a vector, so an `svg` renders as no icon at all:
-/// a usable `png` therefore wins over one wherever it is, in another size
-/// (`128x128` over a `48x48` svg) or in another theme (`hicolor` over the
-/// named theme). An `svg` is resolution-independent, so its size is no
-/// constraint, which makes it better than an `xpm` at any pixel size.
+/// and within one extension, the first of these placements:
 ///
-/// The best-fitting size is the smallest at or above `size_px`, or the largest
-/// available when every size is below it. Size outranks theme: with a 48 `png`
-/// in the named theme and a 256 `png` in `hicolor`, a request for 128 is the
-/// 256 one. Only an exact tie (the same class, extension and size) goes to the
-/// named theme before `hicolor`, then to the earlier root. A size segment is
-/// `48x48` or `48` (the first number counts) with any `@2x`-style suffix
-/// dropped; one that is not a number is skipped.
+/// - a sized theme directory, of the best-fitting size: the smallest at or
+///   above `size_px`, or the largest available when every size is below it;
+/// - `scalable`, then `symbolic`, which carry no size;
+/// - the flat directory, which carries none either.
 ///
-/// A flat directory is the last resort, tried only when no theme has the
-/// icon, and prefers `png`, `svg`, `xpm`.
+/// An extension class dominates everything below it, so a renderable `png`
+/// from the least-preferred location still beats a non-renderable `svg` from
+/// the most-preferred one: version 1 cannot rasterise a vector, so an `svg`
+/// shows as no icon at all. An `svg` is resolution-independent, so its size is
+/// no constraint, which makes it better than an `xpm` at any pixel size.
+///
+/// Size outranks theme order within an extension and placement: with a 48
+/// `png` in the named theme and a 256 `png` in `hicolor`, a request for 128 is
+/// the 256 one. Only an exact tie goes to the named theme before `hicolor`,
+/// then to the earlier root, and the flat directories come after every theme.
+/// A size segment is `48x48` or `48` (the first number counts) with any
+/// `@2x`-style suffix dropped; one that is not a number is skipped.
 ///
 /// Only regular files count: a directory, a dangling symlink or a symlink
 /// loop named like an icon is skipped.
@@ -107,7 +109,7 @@ pub fn resolve_icon_themed(
         .into_iter()
         .chain([FALLBACK_THEME])
         .collect();
-    best_in_themes(dirs, &themes, size_px, &file_names).or_else(|| best_flat(dirs, &file_names))
+    best_candidate(dirs, &themes, size_px, &file_names)
 }
 
 fn file_names(icon: &str) -> Vec<String> {
@@ -119,35 +121,43 @@ fn file_names(icon: &str) -> Vec<String> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Class {
+enum Placement {
     Sized,
     Scalable,
     Symbolic,
+    Flat,
 }
 
-/// Lower is better; compared field by field, so the class decides first.
-type Key = (Class, usize, u8, u32);
+/// Lower is better, compared field by field: the extension decides first.
+type Key = (usize, Placement, u8, u32);
 
-/// Candidates are visited theme by theme, then root by root, and only a
-/// strictly better key replaces the one held, so that order breaks exact ties.
-fn best_in_themes(
+/// Candidates are visited theme by theme, then root by root, then the flat
+/// directories, and only a strictly better key replaces the one held, so that
+/// order breaks exact ties.
+fn best_candidate(
     dirs: &[PathBuf],
     themes: &[&str],
     size_px: u32,
     file_names: &[String],
 ) -> Option<PathBuf> {
     let mut best: Option<(Key, PathBuf)> = None;
+    let mut consider = |key: Key, path: PathBuf| {
+        if best.as_ref().is_none_or(|(held, _)| key < *held) {
+            best = Some((key, path));
+        }
+    };
+
     for (theme, root) in themes
         .iter()
         .flat_map(|theme| dirs.iter().map(move |root| (theme, root)))
     {
         let theme_dir = root.join(theme);
         for segment in subdirectory_names(&theme_dir) {
-            let (class, size) = match segment.as_str() {
-                "scalable" => (Class::Scalable, None),
-                "symbolic" => (Class::Symbolic, None),
+            let (placement, size) = match segment.as_str() {
+                "scalable" => (Placement::Scalable, None),
+                "symbolic" => (Placement::Symbolic, None),
                 other => match parse_size(other) {
-                    Some(size) => (Class::Sized, Some(size)),
+                    Some(size) => (Placement::Sized, Some(size)),
                     None => continue,
                 },
             };
@@ -157,17 +167,26 @@ fn best_in_themes(
                 let Some(rank) = extension_rank(&path) else {
                     continue;
                 };
-                if !is_file(&path) {
-                    continue;
-                }
-                let (nearness, order) = fit(size, size_px);
-                let key = (class, rank, nearness, order);
-                if best.as_ref().is_none_or(|(held, _)| key < *held) {
-                    best = Some((key, path));
+                if is_file(&path) {
+                    let (nearness, order) = fit(size, size_px);
+                    consider((rank, placement, nearness, order), path);
                 }
             }
         }
     }
+
+    for root in dirs {
+        for name in file_names {
+            let path = root.join(name);
+            let Some(rank) = extension_rank(&path) else {
+                continue;
+            };
+            if is_file(&path) {
+                consider((rank, Placement::Flat, 0, 0), path);
+            }
+        }
+    }
+
     best.map(|(_, path)| path)
 }
 
@@ -179,22 +198,6 @@ fn fit(size: Option<u32>, requested: u32) -> (u8, u32) {
         Some(size) if size >= requested => (0, size),
         Some(size) => (1, u32::MAX - size),
     }
-}
-
-fn best_flat(dirs: &[PathBuf], file_names: &[String]) -> Option<PathBuf> {
-    let mut best: Option<(usize, PathBuf)> = None;
-    for root in dirs {
-        for name in file_names {
-            let path = root.join(name);
-            let Some(rank) = extension_rank(&path) else {
-                continue;
-            };
-            if is_file(&path) && best.as_ref().is_none_or(|(held, _)| rank < *held) {
-                best = Some((rank, path));
-            }
-        }
-    }
-    best.map(|(_, path)| path)
 }
 
 /// The UTF-8 entry names of `dir`, sorted so the result does not depend on how

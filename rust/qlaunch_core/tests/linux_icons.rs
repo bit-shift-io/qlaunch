@@ -267,6 +267,64 @@ fn size_outranks_theme_order_among_pngs() {
 }
 
 #[test]
+fn a_flat_png_beats_a_themed_svg() {
+    // hicolor has scalable/apps/pixmapped.svg, pixmaps has pixmapped.png; a
+    // sized svg at the exact size is no better.
+    let dirs = vec![fixture("themed/icons"), fixture("flat/pixmaps")];
+    assert_eq!(
+        resolve_icon("pixmapped", 64, &dirs),
+        Some(fixture("flat/pixmaps/pixmapped.png"))
+    );
+    assert_eq!(
+        resolve_icon("sizedsvg-flatpng", 48, &dirs),
+        Some(fixture("flat/pixmaps/sizedsvg-flatpng.png"))
+    );
+    assert_eq!(
+        resolve_icon_themed("pixmapped", 64, &dirs, Some("Custom")),
+        Some(fixture("flat/pixmaps/pixmapped.png"))
+    );
+}
+
+#[test]
+fn a_themed_png_beats_a_flat_png_whatever_the_sizes() {
+    // Size-known candidates of an extension come before flat ones, even a
+    // themed png far below the request.
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("foo.png"), b"flat").unwrap();
+    let dirs = vec![dir.path().to_path_buf(), fixture("themed/icons")];
+    assert_eq!(
+        resolve_icon("foo", 1024, &dirs),
+        in_themed("hicolor/128x128/apps/foo.png")
+    );
+}
+
+#[test]
+fn a_flat_svg_is_better_than_a_flat_xpm_and_both_lose_to_a_flat_png() {
+    let dir = tempfile::tempdir().unwrap();
+    let flat = vec![dir.path().to_path_buf()];
+    fs::write(dir.path().join("x.xpm"), b"xpm").unwrap();
+    assert_eq!(resolve_icon("x", 48, &flat), Some(dir.path().join("x.xpm")));
+    fs::write(dir.path().join("x.svg"), b"svg").unwrap();
+    assert_eq!(resolve_icon("x", 48, &flat), Some(dir.path().join("x.svg")));
+    fs::write(dir.path().join("x.png"), b"png").unwrap();
+    assert_eq!(resolve_icon("x", 48, &flat), Some(dir.path().join("x.png")));
+}
+
+#[test]
+fn a_scalable_png_beats_a_sized_svg() {
+    let dir = tempfile::tempdir().unwrap();
+    let hicolor = dir.path().join("hicolor");
+    fs::create_dir_all(hicolor.join("48x48/apps")).unwrap();
+    fs::create_dir_all(hicolor.join("scalable/apps")).unwrap();
+    fs::write(hicolor.join("48x48/apps/odd.svg"), b"svg").unwrap();
+    fs::write(hicolor.join("scalable/apps/odd.png"), b"png").unwrap();
+    assert_eq!(
+        resolve_icon("odd", 48, &[dir.path().to_path_buf()]),
+        Some(hicolor.join("scalable/apps/odd.png"))
+    );
+}
+
+#[test]
 fn an_icon_missing_from_the_named_theme_falls_back_to_hicolor() {
     assert_eq!(
         resolve_icon_themed("foo", 128, &themed(), Some("Custom")),
