@@ -17,6 +17,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 const DOCUMENT_NAME: &str = "qlaunch.json";
 const QUARANTINE_NAME: &str = "qlaunch.json.corrupt";
+const BACKUP_NAME: &str = "qlaunch.json.bak";
 const ICONS_DIR: &str = "icons";
 
 /// The whole of what is stored on disk: one versioned JSON document.
@@ -114,8 +115,11 @@ impl Store {
     /// from the one that was read (settings clamped, duplicate `AppRef`s
     /// removed, or the schema migrated), the repaired document is written back
     /// at once, so each warning is reported once. A clean document is not
-    /// rewritten. If that write fails the repaired model is still returned,
-    /// with a further warning.
+    /// rewritten. Before that write the original bytes are copied aside to
+    /// `qlaunch.json.bak` (see [`Store::back_up`]), since a repair can remove
+    /// content, and the warnings name the copy. If the backup cannot be made
+    /// the document is left as it was; if the write fails the repaired model is
+    /// still returned. Either way there is a further warning.
     pub fn load(&self) -> Result<Loaded, StoreError> {
         let bytes = match fs::read(self.document_path()) {
             Ok(bytes) => bytes,
@@ -126,10 +130,8 @@ impl Store {
         };
         match interpret(&bytes) {
             Ok((mut loaded, repaired)) => {
-                if repaired && let Err(e) = self.save(&loaded.model, &loaded.settings) {
-                    loaded.warnings.push(format!(
-                        "The repaired layout could not be saved ({e}); it will be repaired again next time."
-                    ));
+                if repaired {
+                    self.write_back(&bytes, &mut loaded);
                 }
                 Ok(loaded)
             }
@@ -144,7 +146,9 @@ impl Store {
         }
     }
 
-    /// Writes the document atomically. A model that [`Model::validate`] rejects
+    /// Writes the document atomically (see `atomic::write_atomic`: concurrent
+    /// saves are last-writer-wins, and the file is always one complete
+    /// document). A model that [`Model::validate`] rejects
     /// is refused, since `load` would only quarantine it again.
     pub fn save(&self, model: &Model, settings: &Settings) -> Result<(), StoreError> {
         model.validate()?;
@@ -179,17 +183,57 @@ impl Store {
     /// The first quarantine is `qlaunch.json.corrupt`. An earlier quarantine is
     /// never overwritten: later ones take the first free name in the series
     /// `qlaunch.json.corrupt.1`, `.2`, and so on. The earliest file is the one
-    /// most likely to hold the user's real setup.
+    /// most likely to hold the user's real setup. A quarantined file failed to
+    /// load at all; compare [`Store::back_up`].
     pub fn quarantine(&self) -> Result<PathBuf, StoreError> {
-        let mut to = self.root.join(QUARANTINE_NAME);
-        let mut n = 0u32;
-        while path_taken(&to)? {
-            n += 1;
-            to = self.root.join(format!("{QUARANTINE_NAME}.{n}"));
-        }
+        let to = self.free_name(QUARANTINE_NAME)?;
         fs::rename(self.document_path(), &to)?;
         atomic::sync_dir(&self.root)?;
         Ok(to)
+    }
+
+    /// Keeps `bytes`, the document as it was read, as `qlaunch.json.bak` and
+    /// returns that path. Never overwrites: later backups are `.bak.1`, `.bak.2`
+    /// and so on. A backup is of a document that loaded fine and was then
+    /// repaired; compare [`Store::quarantine`].
+    fn back_up(&self, bytes: &[u8]) -> Result<PathBuf, StoreError> {
+        let to = self.free_name(BACKUP_NAME)?;
+        atomic::write_atomic(&to, bytes)?;
+        Ok(to)
+    }
+
+    /// The first unused name in the series `base`, `base.1`, `base.2`, ... in
+    /// the store directory. A dangling symlink counts as used.
+    fn free_name(&self, base: &str) -> Result<PathBuf, StoreError> {
+        let mut path = self.root.join(base);
+        let mut n = 0u32;
+        while path_taken(&path)? {
+            n += 1;
+            path = self.root.join(format!("{base}.{n}"));
+        }
+        Ok(path)
+    }
+
+    /// Replaces the document with the repaired `loaded`, after keeping the
+    /// original `bytes`. Failures become warnings, not errors: the repaired
+    /// model is fine in memory.
+    fn write_back(&self, bytes: &[u8], loaded: &mut Loaded) {
+        match self.back_up(bytes) {
+            Ok(kept) => {
+                loaded.warnings.push(format!(
+                    "The saved layout was repaired. The original was kept as {}.",
+                    kept.display()
+                ));
+                if let Err(e) = self.save(&loaded.model, &loaded.settings) {
+                    loaded.warnings.push(format!(
+                        "The repaired layout could not be saved ({e}); it will be repaired again next time."
+                    ));
+                }
+            }
+            Err(e) => loaded.warnings.push(format!(
+                "The saved layout needs repair, but its original could not be kept ({e}), so it was left as it is."
+            )),
+        }
     }
 
     fn write_defaults(&self, warnings: Vec<String>) -> Result<Loaded, StoreError> {
