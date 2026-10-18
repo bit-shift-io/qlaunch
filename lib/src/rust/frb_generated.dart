@@ -91,7 +91,7 @@ abstract class RustLibApi extends BaseApi {
 
   Stream<CoreEvent> crateApiApiEvents();
 
-  String? crateApiApiHomeGroupId();
+  Future<String?> crateApiApiHomeGroupId();
 
   Future<Uint8List?> crateApiApiIconFor({
     required String package,
@@ -251,12 +251,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "events", argNames: ["sink"]);
 
   @override
-  String? crateApiApiHomeGroupId() {
-    return handler.executeSync(
-      SyncTask(
-        callFfi: () {
+  Future<String?> crateApiApiHomeGroupId() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_opt_String,

@@ -154,8 +154,7 @@ pub async fn update_settings(patch: SettingsPatch) -> Result<ModelSnapshot, Stri
 }
 
 /// `None` before `init`, or when no group holds the Home role.
-#[frb(sync)]
-pub fn home_group_id() -> Option<Id> {
+pub async fn home_group_id() -> Option<Id> {
     state::with_app(|app, _| Ok(app.model.home_group_id()))
         .ok()
         .flatten()

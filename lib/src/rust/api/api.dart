@@ -82,7 +82,7 @@ Future<ModelSnapshot> updateSettings({required SettingsPatch patch}) =>
     RustLib.instance.api.crateApiApiUpdateSettings(patch: patch);
 
 /// `None` before `init`, or when no group holds the Home role.
-String? homeGroupId() => RustLib.instance.api.crateApiApiHomeGroupId();
+Future<String?> homeGroupId() => RustLib.instance.api.crateApiApiHomeGroupId();
 
 /// Searches every app in the launcher, by the label shown for it. Apps that
 /// are marked uninstalled are not included. Empty before `init`.

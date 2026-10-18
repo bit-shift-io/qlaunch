@@ -156,15 +156,16 @@ fn wire__crate__api__api__events_impl(
     )
 }
 fn wire__crate__api__api__home_group_id_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
     rust_vec_len_: i32,
     data_len_: i32,
-) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
-    FLUTTER_RUST_BRIDGE_HANDLER.wrap_sync::<flutter_rust_bridge::for_generated::SseCodec, _>(
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
         flutter_rust_bridge::for_generated::TaskInfo {
             debug_name: "home_group_id",
-            port: None,
-            mode: flutter_rust_bridge::for_generated::FfiCallMode::Sync,
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
         },
         move || {
             let message = unsafe {
@@ -177,10 +178,15 @@ fn wire__crate__api__api__home_group_id_impl(
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
             deserializer.end();
-            transform_result_sse::<_, ()>((move || {
-                let output_ok = Ok::<_, ()>(crate::api::api::home_group_id())?;
-                std::result::Result::Ok(output_ok)
-            })())
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(crate::api::api::home_group_id().await)?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
         },
     )
 }
@@ -1421,6 +1427,7 @@ fn pde_ffi_dispatcher_primary_impl(
         1 => wire__crate__api__api__add_group_impl(port, ptr, rust_vec_len, data_len),
         2 => wire__crate__api__api__delete_group_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__api__events_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__api__home_group_id_impl(port, ptr, rust_vec_len, data_len),
         5 => wire__crate__api__api__icon_for_impl(port, ptr, rust_vec_len, data_len),
         6 => wire__crate__api__api__init_impl(port, ptr, rust_vec_len, data_len),
         7 => wire__crate__api__api__launch_app_impl(port, ptr, rust_vec_len, data_len),
@@ -1449,7 +1456,6 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        4 => wire__crate__api__api__home_group_id_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

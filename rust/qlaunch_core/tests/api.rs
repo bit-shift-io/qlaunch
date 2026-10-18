@@ -395,6 +395,49 @@ fn a_failed_write_is_a_warning_and_the_change_still_counts() {
 }
 
 #[test]
+fn init_loads_before_it_saves_so_a_document_that_must_be_kept_is_kept() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let document = dir.path().join("qlaunch.json");
+    let kept = dir.path().join("qlaunch.json.corrupt");
+    let kept_again = dir.path().join("qlaunch.json.corrupt.1");
+
+    // If anything saved before `load` ran, it would overwrite this document
+    // and `load` would then find a valid one and have nothing to set aside.
+    let seed = b"{ this is somebody's layout, and it is not JSON";
+    fs::write(&document, seed).unwrap();
+
+    let snap = init_fake(dir.path());
+    assert!(has_warning(&snap, "kept as"), "{:?}", snap.warnings);
+    assert_eq!(fs::read(&kept).unwrap(), seed, "the original was not kept");
+    let first_document = fs::read_to_string(&document).unwrap();
+    assert!(first_document.contains("\"schema\""), "no fresh document");
+    assert_eq!(snap.page_ids.len(), 3);
+
+    // The same on a re-init, which starts from a running state.
+    let second_seed = b"[ a second document that cannot be read";
+    fs::write(&document, second_seed).unwrap();
+    let again = init_fake(dir.path());
+    assert!(has_warning(&again, "kept as"), "{:?}", again.warnings);
+    assert_eq!(fs::read(&kept_again).unwrap(), second_seed);
+    assert_eq!(
+        fs::read(&kept).unwrap(),
+        seed,
+        "the first original was overwritten"
+    );
+    assert!(
+        fs::read_to_string(&document)
+            .unwrap()
+            .contains("\"schema\"")
+    );
+
+    let snap = block_on(api::add_group("Chat".into())).unwrap();
+    assert_eq!(snap.page_ids.len(), 4);
+    assert!(fs::read_to_string(&document).unwrap().contains("Chat"));
+    assert_eq!(fs::read(&kept).unwrap(), seed);
+}
+
+#[test]
 fn warnings_do_not_accumulate_across_mutations() {
     let _guard = serial();
     let dir = tempdir().unwrap();
@@ -549,7 +592,7 @@ fn groups_and_items_can_be_arranged() {
 #[test]
 fn home_group_id_search_and_launch() {
     let _guard = serial();
-    assert_eq!(api::home_group_id(), None);
+    assert_eq!(block_on(api::home_group_id()), None);
     assert!(block_on(api::search_all_apps("a".into())).is_empty());
     assert_eq!(block_on(api::icon_for("p".into(), "a".into(), 48)), None);
 
@@ -558,7 +601,10 @@ fn home_group_id_search_and_launch() {
     let snap = api::init_with_source(Some(dir.path().to_path_buf()), Box::new(source), Vec::new())
         .unwrap();
 
-    assert_eq!(api::home_group_id(), Some(group_id(&snap, GroupRole::Home)));
+    assert_eq!(
+        block_on(api::home_group_id()),
+        Some(group_id(&snap, GroupRole::Home))
+    );
     let hits = block_on(api::search_all_apps("al".into()));
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].app, app_ref("org.alpha"));
