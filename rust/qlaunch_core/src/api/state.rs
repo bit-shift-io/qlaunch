@@ -132,6 +132,7 @@ pub(crate) fn snapshot_of(app: &App) -> ModelSnapshot {
     warnings.extend(app.watch_problem.clone());
     ModelSnapshot {
         root_group_id: app.model.root_group_id.clone(),
+        home_group_id: app.model.home_group_id(),
         page_ids: app.model.pages().iter().map(|g| g.id.clone()).collect(),
         groups: app.model.groups.clone(),
         items: items_in_display_order(&app.model),

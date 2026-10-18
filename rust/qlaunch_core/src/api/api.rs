@@ -28,6 +28,10 @@ pub fn version() -> String {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelSnapshot {
     pub root_group_id: Id,
+    /// The group holding the Home role, or `None` if no group does. Dart must
+    /// use this and must not look for a group with the Home role itself: how
+    /// the Home group is found is a model rule, and it lives in Rust.
+    pub home_group_id: Option<Id>,
     pub page_ids: Vec<Id>,
     pub groups: Vec<Group>,
     /// Every item, in **display order within its group**: filtering by

@@ -1078,6 +1078,7 @@ impl SseDecode for crate::api::api::ModelSnapshot {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_rootGroupId = <String>::sse_decode(deserializer);
+        let mut var_homeGroupId = <Option<String>>::sse_decode(deserializer);
         let mut var_pageIds = <Vec<String>>::sse_decode(deserializer);
         let mut var_groups = <Vec<crate::model::Group>>::sse_decode(deserializer);
         let mut var_items = <Vec<crate::model::Item>>::sse_decode(deserializer);
@@ -1085,6 +1086,7 @@ impl SseDecode for crate::api::api::ModelSnapshot {
         let mut var_warnings = <Vec<String>>::sse_decode(deserializer);
         return crate::api::api::ModelSnapshot {
             root_group_id: var_rootGroupId,
+            home_group_id: var_homeGroupId,
             page_ids: var_pageIds,
             groups: var_groups,
             items: var_items,
@@ -1668,6 +1670,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::api::ModelSnapshot {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
             self.root_group_id.into_into_dart().into_dart(),
+            self.home_group_id.into_into_dart().into_dart(),
             self.page_ids.into_into_dart().into_dart(),
             self.groups.into_into_dart().into_dart(),
             self.items.into_into_dart().into_dart(),
@@ -2146,6 +2149,7 @@ impl SseEncode for crate::api::api::ModelSnapshot {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.root_group_id, serializer);
+        <Option<String>>::sse_encode(self.home_group_id, serializer);
         <Vec<String>>::sse_encode(self.page_ids, serializer);
         <Vec<crate::model::Group>>::sse_encode(self.groups, serializer);
         <Vec<crate::model::Item>>::sse_encode(self.items, serializer);

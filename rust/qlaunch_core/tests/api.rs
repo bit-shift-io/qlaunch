@@ -510,6 +510,51 @@ fn a_snapshot_lists_each_groups_items_in_display_order() {
 }
 
 #[test]
+fn the_snapshot_names_the_home_group_the_model_names() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let first = init_fake(dir.path());
+    let model_says = |snap: &ModelSnapshot| {
+        Model {
+            root_group_id: snap.root_group_id.clone(),
+            groups: snap.groups.clone(),
+            items: snap.items.clone(),
+        }
+        .home_group_id()
+    };
+
+    assert!(first.home_group_id.is_some());
+    assert_eq!(first.home_group_id, model_says(&first));
+    assert_eq!(first.home_group_id, Some(group_id(&first, GroupRole::Home)));
+    assert_ne!(first.home_group_id.as_ref(), Some(&first.root_group_id));
+
+    // Another group takes the role over: the snapshot follows, and the old
+    // holder is no longer named.
+    let snap = block_on(api::add_group("Chat".into())).unwrap();
+    let chat = snap
+        .groups
+        .iter()
+        .find(|g| g.label == "Chat")
+        .unwrap()
+        .id
+        .clone();
+    let snap = block_on(api::set_group_role(chat.clone(), Some(GroupRole::Home))).unwrap();
+    assert_eq!(snap.home_group_id, Some(chat.clone()));
+    assert_eq!(snap.home_group_id, model_says(&snap));
+    assert_ne!(snap.home_group_id, first.home_group_id);
+    assert_eq!(
+        block_on(api::snapshot()).unwrap().home_group_id,
+        Some(chat.clone())
+    );
+
+    // With the role taken away nobody is named.
+    let snap = block_on(api::set_group_role(chat, None)).unwrap();
+    assert_eq!(snap.home_group_id, None);
+    assert_eq!(snap.home_group_id, model_says(&snap));
+    assert_eq!(block_on(api::home_group_id()), None);
+}
+
+#[test]
 fn warnings_do_not_accumulate_across_mutations() {
     let _guard = serial();
     let dir = tempdir().unwrap();

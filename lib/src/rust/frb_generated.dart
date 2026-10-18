@@ -1032,15 +1032,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ModelSnapshot dco_decode_model_snapshot(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return ModelSnapshot(
       rootGroupId: dco_decode_String(arr[0]),
-      pageIds: dco_decode_list_String(arr[1]),
-      groups: dco_decode_list_group(arr[2]),
-      items: dco_decode_list_item(arr[3]),
-      settings: dco_decode_settings(arr[4]),
-      warnings: dco_decode_list_String(arr[5]),
+      homeGroupId: dco_decode_opt_String(arr[1]),
+      pageIds: dco_decode_list_String(arr[2]),
+      groups: dco_decode_list_group(arr[3]),
+      items: dco_decode_list_item(arr[4]),
+      settings: dco_decode_settings(arr[5]),
+      warnings: dco_decode_list_String(arr[6]),
     );
   }
 
@@ -1556,6 +1557,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ModelSnapshot sse_decode_model_snapshot(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_rootGroupId = sse_decode_String(deserializer);
+    var var_homeGroupId = sse_decode_opt_String(deserializer);
     var var_pageIds = sse_decode_list_String(deserializer);
     var var_groups = sse_decode_list_group(deserializer);
     var var_items = sse_decode_list_item(deserializer);
@@ -1563,6 +1565,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_warnings = sse_decode_list_String(deserializer);
     return ModelSnapshot(
       rootGroupId: var_rootGroupId,
+      homeGroupId: var_homeGroupId,
       pageIds: var_pageIds,
       groups: var_groups,
       items: var_items,
@@ -2184,6 +2187,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_model_snapshot(ModelSnapshot self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.rootGroupId, serializer);
+    sse_encode_opt_String(self.homeGroupId, serializer);
     sse_encode_list_String(self.pageIds, serializer);
     sse_encode_list_group(self.groups, serializer);
     sse_encode_list_item(self.items, serializer);

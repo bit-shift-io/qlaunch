@@ -120,6 +120,11 @@ Stream<CoreEvent> events() => RustLib.instance.api.crateApiApiEvents();
 /// that changes are not being saved), and does not grow from call to call.
 class ModelSnapshot {
   final String rootGroupId;
+
+  /// The group holding the Home role, or `None` if no group does. Dart must
+  /// use this and must not look for a group with the Home role itself: how
+  /// the Home group is found is a model rule, and it lives in Rust.
+  final String? homeGroupId;
   final List<String> pageIds;
   final List<Group> groups;
 
@@ -134,6 +139,7 @@ class ModelSnapshot {
 
   const ModelSnapshot({
     required this.rootGroupId,
+    this.homeGroupId,
     required this.pageIds,
     required this.groups,
     required this.items,
@@ -144,6 +150,7 @@ class ModelSnapshot {
   @override
   int get hashCode =>
       rootGroupId.hashCode ^
+      homeGroupId.hashCode ^
       pageIds.hashCode ^
       groups.hashCode ^
       items.hashCode ^
@@ -156,6 +163,7 @@ class ModelSnapshot {
       other is ModelSnapshot &&
           runtimeType == other.runtimeType &&
           rootGroupId == other.rootGroupId &&
+          homeGroupId == other.homeGroupId &&
           pageIds == other.pageIds &&
           groups == other.groups &&
           items == other.items &&
