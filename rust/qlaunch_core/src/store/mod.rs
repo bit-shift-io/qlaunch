@@ -1,5 +1,8 @@
 mod atomic;
+mod location;
 mod migrate;
+
+pub use location::{config_root, config_root_from};
 
 use std::collections::HashSet;
 use std::fs;
@@ -93,6 +96,8 @@ impl Store {
     }
 
     /// Reads the document. When there is none, writes and returns the defaults.
+    /// If they cannot be written (the store directory is read-only, or cannot
+    /// be created) the defaults are returned all the same, with a warning.
     ///
     /// What counts as damage and what counts as repairable, for the clamped
     /// numeric settings:
@@ -108,7 +113,8 @@ impl Store {
     ///
     /// A document that is corrupt, or that is not a valid model, is moved aside
     /// (see [`Store::quarantine`]), replaced by the defaults, and described in
-    /// `warnings`. A document that cannot be *read* (permissions, not a file)
+    /// `warnings`. That holds even when the defaults then cannot be written:
+    /// the quarantine has happened and is reported. A document that cannot be *read* (permissions, not a file)
     /// is an error and is left alone.
     ///
     /// Settings are clamped on the way in. If the document that results differs
@@ -123,9 +129,7 @@ impl Store {
     pub fn load(&self) -> Result<Loaded, StoreError> {
         let bytes = match fs::read(self.document_path()) {
             Ok(bytes) => bytes,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                return self.write_defaults(Vec::new());
-            }
+            Err(e) if is_absent(&e) => return Ok(self.write_defaults(Vec::new())),
             Err(e) => return Err(e.into()),
         };
         match interpret(&bytes) {
@@ -141,7 +145,7 @@ impl Store {
                     "The saved layout could not be used ({reason}). It was kept as {} and a fresh layout was created.",
                     kept.display()
                 );
-                self.write_defaults(vec![warning])
+                Ok(self.write_defaults(vec![warning]))
             }
         }
     }
@@ -236,16 +240,35 @@ impl Store {
         }
     }
 
-    fn write_defaults(&self, warnings: Vec<String>) -> Result<Loaded, StoreError> {
+    /// Returns the defaults after trying to write them. A store that cannot be
+    /// written (a read-only or blocked directory) must not stop the app from
+    /// starting, so a failed write is a warning: the defaults are still
+    /// returned and the write is tried again at the next save.
+    fn write_defaults(&self, mut warnings: Vec<String>) -> Loaded {
         let model = Model::new_default();
         let settings = Settings::default();
-        self.save(&model, &settings)?;
-        Ok(Loaded {
+        if let Err(e) = self.save(&model, &settings) {
+            warnings.push(format!(
+                "The layout could not be saved to {} ({e}); changes will not be kept until it can be.",
+                self.root.display()
+            ));
+        }
+        Loaded {
             model,
             settings,
             warnings,
-        })
+        }
     }
+}
+
+/// Whether `e` means the document is not there. `NotADirectory` counts: it is
+/// what reading `root/qlaunch.json` reports when `root`, or a directory above
+/// it, is a file, and no document can exist there either.
+fn is_absent(e: &io::Error) -> bool {
+    matches!(
+        e.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+    )
 }
 
 /// Whether anything (even a dangling symlink) is at `path`.
