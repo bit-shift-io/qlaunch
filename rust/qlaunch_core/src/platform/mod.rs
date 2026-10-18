@@ -31,4 +31,38 @@ pub trait AppSource: Send + Sync {
     fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError>;
     fn icon_png(&self, app: &AppRef, size_px: u32) -> Result<Option<Vec<u8>>, PlatformError>;
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError>;
+
+    /// Calls `on_change` after the installed apps change, once per burst of
+    /// changes, until the returned handle is dropped. The callback only says
+    /// "something changed": the caller re-reads `list_apps`.
+    fn watch(&self, on_change: Box<dyn Fn() + Send + Sync>) -> Result<WatchHandle, PlatformError> {
+        let _ = on_change;
+        Err(PlatformError::Unsupported(
+            "watching is not supported on this platform".into(),
+        ))
+    }
+}
+
+/// Keeps a [`AppSource::watch`] running until it is dropped.
+///
+/// The handle runs `stop` exactly once, when dropped. `stop` must not panic
+/// and must not block indefinitely, and once it returns the callback must not
+/// be called again.
+pub struct WatchHandle {
+    stop: Box<dyn Fn() + Send + Sync>,
+}
+
+impl WatchHandle {
+    /// The handle runs `stop` exactly once, when it is dropped.
+    pub fn new(stop: impl Fn() + Send + Sync + 'static) -> Self {
+        Self {
+            stop: Box::new(stop),
+        }
+    }
+}
+
+impl Drop for WatchHandle {
+    fn drop(&mut self) {
+        (self.stop)();
+    }
 }

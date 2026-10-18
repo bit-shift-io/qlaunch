@@ -1,12 +1,13 @@
 mod desktop_file;
 mod icons;
 mod launch;
+mod watch;
 
 use std::fs;
 use std::path::PathBuf;
 
 use crate::model::{AppCategory, AppEntry, AppRef};
-use crate::platform::{AppSource, LaunchError, PlatformError};
+use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
 
 pub use desktop_file::{
     DesktopEntry, applications_dirs_from, data_roots, data_roots_from, dirs_to_scan,
@@ -170,5 +171,15 @@ impl AppSource for LinuxSource {
             .ok_or_else(|| LaunchError::Failed(format!("{id} has no Exec line to run")))?;
         let argv = build_command(&exec, entry.terminal, self.terminal_emulator.as_deref())?;
         launch::spawn(&argv)
+    }
+
+    /// Calls `on_change` once, 250 ms after the last of any burst of changes
+    /// to the source's `applications` directories. A directory that does not
+    /// exist is skipped, and if none exists the handle is inert. If some
+    /// exist but none can be watched (not a directory, permission, the
+    /// inotify limit) that is an error. `on_change` runs on a thread of its
+    /// own; if it panics, no further notifications are sent.
+    fn watch(&self, on_change: Box<dyn Fn() + Send + Sync>) -> Result<WatchHandle, PlatformError> {
+        watch::watch(&self.dirs, on_change)
     }
 }
