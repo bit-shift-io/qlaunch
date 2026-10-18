@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:qlaunch/src/rust/api/api.dart';
+import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
@@ -16,6 +16,12 @@ class LauncherState extends ChangeNotifier {
   ModelSnapshot? _snapshot;
   String? _error;
   bool _disposed = false;
+
+  // Generations only move forward. A fetch's result is dropped only when a
+  // newer one has already been adopted, so a late older result can never
+  // overwrite newer data, while a failed newer fetch can't block an older one.
+  int _started = 0;
+  int _adopted = 0;
 
   ModelSnapshot? get snapshot => _snapshot;
 
@@ -47,16 +53,18 @@ class LauncherState extends ChangeNotifier {
   /// Subscribes to core events *before* fetching: the core registers its
   /// subscriber asynchronously, so fetching first could miss a change made
   /// in between. Only ever subscribes once, however often this is called.
+  ///
+  /// Never throws: a failure arrives as [error], like any other fetch.
   Future<void> load({String? configRootOverride}) async {
-    _sub ??= _backend.events().listen(_onEvent);
-    _adopt(await _backend.init(configRootOverride: configRootOverride));
+    _sub ??= _backend.events().listen(_onEvent, onError: _fail);
+    await _fetch(() => _backend.init(configRootOverride: configRootOverride));
   }
 
   void _onEvent(CoreEvent event) {
     switch (event) {
       case CoreEvent_ModelChanged():
       case CoreEvent_AppsChanged():
-        unawaited(_refetch());
+        unawaited(_fetch(_backend.snapshot));
       case CoreEvent_Error(:final field0):
         _error = field0;
         _notify();
@@ -72,13 +80,31 @@ class LauncherState extends ChangeNotifier {
     }
   }
 
-  Future<void> _refetch() async {
+  Future<void> _fetch(Future<ModelSnapshot> Function() fetch) async {
+    final gen = ++_started;
     try {
-      _adopt(await _backend.snapshot());
-    } catch (e) {
-      _error = e.toString();
-      _notify();
+      final snapshot = await fetch();
+      if (gen < _adopted) return;
+      _adopted = gen;
+      _adopt(snapshot);
+    } catch (e, st) {
+      if (gen < _adopted) return;
+      _fail(e, st);
     }
+  }
+
+  /// Surfaces a failure as state, and reports it so that a programming error
+  /// is not hidden behind a one-line message.
+  void _fail(Object error, StackTrace stack) {
+    _error = error.toString();
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'qlaunch launcher state',
+      ),
+    );
+    _notify();
   }
 
   void _adopt(ModelSnapshot snapshot) {
