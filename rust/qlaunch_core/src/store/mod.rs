@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -56,16 +58,46 @@ pub enum StoreError {
     Invalid(#[from] ModelError),
     #[error("{0:?} is not a plain file name")]
     InvalidIconName(String),
+    #[error(
+        "the saved layout could not be read, so nothing will be written over it until a load succeeds"
+    )]
+    WritesBlocked,
 }
 
+/// The one safety property of the store: **it never writes a document it has
+/// not read.** A `load` that finds the document but cannot read it blocks
+/// every later `save` and `quarantine` until a `load` succeeds, so a model
+/// built from defaults can never replace the document that was not read.
+///
+/// | read result | writes afterwards |
+/// |---|---|
+/// | no load yet (`Store::new`) | allowed |
+/// | `NotFound` / `NotADirectory` (absent) | allowed; the defaults are created |
+/// | any other error (unreadable) | **refused** (`StoreError::WritesBlocked`) |
+/// | read succeeded, even if corrupt | allowed; a corrupt file is already moved aside |
+///
+/// The block is shared by every clone of a `Store`, and is an atomic flag so
+/// `Store` stays `Send + Sync` without a lock.
 #[derive(Debug, Clone)]
 pub struct Store {
     root: PathBuf,
+    writes_blocked: Arc<AtomicBool>,
 }
 
 impl Store {
     pub fn new(root: PathBuf) -> Self {
-        Store { root }
+        Store {
+            root,
+            writes_blocked: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn check_writable(&self) -> Result<(), StoreError> {
+        if self.writes_blocked.load(Ordering::Acquire) {
+            Err(StoreError::WritesBlocked)
+        } else {
+            Ok(())
+        }
     }
 
     pub fn document_path(&self) -> PathBuf {
@@ -107,8 +139,9 @@ impl Store {
     /// - **Unreadable**: reading fails any other way (permission denied, the
     ///   path is a directory, any other I/O error). The file may be someone's
     ///   real document, so nothing is written, replaced or quarantined. The
-    ///   in-memory defaults are returned with a warning, and the caller should
-    ///   not save over it without the user's say-so.
+    ///   in-memory defaults are returned with a warning, and the store refuses
+    ///   every `save` and `quarantine` (`StoreError::WritesBlocked`) until a
+    ///   later `load` succeeds. See [`Store`].
     /// - **Read**: the bytes were read. If they are corrupt or not a valid
     ///   model the document is quarantined (see below); otherwise it is used,
     ///   and repaired if need be. Quarantine moves a file aside, so it only
@@ -143,9 +176,16 @@ impl Store {
     pub fn load(&self) -> Result<Loaded, StoreError> {
         let bytes = match fs::read(self.document_path()) {
             Ok(bytes) => bytes,
-            Err(e) if is_absent(&e) => return Ok(self.write_defaults(Vec::new())),
-            Err(e) => return Ok(self.unreadable(&e)),
+            Err(e) if is_absent(&e) => {
+                self.writes_blocked.store(false, Ordering::Release);
+                return Ok(self.write_defaults(Vec::new()));
+            }
+            Err(e) => {
+                self.writes_blocked.store(true, Ordering::Release);
+                return Ok(self.unreadable(&e));
+            }
         };
+        self.writes_blocked.store(false, Ordering::Release);
         match interpret(&bytes) {
             Ok((mut loaded, repaired)) => {
                 if repaired {
@@ -166,9 +206,11 @@ impl Store {
 
     /// Writes the document atomically (see `atomic::write_atomic`: concurrent
     /// saves are last-writer-wins, and the file is always one complete
-    /// document). A model that [`Model::validate`] rejects
+    /// document). Refused with `WritesBlocked` while the document is unreadable
+    /// (see [`Store`]). A model that [`Model::validate`] rejects
     /// is refused, since `load` would only quarantine it again.
     pub fn save(&self, model: &Model, settings: &Settings) -> Result<(), StoreError> {
+        self.check_writable()?;
         model.validate()?;
         let document = Document {
             schema: SCHEMA_VERSION,
@@ -204,6 +246,7 @@ impl Store {
     /// most likely to hold the user's real setup. A quarantined file failed to
     /// load at all; compare [`Store::back_up`].
     pub fn quarantine(&self) -> Result<PathBuf, StoreError> {
+        self.check_writable()?;
         let to = self.free_name(QUARANTINE_NAME)?;
         fs::rename(self.document_path(), &to)?;
         atomic::sync_dir(&self.root)?;

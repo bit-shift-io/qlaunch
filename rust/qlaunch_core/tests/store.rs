@@ -586,15 +586,22 @@ fn save_writes_nothing_at_all_for_an_invalid_model() {
 }
 
 #[test]
-fn an_unreadable_document_is_a_warning_not_a_reason_to_overwrite() {
+fn an_unreadable_document_warns_and_then_refuses_every_save_and_leaves_it_alone() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
     std::fs::create_dir(s.document_path()).unwrap();
+
     let loaded = s.load().unwrap();
     loaded.model.validate().unwrap();
     assert!(!loaded.warnings.is_empty());
+
+    let err = s.save(&loaded.model, &loaded.settings).unwrap_err();
+    assert!(matches!(err, StoreError::WritesBlocked), "{err:?}");
+    assert!(matches!(s.quarantine(), Err(StoreError::WritesBlocked)));
+
     assert!(s.document_path().is_dir());
     assert!(!dir.path().join("qlaunch.json.corrupt").exists());
+    assert!(leftover_temp_files(dir.path()).is_empty());
 }
 
 #[test]
