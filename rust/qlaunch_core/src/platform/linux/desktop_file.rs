@@ -214,8 +214,9 @@ pub fn exec_argv(exec: &str) -> Vec<String> {
     splitter.args
 }
 
-/// The `applications` directories to scan, highest priority first, from the
-/// values of the environment that decide them. Reads nothing itself.
+/// The XDG data roots, highest priority first, from the values of the
+/// environment that decide them. Reads nothing itself. Applications live in
+/// `<root>/applications` and icons in `<root>/icons`.
 ///
 /// Per the XDG Base Directory specification, an unset or empty
 /// `xdg_data_home` means `<home>/.local/share` and an unset or empty
@@ -227,7 +228,7 @@ pub fn exec_argv(exec: &str) -> Vec<String> {
 ///
 /// The defaults matter: with none applied, a system that leaves these
 /// variables unset would list no applications at all.
-pub fn dirs_to_scan_from(
+pub fn data_roots_from(
     xdg_data_home: Option<&Path>,
     xdg_data_dirs: Option<&OsStr>,
     home: Option<&Path>,
@@ -250,22 +251,41 @@ pub fn dirs_to_scan_from(
         data_dirs = DEFAULT_DATA_DIRS.iter().map(PathBuf::from).collect();
     }
 
-    data_home
-        .into_iter()
-        .chain(data_dirs)
-        .map(|dir| dir.join("applications"))
-        .collect()
+    data_home.into_iter().chain(data_dirs).collect()
 }
 
-/// [`dirs_to_scan_from`] for the current process environment.
-pub fn dirs_to_scan() -> Vec<PathBuf> {
+/// [`data_roots_from`] for the current process environment.
+pub fn data_roots() -> Vec<PathBuf> {
     let data_home = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from);
     let data_dirs = std::env::var_os("XDG_DATA_DIRS");
-    dirs_to_scan_from(
+    data_roots_from(
         data_home.as_deref(),
         data_dirs.as_deref(),
         dirs::home_dir().as_deref(),
     )
+}
+
+/// The `applications` directory of each data root, in the same order.
+pub fn applications_dirs_from(data_roots: &[PathBuf]) -> Vec<PathBuf> {
+    data_roots
+        .iter()
+        .map(|root| root.join("applications"))
+        .collect()
+}
+
+/// The `applications` directories to scan, highest priority first: see
+/// [`data_roots_from`] for how they are decided.
+pub fn dirs_to_scan_from(
+    xdg_data_home: Option<&Path>,
+    xdg_data_dirs: Option<&OsStr>,
+    home: Option<&Path>,
+) -> Vec<PathBuf> {
+    applications_dirs_from(&data_roots_from(xdg_data_home, xdg_data_dirs, home))
+}
+
+/// [`dirs_to_scan_from`] for the current process environment.
+pub fn dirs_to_scan() -> Vec<PathBuf> {
+    applications_dirs_from(&data_roots())
 }
 
 /// Reads every `.desktop` file of `dirs`, in order, and returns the
