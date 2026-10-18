@@ -1,4 +1,5 @@
 mod fake;
+pub mod linux;
 
 use thiserror::Error;
 

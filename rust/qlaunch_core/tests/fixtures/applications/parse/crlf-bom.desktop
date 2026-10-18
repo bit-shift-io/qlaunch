@@ -1,0 +1,6 @@
+﻿[Desktop Entry]
+Type=Application
+Name=Windows Editor
+Exec=notepad-ish %f
+Categories=Utility;
+Terminal=true

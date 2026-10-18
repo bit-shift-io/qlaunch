@@ -1,0 +1,25 @@
+# A comment before any group
+Name=Ignored, it is outside the group
+
+[Desktop Entry]
+# A comment inside the group
+Type=Application
+Version=1.0
+Name=Full Example
+Name[de]=Vollständiges Beispiel
+Comment=a=b, a value may itself contain an equals sign
+Icon=/usr/share/pixmaps/full.png
+Exec=/bin/false
+Exec=/usr/bin/full --flag=x %U
+this line has no equals sign and is ignored
+Terminal = true
+Categories=Utility;TextEditor;;
+OnlyShowIn=GNOME;KDE;
+NotShowIn=XFCE;
+NoDisplay=false
+Hidden=false
+
+[Desktop Action new-window]
+Name=New Window
+Exec=/usr/bin/full --new-window
+Icon=not-the-entry-icon

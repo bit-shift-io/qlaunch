@@ -1,0 +1,4 @@
+[Desktop Entry]
+Type=Application
+Name=Quoted
+Exec=/usr/bin/foo --title="100% done" %U
