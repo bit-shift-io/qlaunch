@@ -510,7 +510,7 @@ fn pixmaps_are_an_icon_dir_even_when_no_data_root_is_usable() {
 // ---- LinuxSource::icon_png ----
 
 fn source() -> LinuxSource {
-    LinuxSource::from_parts(vec![fixture("source")], None, None, None)
+    LinuxSource::from_parts(vec![fixture("source")], None, None, None, None)
 }
 
 #[test]
@@ -559,7 +559,7 @@ fn icon_png_is_none_for_a_desktop_file_that_is_not_text() {
 fn icon_png_is_none_when_the_id_is_a_directory() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("applications/dir.desktop")).unwrap();
-    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None);
+    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
     assert_eq!(source.icon_png(&app("dir.desktop"), 48).unwrap(), None);
 }
 
@@ -587,7 +587,7 @@ fn icon_png_does_not_follow_a_hostile_id_out_of_the_applications_dirs() {
     fs::write(dir.path().join("applications/legit.desktop"), &entry).unwrap();
     fs::write(dir.path().join("applications/sub/inner.desktop"), &entry).unwrap();
     fs::write(dir.path().join("outside.desktop"), &entry).unwrap();
-    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None);
+    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
 
     assert_eq!(
         source.icon_png(&app("legit.desktop"), 48).unwrap(),
@@ -618,7 +618,7 @@ fn icon_png_honours_an_absolute_icon_path() {
         ),
     )
     .unwrap();
-    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None);
+    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
     assert_eq!(
         source.icon_png(&app("abs.desktop"), 48).unwrap(),
         Some(fs::read(icon).unwrap())
@@ -634,7 +634,7 @@ fn icon_png_is_none_for_an_absolute_icon_path_to_a_missing_file() {
         format!("[Desktop Entry]\nIcon={}/gone.png\n", dir.path().display()),
     )
     .unwrap();
-    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None);
+    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
     assert_eq!(source.icon_png(&app("gone.desktop"), 48).unwrap(), None);
 }
 
@@ -642,6 +642,7 @@ fn icon_png_is_none_for_an_absolute_icon_path_to_a_missing_file() {
 fn the_first_data_root_with_the_desktop_file_decides() {
     let both = LinuxSource::from_parts(
         vec![fixture("source-user"), fixture("source")],
+        None,
         None,
         None,
         None,
@@ -658,6 +659,7 @@ fn the_first_data_root_with_the_desktop_file_decides() {
 fn a_desktop_file_in_a_later_data_root_is_found_past_roots_that_lack_it() {
     let source = LinuxSource::from_parts(
         vec![fixture("does/not/exist"), fixture("source")],
+        None,
         None,
         None,
         None,
@@ -685,12 +687,12 @@ fn icon_png_uses_the_current_theme_when_given() {
     fs::write(custom.join("both-themes.png"), b"custom").unwrap();
 
     let roots = vec![dir.path().to_path_buf()];
-    let themed = LinuxSource::from_parts(roots.clone(), None, None, Some("Custom".into()));
+    let themed = LinuxSource::from_parts(roots.clone(), None, None, Some("Custom".into()), None);
     assert_eq!(
         themed.icon_png(&app("t.desktop"), 32).unwrap(),
         Some(b"custom".to_vec())
     );
-    let plain = LinuxSource::from_parts(roots, None, None, None);
+    let plain = LinuxSource::from_parts(roots, None, None, None, None);
     assert_eq!(
         plain.icon_png(&app("t.desktop"), 32).unwrap(),
         Some(b"hicolor".to_vec())
@@ -709,7 +711,7 @@ fn icon_png_finds_a_pixmaps_style_icon_in_a_flat_directory_of_a_data_root() {
     )
     .unwrap();
     fs::write(dir.path().join("icons/flaticon.png"), b"flat").unwrap();
-    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None);
+    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
     assert_eq!(
         source.icon_png(&app("flat.desktop"), 48).unwrap(),
         Some(b"flat".to_vec())

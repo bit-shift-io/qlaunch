@@ -546,15 +546,12 @@ fn list_apps_succeeds_with_an_empty_list_when_every_directory_is_missing() {
 }
 
 #[test]
-fn icons_and_launching_are_not_implemented_yet() {
+fn a_source_with_no_directories_has_no_icon_and_cannot_launch_anything() {
     let source = LinuxSource::new_with_dirs(vec![]);
     let app = AppRef {
         package: "visible.desktop".into(),
         activity: String::new(),
     };
     assert_eq!(source.icon_png(&app, 48), Ok(None));
-    assert!(matches!(
-        source.launch(&app),
-        Err(LaunchError::Unsupported(_))
-    ));
+    assert_eq!(source.launch(&app), Err(LaunchError::NotFound(app.clone())));
 }

@@ -1,5 +1,6 @@
 mod desktop_file;
 mod icons;
+mod launch;
 
 use std::fs;
 use std::path::PathBuf;
@@ -12,6 +13,9 @@ pub use desktop_file::{
     dirs_to_scan_from, discover_applications, exec_argv, locale_from, parse_desktop,
 };
 pub use icons::{icon_dirs_from, resolve_icon, resolve_icon_themed};
+pub use launch::{
+    build_command, is_on_path, is_on_path_in, terminal_emulator, terminal_emulator_from,
+};
 
 pub struct LinuxSource {
     /// The `applications` directories, highest priority first.
@@ -20,12 +24,13 @@ pub struct LinuxSource {
     current_desktop: Option<String>,
     locale: Option<String>,
     theme: Option<String>,
+    terminal_emulator: Option<String>,
 }
 
 impl LinuxSource {
-    /// A source over the XDG data roots, with the desktop, locale and icon
-    /// theme (`XDG_CURRENT_THEME`, which few desktops set) taken from the
-    /// environment now.
+    /// A source over the XDG data roots, with the desktop, locale, icon
+    /// theme (`XDG_CURRENT_THEME`, which few desktops set) and terminal
+    /// emulator (see [`terminal_emulator`]) taken from the environment now.
     pub fn new() -> Self {
         let var = |name: &str| std::env::var(name).ok();
         Self::from_parts(
@@ -37,6 +42,7 @@ impl LinuxSource {
                 var("LANG").as_deref(),
             ),
             var("XDG_CURRENT_THEME"),
+            terminal_emulator(),
         )
     }
 
@@ -45,12 +51,14 @@ impl LinuxSource {
     /// `/usr/share/pixmaps` icon directory. Applications are read from
     /// `<root>/applications` and icons from `<root>/icons`, `theme` is searched
     /// before `hicolor`, and `current_desktop` and `locale` are as for
-    /// [`discover_applications`].
+    /// [`discover_applications`]. `terminal_emulator` runs applications that
+    /// ask for a terminal; without one they cannot be launched.
     pub fn from_parts(
         data_roots: Vec<PathBuf>,
         current_desktop: Option<String>,
         locale: Option<String>,
         theme: Option<String>,
+        terminal_emulator: Option<String>,
     ) -> Self {
         Self {
             dirs: applications_dirs_from(&data_roots),
@@ -58,11 +66,12 @@ impl LinuxSource {
             current_desktop,
             locale,
             theme,
+            terminal_emulator,
         }
     }
 
     /// A source over exactly `dirs`, ignoring the environment: no desktop
-    /// filtering, no locale and no icon theme. Its only icon directory is
+    /// filtering, no locale, no icon theme and no terminal emulator. Its only icon directory is
     /// `/usr/share/pixmaps`, as `dirs` do not say where their icons are.
     pub fn new_with_dirs(dirs: Vec<PathBuf>) -> Self {
         Self {
@@ -71,6 +80,7 @@ impl LinuxSource {
             current_desktop: None,
             locale: None,
             theme: None,
+            terminal_emulator: None,
         }
     }
 
@@ -143,9 +153,22 @@ impl AppSource for LinuxSource {
             .and_then(|path| fs::read(path).ok()))
     }
 
-    fn launch(&self, _app: &AppRef) -> Result<(), LaunchError> {
-        Err(LaunchError::Unsupported(
-            "launching .desktop applications is not implemented yet".into(),
-        ))
+    /// Starts the app's `Exec` line without a shell and without waiting for
+    /// it. An unknown id is `NotFound`; an entry that cannot be read, has no
+    /// usable `Exec`, or cannot be spawned is `Failed`; a terminal entry with
+    /// no emulator is `Unsupported`.
+    fn launch(&self, app: &AppRef) -> Result<(), LaunchError> {
+        let id = &app.package;
+        let path = self
+            .desktop_file(id)
+            .ok_or_else(|| LaunchError::NotFound(app.clone()))?;
+        let bytes = fs::read(&path)
+            .map_err(|e| LaunchError::Failed(format!("could not read {id}: {e}")))?;
+        let entry = parse_desktop(&String::from_utf8_lossy(&bytes), id, self.locale.as_deref());
+        let exec = entry
+            .exec
+            .ok_or_else(|| LaunchError::Failed(format!("{id} has no Exec line to run")))?;
+        let argv = build_command(&exec, entry.terminal, self.terminal_emulator.as_deref())?;
+        launch::spawn(&argv)
     }
 }
