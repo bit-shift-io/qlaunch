@@ -4,7 +4,154 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+import '../model.dart';
+import '../model/roles.dart';
+import '../search.dart';
+import '../settings.dart';
+import 'events.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`, `fmt`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `init_with_source`, `reset_for_test`, `subscribe_for_test`
+
 Future<String> version() => RustLib.instance.api.crateApiApiVersion();
+
+/// Starts the core: loads the saved layout (or creates it), reconciles it with
+/// the installed apps, and starts watching for changes.
+///
+/// The configuration directory is `config_root_override` if given, else the
+/// user's (`store::config_root`). If neither is usable this still succeeds,
+/// with the defaults and a warning that nothing will be saved. Calling it again
+/// replaces the running state.
+Future<ModelSnapshot> init({String? configRootOverride}) => RustLib.instance.api
+    .crateApiApiInit(configRootOverride: configRootOverride);
+
+Future<ModelSnapshot> snapshot() => RustLib.instance.api.crateApiApiSnapshot();
+
+/// Re-reads the installed apps and brings the model up to date. If the apps
+/// cannot be listed the model is left as it is and the snapshot carries a
+/// warning.
+Future<ModelSnapshot> refreshApps() =>
+    RustLib.instance.api.crateApiApiRefreshApps();
+
+Future<ModelSnapshot> addGroup({required String label}) =>
+    RustLib.instance.api.crateApiApiAddGroup(label: label);
+
+Future<ModelSnapshot> renameGroup({
+  required String id,
+  required String label,
+}) => RustLib.instance.api.crateApiApiRenameGroup(id: id, label: label);
+
+Future<ModelSnapshot> moveGroup({required String id, required int newOrder}) =>
+    RustLib.instance.api.crateApiApiMoveGroup(id: id, newOrder: newOrder);
+
+Future<ModelSnapshot> setGroupRole({required String id, GroupRole? role}) =>
+    RustLib.instance.api.crateApiApiSetGroupRole(id: id, role: role);
+
+Future<ModelSnapshot> deleteGroup({required String id}) =>
+    RustLib.instance.api.crateApiApiDeleteGroup(id: id);
+
+Future<ModelSnapshot> moveItem({
+  required String id,
+  required String toGroup,
+  required int newOrder,
+}) => RustLib.instance.api.crateApiApiMoveItem(
+  id: id,
+  toGroup: toGroup,
+  newOrder: newOrder,
+);
+
+Future<ModelSnapshot> renameItem({required String id, required String label}) =>
+    RustLib.instance.api.crateApiApiRenameItem(id: id, label: label);
+
+/// Stores `png` as the custom icon of the item `id`. An error if there is no
+/// configuration directory to keep it in.
+Future<ModelSnapshot> setItemIcon({
+  required String id,
+  required List<int> png,
+}) => RustLib.instance.api.crateApiApiSetItemIcon(id: id, png: png);
+
+Future<ModelSnapshot> removeItem({required String id}) =>
+    RustLib.instance.api.crateApiApiRemoveItem(id: id);
+
+Future<ModelSnapshot> sortGroup({required String id}) =>
+    RustLib.instance.api.crateApiApiSortGroup(id: id);
+
+Future<ModelSnapshot> updateSettings({required SettingsPatch patch}) =>
+    RustLib.instance.api.crateApiApiUpdateSettings(patch: patch);
+
+/// `None` before `init`, or when no group holds the Home role.
+String? homeGroupId() => RustLib.instance.api.crateApiApiHomeGroupId();
+
+/// Searches every app in the launcher, by the label shown for it. Apps that
+/// are marked uninstalled are not included. Empty before `init`.
+Future<List<SearchHit>> searchAllApps({required String query}) =>
+    RustLib.instance.api.crateApiApiSearchAllApps(query: query);
+
+/// The platform's PNG icon for an app, or `None` if there is none, it cannot
+/// be read, or `init` has not been called.
+Future<Uint8List?> iconFor({
+  required String package,
+  required String activity,
+  required int sizePx,
+}) => RustLib.instance.api.crateApiApiIconFor(
+  package: package,
+  activity: activity,
+  sizePx: sizePx,
+);
+
+Future<void> launchApp({required String package, required String activity}) =>
+    RustLib.instance.api.crateApiApiLaunchApp(
+      package: package,
+      activity: activity,
+    );
+
+/// Streams the core's events to Dart. A subscriber that misses an event can
+/// always re-read `snapshot()`. The subscription ends when the stream is
+/// closed.
+Stream<CoreEvent> events() => RustLib.instance.api.crateApiApiEvents();
+
+/// Everything Dart needs to draw the launcher.
+///
+/// `page_ids` is the page order, computed by Rust from `Model::pages()`; Dart
+/// must not recompute it. `warnings` is what is wrong right now (for example
+/// that changes are not being saved), and does not grow from call to call.
+class ModelSnapshot {
+  final String rootGroupId;
+  final List<String> pageIds;
+  final List<Group> groups;
+  final List<Item> items;
+  final Settings settings;
+  final List<String> warnings;
+
+  const ModelSnapshot({
+    required this.rootGroupId,
+    required this.pageIds,
+    required this.groups,
+    required this.items,
+    required this.settings,
+    required this.warnings,
+  });
+
+  @override
+  int get hashCode =>
+      rootGroupId.hashCode ^
+      pageIds.hashCode ^
+      groups.hashCode ^
+      items.hashCode ^
+      settings.hashCode ^
+      warnings.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ModelSnapshot &&
+          runtimeType == other.runtimeType &&
+          rootGroupId == other.rootGroupId &&
+          pageIds == other.pageIds &&
+          groups == other.groups &&
+          items == other.items &&
+          settings == other.settings &&
+          warnings == other.warnings;
+}

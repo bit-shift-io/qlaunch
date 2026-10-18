@@ -7,13 +7,19 @@
 // ignore_for_file: argument_type_not_assignable
 
 import 'api/api.dart';
+import 'api/events.dart';
 
 import 'dart:async';
 import 'dart:convert';
 
 import 'frb_generated.dart';
+import 'model.dart';
+import 'model/roles.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_web.dart';
+
+import 'search.dart';
+import 'settings.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustLibApiImplPlatform({
@@ -24,10 +30,169 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   });
 
   @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw);
+
+  @protected
+  RustStreamSink<CoreEvent> dco_decode_StreamSink_core_event_Sse(dynamic raw);
+
+  @protected
   String dco_decode_String(dynamic raw);
 
   @protected
+  AppRef dco_decode_app_ref(dynamic raw);
+
+  @protected
+  bool dco_decode_bool(dynamic raw);
+
+  @protected
+  AppRef dco_decode_box_autoadd_app_ref(dynamic raw);
+
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw);
+
+  @protected
+  GroupRole dco_decode_box_autoadd_group_role(dynamic raw);
+
+  @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  LabelColour dco_decode_box_autoadd_label_colour(dynamic raw);
+
+  @protected
+  LayoutStyle dco_decode_box_autoadd_layout_style(dynamic raw);
+
+  @protected
+  Orientation dco_decode_box_autoadd_orientation(dynamic raw);
+
+  @protected
+  SettingsPatch dco_decode_box_autoadd_settings_patch(dynamic raw);
+
+  @protected
+  ShortcutPayload dco_decode_box_autoadd_shortcut_payload(dynamic raw);
+
+  @protected
+  TabVisibility dco_decode_box_autoadd_tab_visibility(dynamic raw);
+
+  @protected
+  Typeface dco_decode_box_autoadd_typeface(dynamic raw);
+
+  @protected
+  CoreEvent dco_decode_core_event(dynamic raw);
+
+  @protected
+  Extra dco_decode_extra(dynamic raw);
+
+  @protected
+  ExtraKind dco_decode_extra_kind(dynamic raw);
+
+  @protected
+  Group dco_decode_group(dynamic raw);
+
+  @protected
+  GroupRole dco_decode_group_role(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
+
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw);
+
+  @protected
+  Item dco_decode_item(dynamic raw);
+
+  @protected
+  LabelColour dco_decode_label_colour(dynamic raw);
+
+  @protected
+  LayoutStyle dco_decode_layout_style(dynamic raw);
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<Extra> dco_decode_list_extra(dynamic raw);
+
+  @protected
+  List<Group> dco_decode_list_group(dynamic raw);
+
+  @protected
+  List<Item> dco_decode_list_item(dynamic raw);
+
+  @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  List<SearchHit> dco_decode_list_search_hit(dynamic raw);
+
+  @protected
+  MatchKind dco_decode_match_kind(dynamic raw);
+
+  @protected
+  ModelSnapshot dco_decode_model_snapshot(dynamic raw);
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  AppRef? dco_decode_opt_box_autoadd_app_ref(dynamic raw);
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw);
+
+  @protected
+  GroupRole? dco_decode_opt_box_autoadd_group_role(dynamic raw);
+
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  LabelColour? dco_decode_opt_box_autoadd_label_colour(dynamic raw);
+
+  @protected
+  LayoutStyle? dco_decode_opt_box_autoadd_layout_style(dynamic raw);
+
+  @protected
+  Orientation? dco_decode_opt_box_autoadd_orientation(dynamic raw);
+
+  @protected
+  ShortcutPayload? dco_decode_opt_box_autoadd_shortcut_payload(dynamic raw);
+
+  @protected
+  TabVisibility? dco_decode_opt_box_autoadd_tab_visibility(dynamic raw);
+
+  @protected
+  Typeface? dco_decode_opt_box_autoadd_typeface(dynamic raw);
+
+  @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
+
+  @protected
+  Orientation dco_decode_orientation(dynamic raw);
+
+  @protected
+  SearchHit dco_decode_search_hit(dynamic raw);
+
+  @protected
+  Settings dco_decode_settings(dynamic raw);
+
+  @protected
+  SettingsPatch dco_decode_settings_patch(dynamic raw);
+
+  @protected
+  ShortcutPayload dco_decode_shortcut_payload(dynamic raw);
+
+  @protected
+  TabVisibility dco_decode_tab_visibility(dynamic raw);
+
+  @protected
+  Typeface dco_decode_typeface(dynamic raw);
+
+  @protected
+  int dco_decode_u_32(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -36,10 +201,189 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void dco_decode_unit(dynamic raw);
 
   @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<CoreEvent> sse_decode_StreamSink_core_event_Sse(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer);
 
   @protected
+  AppRef sse_decode_app_ref(SseDeserializer deserializer);
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer);
+
+  @protected
+  AppRef sse_decode_box_autoadd_app_ref(SseDeserializer deserializer);
+
+  @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
+  GroupRole sse_decode_box_autoadd_group_role(SseDeserializer deserializer);
+
+  @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  LabelColour sse_decode_box_autoadd_label_colour(SseDeserializer deserializer);
+
+  @protected
+  LayoutStyle sse_decode_box_autoadd_layout_style(SseDeserializer deserializer);
+
+  @protected
+  Orientation sse_decode_box_autoadd_orientation(SseDeserializer deserializer);
+
+  @protected
+  SettingsPatch sse_decode_box_autoadd_settings_patch(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ShortcutPayload sse_decode_box_autoadd_shortcut_payload(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TabVisibility sse_decode_box_autoadd_tab_visibility(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Typeface sse_decode_box_autoadd_typeface(SseDeserializer deserializer);
+
+  @protected
+  CoreEvent sse_decode_core_event(SseDeserializer deserializer);
+
+  @protected
+  Extra sse_decode_extra(SseDeserializer deserializer);
+
+  @protected
+  ExtraKind sse_decode_extra_kind(SseDeserializer deserializer);
+
+  @protected
+  Group sse_decode_group(SseDeserializer deserializer);
+
+  @protected
+  GroupRole sse_decode_group_role(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+
+  @protected
+  Item sse_decode_item(SseDeserializer deserializer);
+
+  @protected
+  LabelColour sse_decode_label_colour(SseDeserializer deserializer);
+
+  @protected
+  LayoutStyle sse_decode_layout_style(SseDeserializer deserializer);
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<Extra> sse_decode_list_extra(SseDeserializer deserializer);
+
+  @protected
+  List<Group> sse_decode_list_group(SseDeserializer deserializer);
+
+  @protected
+  List<Item> sse_decode_list_item(SseDeserializer deserializer);
+
+  @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<SearchHit> sse_decode_list_search_hit(SseDeserializer deserializer);
+
+  @protected
+  MatchKind sse_decode_match_kind(SseDeserializer deserializer);
+
+  @protected
+  ModelSnapshot sse_decode_model_snapshot(SseDeserializer deserializer);
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  AppRef? sse_decode_opt_box_autoadd_app_ref(SseDeserializer deserializer);
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer);
+
+  @protected
+  GroupRole? sse_decode_opt_box_autoadd_group_role(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  LabelColour? sse_decode_opt_box_autoadd_label_colour(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  LayoutStyle? sse_decode_opt_box_autoadd_layout_style(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Orientation? sse_decode_opt_box_autoadd_orientation(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  ShortcutPayload? sse_decode_opt_box_autoadd_shortcut_payload(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  TabVisibility? sse_decode_opt_box_autoadd_tab_visibility(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  Typeface? sse_decode_opt_box_autoadd_typeface(SseDeserializer deserializer);
+
+  @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  Orientation sse_decode_orientation(SseDeserializer deserializer);
+
+  @protected
+  SearchHit sse_decode_search_hit(SseDeserializer deserializer);
+
+  @protected
+  Settings sse_decode_settings(SseDeserializer deserializer);
+
+  @protected
+  SettingsPatch sse_decode_settings_patch(SseDeserializer deserializer);
+
+  @protected
+  ShortcutPayload sse_decode_shortcut_payload(SseDeserializer deserializer);
+
+  @protected
+  TabVisibility sse_decode_tab_visibility(SseDeserializer deserializer);
+
+  @protected
+  Typeface sse_decode_typeface(SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -48,13 +392,127 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  );
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer);
+  void sse_encode_StreamSink_core_event_Sse(
+    RustStreamSink<CoreEvent> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_app_ref(AppRef self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_app_ref(AppRef self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_group_role(
+    GroupRole self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_label_colour(
+    LabelColour self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_layout_style(
+    LayoutStyle self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_orientation(
+    Orientation self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_settings_patch(
+    SettingsPatch self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_shortcut_payload(
+    ShortcutPayload self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_tab_visibility(
+    TabVisibility self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_typeface(Typeface self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_core_event(CoreEvent self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_extra(Extra self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_extra_kind(ExtraKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_group(Group self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_group_role(GroupRole self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_item(Item self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_label_colour(LabelColour self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_layout_style(LayoutStyle self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_extra(List<Extra> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_group(List<Group> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_item(List<Item> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -63,16 +521,115 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_search_hit(
+    List<SearchHit> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_match_kind(MatchKind self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_model_snapshot(ModelSnapshot self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_app_ref(
+    AppRef? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_group_role(
+    GroupRole? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_label_colour(
+    LabelColour? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_layout_style(
+    LayoutStyle? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_orientation(
+    Orientation? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_shortcut_payload(
+    ShortcutPayload? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_tab_visibility(
+    TabVisibility? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_typeface(
+    Typeface? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_orientation(Orientation self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_search_hit(SearchHit self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_settings(Settings self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_settings_patch(SettingsPatch self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_shortcut_payload(
+    ShortcutPayload self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_tab_visibility(TabVisibility self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_typeface(Typeface self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_8(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer);
 }
 
 // Section: wire_class

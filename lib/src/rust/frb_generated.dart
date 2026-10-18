@@ -4,6 +4,7 @@
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
 import 'api/api.dart';
+import 'api/events.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -11,8 +12,13 @@ import 'dart:convert';
 import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
+import 'model.dart';
+import 'model/roles.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
+
+import 'search.dart';
+import 'settings.dart';
 
 /// Main entrypoint of the Rust API
 class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
@@ -67,7 +73,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1484875166;
+  int get rustContentHash => 299326199;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -79,6 +85,72 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<ModelSnapshot> crateApiApiAddGroup({required String label});
+
+  Future<ModelSnapshot> crateApiApiDeleteGroup({required String id});
+
+  Stream<CoreEvent> crateApiApiEvents();
+
+  String? crateApiApiHomeGroupId();
+
+  Future<Uint8List?> crateApiApiIconFor({
+    required String package,
+    required String activity,
+    required int sizePx,
+  });
+
+  Future<ModelSnapshot> crateApiApiInit({String? configRootOverride});
+
+  Future<void> crateApiApiLaunchApp({
+    required String package,
+    required String activity,
+  });
+
+  Future<ModelSnapshot> crateApiApiMoveGroup({
+    required String id,
+    required int newOrder,
+  });
+
+  Future<ModelSnapshot> crateApiApiMoveItem({
+    required String id,
+    required String toGroup,
+    required int newOrder,
+  });
+
+  Future<ModelSnapshot> crateApiApiRefreshApps();
+
+  Future<ModelSnapshot> crateApiApiRemoveItem({required String id});
+
+  Future<ModelSnapshot> crateApiApiRenameGroup({
+    required String id,
+    required String label,
+  });
+
+  Future<ModelSnapshot> crateApiApiRenameItem({
+    required String id,
+    required String label,
+  });
+
+  Future<List<SearchHit>> crateApiApiSearchAllApps({required String query});
+
+  Future<ModelSnapshot> crateApiApiSetGroupRole({
+    required String id,
+    GroupRole? role,
+  });
+
+  Future<ModelSnapshot> crateApiApiSetItemIcon({
+    required String id,
+    required List<int> png,
+  });
+
+  Future<ModelSnapshot> crateApiApiSnapshot();
+
+  Future<ModelSnapshot> crateApiApiSortGroup({required String id});
+
+  Future<ModelSnapshot> crateApiApiUpdateSettings({
+    required SettingsPatch patch,
+  });
+
   Future<String> crateApiApiVersion();
 }
 
@@ -91,6 +163,582 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Future<ModelSnapshot> crateApiApiAddGroup({required String label}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(label, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiAddGroupConstMeta,
+        argValues: [label],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiAddGroupConstMeta =>
+      const TaskConstMeta(debugName: "add_group", argNames: ["label"]);
+
+  @override
+  Future<ModelSnapshot> crateApiApiDeleteGroup({required String id}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiDeleteGroupConstMeta,
+        argValues: [id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiDeleteGroupConstMeta =>
+      const TaskConstMeta(debugName: "delete_group", argNames: ["id"]);
+
+  @override
+  Stream<CoreEvent> crateApiApiEvents() {
+    final sink = RustStreamSink<CoreEvent>();
+    unawaited(
+      handler.executeNormal(
+        NormalTask(
+          callFfi: (port_) {
+            final serializer = SseSerializer(generalizedFrbRustBinding);
+            sse_encode_StreamSink_core_event_Sse(sink, serializer);
+            pdeCallFfi(
+              generalizedFrbRustBinding,
+              serializer,
+              funcId: 3,
+              port: port_,
+            );
+          },
+          codec: SseCodec(
+            decodeSuccessData: sse_decode_unit,
+            decodeErrorData: sse_decode_String,
+          ),
+          constMeta: kCrateApiApiEventsConstMeta,
+          argValues: [sink],
+          apiImpl: this,
+        ),
+      ),
+    );
+    return sink.stream;
+  }
+
+  TaskConstMeta get kCrateApiApiEventsConstMeta =>
+      const TaskConstMeta(debugName: "events", argNames: ["sink"]);
+
+  @override
+  String? crateApiApiHomeGroupId() {
+    return handler.executeSync(
+      SyncTask(
+        callFfi: () {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_String,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiApiHomeGroupIdConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiHomeGroupIdConstMeta =>
+      const TaskConstMeta(debugName: "home_group_id", argNames: []);
+
+  @override
+  Future<Uint8List?> crateApiApiIconFor({
+    required String package,
+    required String activity,
+    required int sizePx,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(package, serializer);
+          sse_encode_String(activity, serializer);
+          sse_encode_u_32(sizePx, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiApiIconForConstMeta,
+        argValues: [package, activity, sizePx],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiIconForConstMeta => const TaskConstMeta(
+    debugName: "icon_for",
+    argNames: ["package", "activity", "sizePx"],
+  );
+
+  @override
+  Future<ModelSnapshot> crateApiApiInit({String? configRootOverride}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_opt_String(configRootOverride, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiInitConstMeta,
+        argValues: [configRootOverride],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiInitConstMeta =>
+      const TaskConstMeta(debugName: "init", argNames: ["configRootOverride"]);
+
+  @override
+  Future<void> crateApiApiLaunchApp({
+    required String package,
+    required String activity,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(package, serializer);
+          sse_encode_String(activity, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiLaunchAppConstMeta,
+        argValues: [package, activity],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiLaunchAppConstMeta => const TaskConstMeta(
+    debugName: "launch_app",
+    argNames: ["package", "activity"],
+  );
+
+  @override
+  Future<ModelSnapshot> crateApiApiMoveGroup({
+    required String id,
+    required int newOrder,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          sse_encode_i_32(newOrder, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 8,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiMoveGroupConstMeta,
+        argValues: [id, newOrder],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiMoveGroupConstMeta => const TaskConstMeta(
+    debugName: "move_group",
+    argNames: ["id", "newOrder"],
+  );
+
+  @override
+  Future<ModelSnapshot> crateApiApiMoveItem({
+    required String id,
+    required String toGroup,
+    required int newOrder,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          sse_encode_String(toGroup, serializer);
+          sse_encode_i_32(newOrder, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiMoveItemConstMeta,
+        argValues: [id, toGroup, newOrder],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiMoveItemConstMeta => const TaskConstMeta(
+    debugName: "move_item",
+    argNames: ["id", "toGroup", "newOrder"],
+  );
+
+  @override
+  Future<ModelSnapshot> crateApiApiRefreshApps() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiRefreshAppsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiRefreshAppsConstMeta =>
+      const TaskConstMeta(debugName: "refresh_apps", argNames: []);
+
+  @override
+  Future<ModelSnapshot> crateApiApiRemoveItem({required String id}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiRemoveItemConstMeta,
+        argValues: [id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiRemoveItemConstMeta =>
+      const TaskConstMeta(debugName: "remove_item", argNames: ["id"]);
+
+  @override
+  Future<ModelSnapshot> crateApiApiRenameGroup({
+    required String id,
+    required String label,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          sse_encode_String(label, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiRenameGroupConstMeta,
+        argValues: [id, label],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiRenameGroupConstMeta =>
+      const TaskConstMeta(debugName: "rename_group", argNames: ["id", "label"]);
+
+  @override
+  Future<ModelSnapshot> crateApiApiRenameItem({
+    required String id,
+    required String label,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          sse_encode_String(label, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 13,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiRenameItemConstMeta,
+        argValues: [id, label],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiRenameItemConstMeta =>
+      const TaskConstMeta(debugName: "rename_item", argNames: ["id", "label"]);
+
+  @override
+  Future<List<SearchHit>> crateApiApiSearchAllApps({required String query}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(query, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_search_hit,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiApiSearchAllAppsConstMeta,
+        argValues: [query],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiSearchAllAppsConstMeta =>
+      const TaskConstMeta(debugName: "search_all_apps", argNames: ["query"]);
+
+  @override
+  Future<ModelSnapshot> crateApiApiSetGroupRole({
+    required String id,
+    GroupRole? role,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          sse_encode_opt_box_autoadd_group_role(role, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiSetGroupRoleConstMeta,
+        argValues: [id, role],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiSetGroupRoleConstMeta => const TaskConstMeta(
+    debugName: "set_group_role",
+    argNames: ["id", "role"],
+  );
+
+  @override
+  Future<ModelSnapshot> crateApiApiSetItemIcon({
+    required String id,
+    required List<int> png,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          sse_encode_list_prim_u_8_loose(png, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiSetItemIconConstMeta,
+        argValues: [id, png],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiSetItemIconConstMeta =>
+      const TaskConstMeta(debugName: "set_item_icon", argNames: ["id", "png"]);
+
+  @override
+  Future<ModelSnapshot> crateApiApiSnapshot() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiSnapshotConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiSnapshotConstMeta =>
+      const TaskConstMeta(debugName: "snapshot", argNames: []);
+
+  @override
+  Future<ModelSnapshot> crateApiApiSortGroup({required String id}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiSortGroupConstMeta,
+        argValues: [id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiSortGroupConstMeta =>
+      const TaskConstMeta(debugName: "sort_group", argNames: ["id"]);
+
+  @override
+  Future<ModelSnapshot> crateApiApiUpdateSettings({
+    required SettingsPatch patch,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_settings_patch(patch, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiUpdateSettingsConstMeta,
+        argValues: [patch],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiUpdateSettingsConstMeta =>
+      const TaskConstMeta(debugName: "update_settings", argNames: ["patch"]);
+
+  @override
   Future<String> crateApiApiVersion() {
     return handler.executeNormal(
       NormalTask(
@@ -99,7 +747,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 20,
             port: port_,
           );
         },
@@ -118,15 +766,458 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "version", argNames: []);
 
   @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return AnyhowException(raw as String);
+  }
+
+  @protected
+  RustStreamSink<CoreEvent> dco_decode_StreamSink_core_event_Sse(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
   }
 
   @protected
+  AppRef dco_decode_app_ref(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return AppRef(
+      package: dco_decode_String(arr[0]),
+      activity: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  bool dco_decode_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  AppRef dco_decode_box_autoadd_app_ref(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_app_ref(raw);
+  }
+
+  @protected
+  bool dco_decode_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as bool;
+  }
+
+  @protected
+  GroupRole dco_decode_box_autoadd_group_role(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_group_role(raw);
+  }
+
+  @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_i_64(raw);
+  }
+
+  @protected
+  LabelColour dco_decode_box_autoadd_label_colour(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_label_colour(raw);
+  }
+
+  @protected
+  LayoutStyle dco_decode_box_autoadd_layout_style(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_layout_style(raw);
+  }
+
+  @protected
+  Orientation dco_decode_box_autoadd_orientation(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_orientation(raw);
+  }
+
+  @protected
+  SettingsPatch dco_decode_box_autoadd_settings_patch(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_settings_patch(raw);
+  }
+
+  @protected
+  ShortcutPayload dco_decode_box_autoadd_shortcut_payload(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_shortcut_payload(raw);
+  }
+
+  @protected
+  TabVisibility dco_decode_box_autoadd_tab_visibility(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_tab_visibility(raw);
+  }
+
+  @protected
+  Typeface dco_decode_box_autoadd_typeface(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_typeface(raw);
+  }
+
+  @protected
+  CoreEvent dco_decode_core_event(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return CoreEvent_ModelChanged();
+      case 1:
+        return CoreEvent_AppsChanged();
+      case 2:
+        return CoreEvent_ShortcutCreated(itemId: dco_decode_String(raw[1]));
+      case 3:
+        return CoreEvent_ShortcutCancelled();
+      case 4:
+        return CoreEvent_WallpaperChanged();
+      case 5:
+        return CoreEvent_HomePressed();
+      case 6:
+        return CoreEvent_BackPressed();
+      case 7:
+        return CoreEvent_Error(dco_decode_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  Extra dco_decode_extra(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return Extra(
+      key: dco_decode_String(arr[0]),
+      kind: dco_decode_extra_kind(arr[1]),
+      value: dco_decode_String(arr[2]),
+    );
+  }
+
+  @protected
+  ExtraKind dco_decode_extra_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ExtraKind.values[raw as int];
+  }
+
+  @protected
+  Group dco_decode_group(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return Group(
+      id: dco_decode_String(arr[0]),
+      label: dco_decode_String(arr[1]),
+      parentId: dco_decode_opt_String(arr[2]),
+      role: dco_decode_opt_box_autoadd_group_role(arr[3]),
+      order: dco_decode_i_32(arr[4]),
+    );
+  }
+
+  @protected
+  GroupRole dco_decode_group_role(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return GroupRole.values[raw as int];
+  }
+
+  @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeI64(raw);
+  }
+
+  @protected
+  Item dco_decode_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    return Item(
+      id: dco_decode_String(arr[0]),
+      groupId: dco_decode_String(arr[1]),
+      label: dco_decode_String(arr[2]),
+      labelOverridden: dco_decode_bool(arr[3]),
+      app: dco_decode_opt_box_autoadd_app_ref(arr[4]),
+      shortcut: dco_decode_opt_box_autoadd_shortcut_payload(arr[5]),
+      uninstalled: dco_decode_bool(arr[6]),
+      order: dco_decode_i_32(arr[7]),
+      iconOverride: dco_decode_opt_String(arr[8]),
+    );
+  }
+
+  @protected
+  LabelColour dco_decode_label_colour(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return LabelColour.values[raw as int];
+  }
+
+  @protected
+  LayoutStyle dco_decode_layout_style(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return LayoutStyle.values[raw as int];
+  }
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
+  List<Extra> dco_decode_list_extra(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_extra).toList();
+  }
+
+  @protected
+  List<Group> dco_decode_list_group(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_group).toList();
+  }
+
+  @protected
+  List<Item> dco_decode_list_item(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_item).toList();
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
+  }
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as Uint8List;
+  }
+
+  @protected
+  List<SearchHit> dco_decode_list_search_hit(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_search_hit).toList();
+  }
+
+  @protected
+  MatchKind dco_decode_match_kind(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return MatchKind.values[raw as int];
+  }
+
+  @protected
+  ModelSnapshot dco_decode_model_snapshot(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    return ModelSnapshot(
+      rootGroupId: dco_decode_String(arr[0]),
+      pageIds: dco_decode_list_String(arr[1]),
+      groups: dco_decode_list_group(arr[2]),
+      items: dco_decode_list_item(arr[3]),
+      settings: dco_decode_settings(arr[4]),
+      warnings: dco_decode_list_String(arr[5]),
+    );
+  }
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  AppRef? dco_decode_opt_box_autoadd_app_ref(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_app_ref(raw);
+  }
+
+  @protected
+  bool? dco_decode_opt_box_autoadd_bool(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_bool(raw);
+  }
+
+  @protected
+  GroupRole? dco_decode_opt_box_autoadd_group_role(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_group_role(raw);
+  }
+
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_i_64(raw);
+  }
+
+  @protected
+  LabelColour? dco_decode_opt_box_autoadd_label_colour(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_label_colour(raw);
+  }
+
+  @protected
+  LayoutStyle? dco_decode_opt_box_autoadd_layout_style(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_layout_style(raw);
+  }
+
+  @protected
+  Orientation? dco_decode_opt_box_autoadd_orientation(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_orientation(raw);
+  }
+
+  @protected
+  ShortcutPayload? dco_decode_opt_box_autoadd_shortcut_payload(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_shortcut_payload(raw);
+  }
+
+  @protected
+  TabVisibility? dco_decode_opt_box_autoadd_tab_visibility(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_tab_visibility(raw);
+  }
+
+  @protected
+  Typeface? dco_decode_opt_box_autoadd_typeface(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_typeface(raw);
+  }
+
+  @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_prim_u_8_strict(raw);
+  }
+
+  @protected
+  Orientation dco_decode_orientation(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return Orientation.values[raw as int];
+  }
+
+  @protected
+  SearchHit dco_decode_search_hit(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return SearchHit(
+      app: dco_decode_app_ref(arr[0]),
+      label: dco_decode_String(arr[1]),
+      kind: dco_decode_match_kind(arr[2]),
+    );
+  }
+
+  @protected
+  Settings dco_decode_settings(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 15)
+      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
+    return Settings(
+      gridColumnsPortrait: dco_decode_i_64(arr[0]),
+      gridColumnsLandscape: dco_decode_i_64(arr[1]),
+      layout: dco_decode_layout_style(arr[2]),
+      tabVisibility: dco_decode_tab_visibility(arr[3]),
+      wallpaperAlpha: dco_decode_i_64(arr[4]),
+      statusBarVisible: dco_decode_bool(arr[5]),
+      iconsVisible: dco_decode_bool(arr[6]),
+      iconSize: dco_decode_i_64(arr[7]),
+      iconAlpha: dco_decode_i_64(arr[8]),
+      labelsVisible: dco_decode_bool(arr[9]),
+      labelSize: dco_decode_i_64(arr[10]),
+      labelTypeface: dco_decode_typeface(arr[11]),
+      labelColour: dco_decode_label_colour(arr[12]),
+      labelShadow: dco_decode_bool(arr[13]),
+      orientation: dco_decode_orientation(arr[14]),
+    );
+  }
+
+  @protected
+  SettingsPatch dco_decode_settings_patch(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 15)
+      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
+    return SettingsPatch(
+      gridColumnsPortrait: dco_decode_opt_box_autoadd_i_64(arr[0]),
+      gridColumnsLandscape: dco_decode_opt_box_autoadd_i_64(arr[1]),
+      layout: dco_decode_opt_box_autoadd_layout_style(arr[2]),
+      tabVisibility: dco_decode_opt_box_autoadd_tab_visibility(arr[3]),
+      wallpaperAlpha: dco_decode_opt_box_autoadd_i_64(arr[4]),
+      statusBarVisible: dco_decode_opt_box_autoadd_bool(arr[5]),
+      iconsVisible: dco_decode_opt_box_autoadd_bool(arr[6]),
+      iconSize: dco_decode_opt_box_autoadd_i_64(arr[7]),
+      iconAlpha: dco_decode_opt_box_autoadd_i_64(arr[8]),
+      labelsVisible: dco_decode_opt_box_autoadd_bool(arr[9]),
+      labelSize: dco_decode_opt_box_autoadd_i_64(arr[10]),
+      labelTypeface: dco_decode_opt_box_autoadd_typeface(arr[11]),
+      labelColour: dco_decode_opt_box_autoadd_label_colour(arr[12]),
+      labelShadow: dco_decode_opt_box_autoadd_bool(arr[13]),
+      orientation: dco_decode_opt_box_autoadd_orientation(arr[14]),
+    );
+  }
+
+  @protected
+  ShortcutPayload dco_decode_shortcut_payload(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    switch (raw[0]) {
+      case 0:
+        return ShortcutPayload_Android(
+          action: dco_decode_opt_String(raw[1]),
+          data: dco_decode_opt_String(raw[2]),
+          mimeType: dco_decode_opt_String(raw[3]),
+          categories: dco_decode_list_String(raw[4]),
+          package: dco_decode_opt_String(raw[5]),
+          component: dco_decode_opt_String(raw[6]),
+          flags: dco_decode_i_32(raw[7]),
+          extras: dco_decode_list_extra(raw[8]),
+        );
+      case 1:
+        return ShortcutPayload_Command(command: dco_decode_String(raw[1]));
+      default:
+        throw Exception("unreachable");
+    }
+  }
+
+  @protected
+  TabVisibility dco_decode_tab_visibility(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return TabVisibility.values[raw as int];
+  }
+
+  @protected
+  Typeface dco_decode_typeface(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return Typeface.values[raw as int];
+  }
+
+  @protected
+  int dco_decode_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -142,6 +1233,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_String(deserializer);
+    return AnyhowException(inner);
+  }
+
+  @protected
+  RustStreamSink<CoreEvent> sse_decode_StreamSink_core_event_Sse(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
   String sse_decode_String(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_list_prim_u_8_strict(deserializer);
@@ -149,10 +1255,606 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  AppRef sse_decode_app_ref(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_package = sse_decode_String(deserializer);
+    var var_activity = sse_decode_String(deserializer);
+    return AppRef(package: var_package, activity: var_activity);
+  }
+
+  @protected
+  bool sse_decode_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint8() != 0;
+  }
+
+  @protected
+  AppRef sse_decode_box_autoadd_app_ref(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_app_ref(deserializer));
+  }
+
+  @protected
+  bool sse_decode_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_bool(deserializer));
+  }
+
+  @protected
+  GroupRole sse_decode_box_autoadd_group_role(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_group_role(deserializer));
+  }
+
+  @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_i_64(deserializer));
+  }
+
+  @protected
+  LabelColour sse_decode_box_autoadd_label_colour(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_label_colour(deserializer));
+  }
+
+  @protected
+  LayoutStyle sse_decode_box_autoadd_layout_style(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_layout_style(deserializer));
+  }
+
+  @protected
+  Orientation sse_decode_box_autoadd_orientation(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_orientation(deserializer));
+  }
+
+  @protected
+  SettingsPatch sse_decode_box_autoadd_settings_patch(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_settings_patch(deserializer));
+  }
+
+  @protected
+  ShortcutPayload sse_decode_box_autoadd_shortcut_payload(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_shortcut_payload(deserializer));
+  }
+
+  @protected
+  TabVisibility sse_decode_box_autoadd_tab_visibility(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_tab_visibility(deserializer));
+  }
+
+  @protected
+  Typeface sse_decode_box_autoadd_typeface(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_typeface(deserializer));
+  }
+
+  @protected
+  CoreEvent sse_decode_core_event(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        return CoreEvent_ModelChanged();
+      case 1:
+        return CoreEvent_AppsChanged();
+      case 2:
+        var var_itemId = sse_decode_String(deserializer);
+        return CoreEvent_ShortcutCreated(itemId: var_itemId);
+      case 3:
+        return CoreEvent_ShortcutCancelled();
+      case 4:
+        return CoreEvent_WallpaperChanged();
+      case 5:
+        return CoreEvent_HomePressed();
+      case 6:
+        return CoreEvent_BackPressed();
+      case 7:
+        var var_field0 = sse_decode_String(deserializer);
+        return CoreEvent_Error(var_field0);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  Extra sse_decode_extra(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_key = sse_decode_String(deserializer);
+    var var_kind = sse_decode_extra_kind(deserializer);
+    var var_value = sse_decode_String(deserializer);
+    return Extra(key: var_key, kind: var_kind, value: var_value);
+  }
+
+  @protected
+  ExtraKind sse_decode_extra_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ExtraKind.values[inner];
+  }
+
+  @protected
+  Group sse_decode_group(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    var var_parentId = sse_decode_opt_String(deserializer);
+    var var_role = sse_decode_opt_box_autoadd_group_role(deserializer);
+    var var_order = sse_decode_i_32(deserializer);
+    return Group(
+      id: var_id,
+      label: var_label,
+      parentId: var_parentId,
+      role: var_role,
+      order: var_order,
+    );
+  }
+
+  @protected
+  GroupRole sse_decode_group_role(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return GroupRole.values[inner];
+  }
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
+  Item sse_decode_item(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_groupId = sse_decode_String(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    var var_labelOverridden = sse_decode_bool(deserializer);
+    var var_app = sse_decode_opt_box_autoadd_app_ref(deserializer);
+    var var_shortcut = sse_decode_opt_box_autoadd_shortcut_payload(
+      deserializer,
+    );
+    var var_uninstalled = sse_decode_bool(deserializer);
+    var var_order = sse_decode_i_32(deserializer);
+    var var_iconOverride = sse_decode_opt_String(deserializer);
+    return Item(
+      id: var_id,
+      groupId: var_groupId,
+      label: var_label,
+      labelOverridden: var_labelOverridden,
+      app: var_app,
+      shortcut: var_shortcut,
+      uninstalled: var_uninstalled,
+      order: var_order,
+      iconOverride: var_iconOverride,
+    );
+  }
+
+  @protected
+  LabelColour sse_decode_label_colour(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return LabelColour.values[inner];
+  }
+
+  @protected
+  LayoutStyle sse_decode_layout_style(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return LayoutStyle.values[inner];
+  }
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <String>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<Extra> sse_decode_list_extra(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <Extra>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_extra(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<Group> sse_decode_list_group(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <Group>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_group(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<Item> sse_decode_list_item(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <Item>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_item(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
     return deserializer.buffer.getUint8List(len_);
+  }
+
+  @protected
+  List<SearchHit> sse_decode_list_search_hit(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <SearchHit>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_search_hit(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  MatchKind sse_decode_match_kind(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return MatchKind.values[inner];
+  }
+
+  @protected
+  ModelSnapshot sse_decode_model_snapshot(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_rootGroupId = sse_decode_String(deserializer);
+    var var_pageIds = sse_decode_list_String(deserializer);
+    var var_groups = sse_decode_list_group(deserializer);
+    var var_items = sse_decode_list_item(deserializer);
+    var var_settings = sse_decode_settings(deserializer);
+    var var_warnings = sse_decode_list_String(deserializer);
+    return ModelSnapshot(
+      rootGroupId: var_rootGroupId,
+      pageIds: var_pageIds,
+      groups: var_groups,
+      items: var_items,
+      settings: var_settings,
+      warnings: var_warnings,
+    );
+  }
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  AppRef? sse_decode_opt_box_autoadd_app_ref(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_app_ref(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  bool? sse_decode_opt_box_autoadd_bool(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_bool(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  GroupRole? sse_decode_opt_box_autoadd_group_role(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_group_role(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_i_64(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  LabelColour? sse_decode_opt_box_autoadd_label_colour(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_label_colour(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  LayoutStyle? sse_decode_opt_box_autoadd_layout_style(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_layout_style(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Orientation? sse_decode_opt_box_autoadd_orientation(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_orientation(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  ShortcutPayload? sse_decode_opt_box_autoadd_shortcut_payload(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_shortcut_payload(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  TabVisibility? sse_decode_opt_box_autoadd_tab_visibility(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_tab_visibility(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Typeface? sse_decode_opt_box_autoadd_typeface(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_typeface(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_prim_u_8_strict(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  Orientation sse_decode_orientation(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return Orientation.values[inner];
+  }
+
+  @protected
+  SearchHit sse_decode_search_hit(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_app = sse_decode_app_ref(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    var var_kind = sse_decode_match_kind(deserializer);
+    return SearchHit(app: var_app, label: var_label, kind: var_kind);
+  }
+
+  @protected
+  Settings sse_decode_settings(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_gridColumnsPortrait = sse_decode_i_64(deserializer);
+    var var_gridColumnsLandscape = sse_decode_i_64(deserializer);
+    var var_layout = sse_decode_layout_style(deserializer);
+    var var_tabVisibility = sse_decode_tab_visibility(deserializer);
+    var var_wallpaperAlpha = sse_decode_i_64(deserializer);
+    var var_statusBarVisible = sse_decode_bool(deserializer);
+    var var_iconsVisible = sse_decode_bool(deserializer);
+    var var_iconSize = sse_decode_i_64(deserializer);
+    var var_iconAlpha = sse_decode_i_64(deserializer);
+    var var_labelsVisible = sse_decode_bool(deserializer);
+    var var_labelSize = sse_decode_i_64(deserializer);
+    var var_labelTypeface = sse_decode_typeface(deserializer);
+    var var_labelColour = sse_decode_label_colour(deserializer);
+    var var_labelShadow = sse_decode_bool(deserializer);
+    var var_orientation = sse_decode_orientation(deserializer);
+    return Settings(
+      gridColumnsPortrait: var_gridColumnsPortrait,
+      gridColumnsLandscape: var_gridColumnsLandscape,
+      layout: var_layout,
+      tabVisibility: var_tabVisibility,
+      wallpaperAlpha: var_wallpaperAlpha,
+      statusBarVisible: var_statusBarVisible,
+      iconsVisible: var_iconsVisible,
+      iconSize: var_iconSize,
+      iconAlpha: var_iconAlpha,
+      labelsVisible: var_labelsVisible,
+      labelSize: var_labelSize,
+      labelTypeface: var_labelTypeface,
+      labelColour: var_labelColour,
+      labelShadow: var_labelShadow,
+      orientation: var_orientation,
+    );
+  }
+
+  @protected
+  SettingsPatch sse_decode_settings_patch(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_gridColumnsPortrait = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_gridColumnsLandscape = sse_decode_opt_box_autoadd_i_64(
+      deserializer,
+    );
+    var var_layout = sse_decode_opt_box_autoadd_layout_style(deserializer);
+    var var_tabVisibility = sse_decode_opt_box_autoadd_tab_visibility(
+      deserializer,
+    );
+    var var_wallpaperAlpha = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_statusBarVisible = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_iconsVisible = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_iconSize = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_iconAlpha = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_labelsVisible = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_labelSize = sse_decode_opt_box_autoadd_i_64(deserializer);
+    var var_labelTypeface = sse_decode_opt_box_autoadd_typeface(deserializer);
+    var var_labelColour = sse_decode_opt_box_autoadd_label_colour(deserializer);
+    var var_labelShadow = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_orientation = sse_decode_opt_box_autoadd_orientation(deserializer);
+    return SettingsPatch(
+      gridColumnsPortrait: var_gridColumnsPortrait,
+      gridColumnsLandscape: var_gridColumnsLandscape,
+      layout: var_layout,
+      tabVisibility: var_tabVisibility,
+      wallpaperAlpha: var_wallpaperAlpha,
+      statusBarVisible: var_statusBarVisible,
+      iconsVisible: var_iconsVisible,
+      iconSize: var_iconSize,
+      iconAlpha: var_iconAlpha,
+      labelsVisible: var_labelsVisible,
+      labelSize: var_labelSize,
+      labelTypeface: var_labelTypeface,
+      labelColour: var_labelColour,
+      labelShadow: var_labelShadow,
+      orientation: var_orientation,
+    );
+  }
+
+  @protected
+  ShortcutPayload sse_decode_shortcut_payload(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var tag_ = sse_decode_i_32(deserializer);
+    switch (tag_) {
+      case 0:
+        var var_action = sse_decode_opt_String(deserializer);
+        var var_data = sse_decode_opt_String(deserializer);
+        var var_mimeType = sse_decode_opt_String(deserializer);
+        var var_categories = sse_decode_list_String(deserializer);
+        var var_package = sse_decode_opt_String(deserializer);
+        var var_component = sse_decode_opt_String(deserializer);
+        var var_flags = sse_decode_i_32(deserializer);
+        var var_extras = sse_decode_list_extra(deserializer);
+        return ShortcutPayload_Android(
+          action: var_action,
+          data: var_data,
+          mimeType: var_mimeType,
+          categories: var_categories,
+          package: var_package,
+          component: var_component,
+          flags: var_flags,
+          extras: var_extras,
+        );
+      case 1:
+        var var_command = sse_decode_String(deserializer);
+        return ShortcutPayload_Command(command: var_command);
+      default:
+        throw UnimplementedError('');
+    }
+  }
+
+  @protected
+  TabVisibility sse_decode_tab_visibility(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return TabVisibility.values[inner];
+  }
+
+  @protected
+  Typeface sse_decode_typeface(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return Typeface.values[inner];
+  }
+
+  @protected
+  int sse_decode_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getUint32();
   }
 
   @protected
@@ -167,21 +1869,282 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
+    sse_encode_String(self.message, serializer);
   }
 
   @protected
-  bool sse_decode_bool(SseDeserializer deserializer) {
+  void sse_encode_StreamSink_core_event_Sse(
+    RustStreamSink<CoreEvent> self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getUint8() != 0;
+    sse_encode_String(
+      self.setupAndSerialize(
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_core_event,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+      ),
+      serializer,
+    );
   }
 
   @protected
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_app_ref(AppRef self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.package, serializer);
+    sse_encode_String(self.activity, serializer);
+  }
+
+  @protected
+  void sse_encode_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint8(self ? 1 : 0);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_app_ref(AppRef self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_app_ref(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_bool(bool self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_group_role(
+    GroupRole self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_group_role(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_label_colour(
+    LabelColour self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_label_colour(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_layout_style(
+    LayoutStyle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_layout_style(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_orientation(
+    Orientation self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_orientation(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_settings_patch(
+    SettingsPatch self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_settings_patch(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_shortcut_payload(
+    ShortcutPayload self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_shortcut_payload(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_tab_visibility(
+    TabVisibility self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_tab_visibility(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_typeface(
+    Typeface self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_typeface(self, serializer);
+  }
+
+  @protected
+  void sse_encode_core_event(CoreEvent self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case CoreEvent_ModelChanged():
+        sse_encode_i_32(0, serializer);
+      case CoreEvent_AppsChanged():
+        sse_encode_i_32(1, serializer);
+      case CoreEvent_ShortcutCreated(itemId: final itemId):
+        sse_encode_i_32(2, serializer);
+        sse_encode_String(itemId, serializer);
+      case CoreEvent_ShortcutCancelled():
+        sse_encode_i_32(3, serializer);
+      case CoreEvent_WallpaperChanged():
+        sse_encode_i_32(4, serializer);
+      case CoreEvent_HomePressed():
+        sse_encode_i_32(5, serializer);
+      case CoreEvent_BackPressed():
+        sse_encode_i_32(6, serializer);
+      case CoreEvent_Error(field0: final field0):
+        sse_encode_i_32(7, serializer);
+        sse_encode_String(field0, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_extra(Extra self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.key, serializer);
+    sse_encode_extra_kind(self.kind, serializer);
+    sse_encode_String(self.value, serializer);
+  }
+
+  @protected
+  void sse_encode_extra_kind(ExtraKind self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_group(Group self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.label, serializer);
+    sse_encode_opt_String(self.parentId, serializer);
+    sse_encode_opt_box_autoadd_group_role(self.role, serializer);
+    sse_encode_i_32(self.order, serializer);
+  }
+
+  @protected
+  void sse_encode_group_role(GroupRole self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
+  }
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
+  void sse_encode_item(Item self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.groupId, serializer);
+    sse_encode_String(self.label, serializer);
+    sse_encode_bool(self.labelOverridden, serializer);
+    sse_encode_opt_box_autoadd_app_ref(self.app, serializer);
+    sse_encode_opt_box_autoadd_shortcut_payload(self.shortcut, serializer);
+    sse_encode_bool(self.uninstalled, serializer);
+    sse_encode_i_32(self.order, serializer);
+    sse_encode_opt_String(self.iconOverride, serializer);
+  }
+
+  @protected
+  void sse_encode_label_colour(LabelColour self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_layout_style(LayoutStyle self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_extra(List<Extra> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_extra(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_group(List<Group> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_group(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_item(List<Item> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_item(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(
+    List<int> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint8List(
+      self is Uint8List ? self : Uint8List.fromList(self),
+    );
   }
 
   @protected
@@ -195,6 +2158,289 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_search_hit(
+    List<SearchHit> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_search_hit(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_match_kind(MatchKind self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_model_snapshot(ModelSnapshot self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.rootGroupId, serializer);
+    sse_encode_list_String(self.pageIds, serializer);
+    sse_encode_list_group(self.groups, serializer);
+    sse_encode_list_item(self.items, serializer);
+    sse_encode_settings(self.settings, serializer);
+    sse_encode_list_String(self.warnings, serializer);
+  }
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_String(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_app_ref(
+    AppRef? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_app_ref(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_bool(bool? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bool(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_group_role(
+    GroupRole? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_group_role(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_i_64(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_label_colour(
+    LabelColour? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_label_colour(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_layout_style(
+    LayoutStyle? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_layout_style(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_orientation(
+    Orientation? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_orientation(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_shortcut_payload(
+    ShortcutPayload? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_shortcut_payload(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_tab_visibility(
+    TabVisibility? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_tab_visibility(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_typeface(
+    Typeface? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_typeface(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_prim_u_8_strict(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_orientation(Orientation self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_search_hit(SearchHit self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_app_ref(self.app, serializer);
+    sse_encode_String(self.label, serializer);
+    sse_encode_match_kind(self.kind, serializer);
+  }
+
+  @protected
+  void sse_encode_settings(Settings self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_64(self.gridColumnsPortrait, serializer);
+    sse_encode_i_64(self.gridColumnsLandscape, serializer);
+    sse_encode_layout_style(self.layout, serializer);
+    sse_encode_tab_visibility(self.tabVisibility, serializer);
+    sse_encode_i_64(self.wallpaperAlpha, serializer);
+    sse_encode_bool(self.statusBarVisible, serializer);
+    sse_encode_bool(self.iconsVisible, serializer);
+    sse_encode_i_64(self.iconSize, serializer);
+    sse_encode_i_64(self.iconAlpha, serializer);
+    sse_encode_bool(self.labelsVisible, serializer);
+    sse_encode_i_64(self.labelSize, serializer);
+    sse_encode_typeface(self.labelTypeface, serializer);
+    sse_encode_label_colour(self.labelColour, serializer);
+    sse_encode_bool(self.labelShadow, serializer);
+    sse_encode_orientation(self.orientation, serializer);
+  }
+
+  @protected
+  void sse_encode_settings_patch(SettingsPatch self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_opt_box_autoadd_i_64(self.gridColumnsPortrait, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.gridColumnsLandscape, serializer);
+    sse_encode_opt_box_autoadd_layout_style(self.layout, serializer);
+    sse_encode_opt_box_autoadd_tab_visibility(self.tabVisibility, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.wallpaperAlpha, serializer);
+    sse_encode_opt_box_autoadd_bool(self.statusBarVisible, serializer);
+    sse_encode_opt_box_autoadd_bool(self.iconsVisible, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.iconSize, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.iconAlpha, serializer);
+    sse_encode_opt_box_autoadd_bool(self.labelsVisible, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.labelSize, serializer);
+    sse_encode_opt_box_autoadd_typeface(self.labelTypeface, serializer);
+    sse_encode_opt_box_autoadd_label_colour(self.labelColour, serializer);
+    sse_encode_opt_box_autoadd_bool(self.labelShadow, serializer);
+    sse_encode_opt_box_autoadd_orientation(self.orientation, serializer);
+  }
+
+  @protected
+  void sse_encode_shortcut_payload(
+    ShortcutPayload self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    switch (self) {
+      case ShortcutPayload_Android(
+        action: final action,
+        data: final data,
+        mimeType: final mimeType,
+        categories: final categories,
+        package: final package,
+        component: final component,
+        flags: final flags,
+        extras: final extras,
+      ):
+        sse_encode_i_32(0, serializer);
+        sse_encode_opt_String(action, serializer);
+        sse_encode_opt_String(data, serializer);
+        sse_encode_opt_String(mimeType, serializer);
+        sse_encode_list_String(categories, serializer);
+        sse_encode_opt_String(package, serializer);
+        sse_encode_opt_String(component, serializer);
+        sse_encode_i_32(flags, serializer);
+        sse_encode_list_extra(extras, serializer);
+      case ShortcutPayload_Command(command: final command):
+        sse_encode_i_32(1, serializer);
+        sse_encode_String(command, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_tab_visibility(TabVisibility self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_typeface(Typeface self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putUint32(self);
+  }
+
+  @protected
   void sse_encode_u_8(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint8(self);
@@ -203,17 +2449,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
-  }
-
-  @protected
-  void sse_encode_bool(bool self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putUint8(self ? 1 : 0);
   }
 }
