@@ -67,6 +67,27 @@ fn launch_fails_when_configured_to() {
 }
 
 #[test]
+fn launch_of_unlisted_app_is_not_found() {
+    let source = FakeSource::new(vec![app("com.a", ".Main", "Alpha")]);
+    let unknown = app_ref("com.missing", ".Main");
+    assert_eq!(
+        source.launch(&unknown),
+        Err(LaunchError::NotFound(unknown.clone()))
+    );
+    assert_eq!(source.launched(), Vec::<AppRef>::new());
+}
+
+#[test]
+fn scripted_failure_wins_over_not_found_for_listed_app() {
+    let listed = app_ref("com.a", ".Main");
+    let source = FakeSource::new(vec![app("com.a", ".Main", "Alpha")]).with_launch_failure();
+    assert!(matches!(
+        source.launch(&listed),
+        Err(LaunchError::Failed(_))
+    ));
+}
+
+#[test]
 fn fake_source_is_send_sync_and_object_safe() {
     assert_send_sync::<FakeSource>();
     assert_send_sync::<Box<dyn AppSource>>();

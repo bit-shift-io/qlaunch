@@ -32,6 +32,8 @@ impl FakeSource {
         self
     }
 
+    /// Returns the apps that launched successfully, in call order. A failed
+    /// launch is reported through `launch`'s return value and is not recorded.
     pub fn launched(&self) -> Vec<AppRef> {
         self.launched.lock().expect("launch log poisoned").clone()
     }
@@ -47,6 +49,13 @@ impl AppSource for FakeSource {
     }
 
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError> {
+        let listed = self
+            .apps
+            .iter()
+            .any(|entry| entry.package == app.package && entry.activity == app.activity);
+        if !listed {
+            return Err(LaunchError::NotFound(app.clone()));
+        }
         if self.fail_launch {
             return Err(LaunchError::Failed("configured to fail".into()));
         }
