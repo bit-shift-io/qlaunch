@@ -47,6 +47,9 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Gradle writes its problems report here when the wrapper is invoked directly
+/android/build/
+
 # Widget Preview related
 .widget_preview/
 

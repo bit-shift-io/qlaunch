@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
+import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 
 import 'fake_backend.dart';
@@ -398,6 +399,32 @@ void main() {
       await loading;
 
       expect(state.groups.map((g) => g.id), ['new']);
+    });
+  });
+
+  group('updateSettings', () {
+    test('adopts the snapshot the core returns', () async {
+      await state.load();
+      fake.current = snapshotOf(groups: [makeGroup('kept')]);
+      await state.updateSettings(const SettingsPatch(iconSize: 100));
+
+      expect(fake.settingsPatches, [const SettingsPatch(iconSize: 100)]);
+      expect(state.groups.map((g) => g.id), ['kept']);
+      // What is shown afterwards is the returned snapshot's setting, not the
+      // value that was asked for: the fake's snapshot still has 48.
+      expect(state.snapshot!.settings.iconSize, testSettings.iconSize);
+      expect(state.error, isNull);
+      expect(notifications, greaterThan(0));
+    });
+
+    test('a failure is state and a report, never a throw', () async {
+      await state.load();
+      fake.failure = StateError('read-only filesystem');
+      await state.updateSettings(const SettingsPatch(layout: LayoutStyle.list));
+
+      expect(state.error, contains('read-only filesystem'));
+      expect(reported, hasLength(1));
+      expect(reported.single.exception, isA<StateError>());
     });
   });
 }

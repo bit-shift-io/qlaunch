@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Super Game
+Exec=/bin/true
+Categories=Game;ActionGame;

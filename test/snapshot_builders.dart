@@ -8,11 +8,11 @@ const testSettings = Settings(
   gridColumnsLandscape: 6,
   layout: LayoutStyle.tiles,
   tabVisibility: TabVisibility.always,
-  wallpaperAlpha: 255,
+  wallpaperAlpha: 0,
   statusBarVisible: true,
   iconsVisible: true,
   iconSize: 48,
-  iconAlpha: 255,
+  iconAlpha: 100,
   labelsVisible: true,
   labelSize: 12,
   labelTypeface: Typeface.normal,
@@ -24,12 +24,19 @@ const testSettings = Settings(
 Group makeGroup(String id, {GroupRole? role, int order = 0}) =>
     Group(id: id, label: id, role: role, order: order);
 
-Item makeItem(String id, String groupId, {int order = 0}) => Item(
+Item makeItem(
+  String id,
+  String groupId, {
+  int order = 0,
+  AppRef? app,
+  bool uninstalled = false,
+}) => Item(
   id: id,
   groupId: groupId,
   label: id,
   labelOverridden: false,
-  uninstalled: false,
+  app: app,
+  uninstalled: uninstalled,
   order: order,
 );
 

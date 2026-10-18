@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
@@ -7,6 +6,8 @@ import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart';
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'snapshot_builders.dart';
 
@@ -33,6 +34,12 @@ class FakeBackend implements LauncherBackend {
   int get snapshotCalls => calls.where((c) => c == 'snapshot').length;
 
   final List<({String package, String activity})> launched = [];
+
+  /// The icon returned for an app, whatever size is asked for; the size is in
+  /// the recorded call (`iconFor(package,activity,sizePx)`).
+  final Map<({String package, String activity}), Uint8List> icons = {};
+
+  int get iconCalls => calls.where((c) => c.startsWith('iconFor(')).length;
 
   final List<SettingsPatch> settingsPatches = [];
 
@@ -141,7 +148,10 @@ class FakeBackend implements LauncherBackend {
 
   @override
   Future<Uint8List?> iconFor(String package, String activity, int sizePx) =>
-      _plain<Uint8List?>('iconFor($package,$activity,$sizePx)', null);
+      _plain<Uint8List?>(
+        'iconFor($package,$activity,$sizePx)',
+        icons[(package: package, activity: activity)],
+      );
 
   @override
   Future<void> launchApp(String package, String activity) async {
@@ -154,4 +164,65 @@ class FakeBackend implements LauncherBackend {
     calls.add('events');
     return _events.stream;
   }
+}
+
+/// [testSettings] with some fields replaced, for tests that vary a setting.
+Settings settingsWith({
+  int? gridColumnsPortrait,
+  int? gridColumnsLandscape,
+  LayoutStyle? layout,
+  TabVisibility? tabVisibility,
+  int? wallpaperAlpha,
+  bool? statusBarVisible,
+  int? iconSize,
+  int? iconAlpha,
+  bool? iconsVisible,
+  bool? labelsVisible,
+  int? labelSize,
+  Typeface? labelTypeface,
+  LabelColour? labelColour,
+  bool? labelShadow,
+  Orientation? orientation,
+}) => Settings(
+  gridColumnsPortrait: gridColumnsPortrait ?? testSettings.gridColumnsPortrait,
+  gridColumnsLandscape:
+      gridColumnsLandscape ?? testSettings.gridColumnsLandscape,
+  layout: layout ?? testSettings.layout,
+  tabVisibility: tabVisibility ?? testSettings.tabVisibility,
+  wallpaperAlpha: wallpaperAlpha ?? testSettings.wallpaperAlpha,
+  statusBarVisible: statusBarVisible ?? testSettings.statusBarVisible,
+  iconsVisible: iconsVisible ?? testSettings.iconsVisible,
+  iconSize: iconSize ?? testSettings.iconSize,
+  iconAlpha: iconAlpha ?? testSettings.iconAlpha,
+  labelsVisible: labelsVisible ?? testSettings.labelsVisible,
+  labelSize: labelSize ?? testSettings.labelSize,
+  labelTypeface: labelTypeface ?? testSettings.labelTypeface,
+  labelColour: labelColour ?? testSettings.labelColour,
+  labelShadow: labelShadow ?? testSettings.labelShadow,
+  orientation: orientation ?? testSettings.orientation,
+);
+
+/// [snapshot] with its settings replaced.
+ModelSnapshot withSettings(ModelSnapshot snapshot, Settings settings) =>
+    ModelSnapshot(
+      rootGroupId: snapshot.rootGroupId,
+      homeGroupId: snapshot.homeGroupId,
+      pageIds: snapshot.pageIds,
+      groups: snapshot.groups,
+      items: snapshot.items,
+      settings: settings,
+      warnings: snapshot.warnings,
+    );
+
+/// Collects what `FlutterError.reportError` is given, for the rest of the test.
+///
+/// A test's `setUp` cannot install this for a widget test: `testWidgets`
+/// installs its own handler after `setUp` has run, so a handler set there is
+/// replaced before the body starts.
+List<FlutterErrorDetails> captureReports() {
+  final reported = <FlutterErrorDetails>[];
+  final previous = FlutterError.onError;
+  FlutterError.onError = reported.add;
+  addTearDown(() => FlutterError.onError = previous);
+  return reported;
 }

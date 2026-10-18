@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Firefox
+Exec=/bin/true
+Icon=firefox
+Categories=Network;WebBrowser;

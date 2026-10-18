@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
+import 'package:qlaunch/src/rust/settings.dart' show SettingsPatch;
 import 'package:qlaunch/src/state/launcher_backend.dart';
 
 /// A cache over the core's `snapshot()`. Everything it reports was computed by
@@ -93,10 +94,52 @@ class LauncherState extends ChangeNotifier {
     }
   }
 
+  /// The platform icon for an app, or `null` if there is none or it cannot be
+  /// read. A missing icon is not an app-level error: it renders a placeholder and
+  /// does not set [error].
+  ///
+  /// A throw from the backend is a bug rather than a missing icon, so it is
+  /// reported like any other failure, but it still yields `null` and leaves
+  /// [error] alone.
+  Future<Uint8List?> iconFor(
+    String package,
+    String activity,
+    int sizePx,
+  ) async {
+    try {
+      return await _backend.iconFor(package, activity, sizePx);
+    } catch (e, st) {
+      _report(e, st);
+      return null;
+    }
+  }
+
+  /// Launches an app. A failure is reported through [error], not thrown.
+  Future<void> launchApp(String package, String activity) async {
+    try {
+      await _backend.launchApp(package, activity);
+    } catch (e, st) {
+      _fail(e, st);
+    }
+  }
+
+  /// Applies a settings patch and adopts the snapshot the core returns.
+  ///
+  /// The core clamps and validates, so the value the UI shows afterwards is the
+  /// one in that snapshot rather than the one asked for. A failure arrives as
+  /// [error], never as a throw.
+  Future<void> updateSettings(SettingsPatch patch) =>
+      _fetch(() => _backend.updateSettings(patch));
+
   /// Surfaces a failure as state, and reports it so that a programming error
   /// is not hidden behind a one-line message.
   void _fail(Object error, StackTrace stack) {
     _error = error.toString();
+    _report(error, stack);
+    _notify();
+  }
+
+  void _report(Object error, StackTrace stack) {
     FlutterError.reportError(
       FlutterErrorDetails(
         exception: error,
@@ -104,7 +147,6 @@ class LauncherState extends ChangeNotifier {
         library: 'qlaunch launcher state',
       ),
     );
-    _notify();
   }
 
   void _adopt(ModelSnapshot snapshot) {
