@@ -725,6 +725,117 @@ fn a_hand_written_android_shortcut_may_omit_its_lists() {
 }
 
 #[test]
+fn an_android_shortcut_needs_nothing_but_its_type() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let m = Model::new_default();
+    s.save(&m, &Settings::default()).unwrap();
+    let home = group_of(&m, GroupRole::Home);
+    let mut doc = read_json(&s);
+    doc["items"] = json!([
+        {
+            "id": "min", "group_id": home, "label": "Minimal",
+            "label_overridden": false, "app": null, "uninstalled": false, "order": 0,
+            "icon_override": null,
+            "shortcut": {"type": "android", "action": "android.intent.action.VIEW"}
+        },
+        {
+            "id": "bare", "group_id": home, "label": "Bare",
+            "label_overridden": false, "app": null, "uninstalled": false, "order": 1,
+            "icon_override": null,
+            "shortcut": {"type": "android"}
+        }
+    ]);
+    std::fs::write(s.document_path(), serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    assert!(!dir.path().join("qlaunch.json.corrupt").exists());
+    assert_eq!(
+        loaded.model.item(&"min".to_string()).unwrap().shortcut,
+        Some(ShortcutPayload::Android {
+            action: Some("android.intent.action.VIEW".into()),
+            data: None,
+            mime_type: None,
+            categories: Vec::new(),
+            package: None,
+            component: None,
+            flags: 0,
+            extras: Vec::new(),
+        })
+    );
+    assert_eq!(
+        loaded.model.item(&"bare".to_string()).unwrap().shortcut,
+        Some(ShortcutPayload::Android {
+            action: None,
+            data: None,
+            mime_type: None,
+            categories: Vec::new(),
+            package: None,
+            component: None,
+            flags: 0,
+            extras: Vec::new(),
+        })
+    );
+}
+
+#[test]
+fn a_command_shortcut_without_its_command_is_quarantined() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let m = Model::new_default();
+    s.save(&m, &Settings::default()).unwrap();
+    let home = group_of(&m, GroupRole::Home);
+    let mut doc = read_json(&s);
+    doc["items"] = json!([{
+        "id": "c", "group_id": home, "label": "No command",
+        "label_overridden": false, "app": null, "uninstalled": false, "order": 0,
+        "icon_override": null, "shortcut": {"type": "command"}
+    }]);
+    std::fs::write(s.document_path(), serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert!(!loaded.warnings.is_empty());
+    assert!(loaded.model.items.is_empty());
+    assert!(dir.path().join("qlaunch.json.corrupt").exists());
+}
+
+#[test]
+fn a_setting_that_is_not_an_i64_integer_is_quarantined() {
+    // The boundary of "clamped" versus "corrupt" is deliberate: only integers
+    // that fit in i64 are repaired.
+    for literal in [
+        "40.5",
+        "1e30",
+        "99999999999999999999",
+        "18446744073709551615",
+        "-1e30",
+        "true",
+        "null",
+        "\"big\"",
+    ] {
+        let dir = tempdir().unwrap();
+        let s = store_in(&dir);
+        let mut m = Model::new_default();
+        m.add_group("Mine");
+        s.save(&m, &Settings::default()).unwrap();
+        let mut doc = read_json(&s);
+        doc["settings"]["icon_size"] = serde_json::from_str(literal).unwrap();
+        let original = serde_json::to_vec_pretty(&doc).unwrap();
+        std::fs::write(s.document_path(), &original).unwrap();
+
+        let loaded = s.load().unwrap();
+        assert!(!loaded.warnings.is_empty(), "{literal}");
+        assert_ne!(loaded.model, m, "{literal}");
+        assert_eq!(
+            std::fs::read(dir.path().join("qlaunch.json.corrupt")).unwrap(),
+            original,
+            "{literal}"
+        );
+    }
+}
+
+#[test]
 fn load_persists_its_repairs_and_reports_them_once() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);

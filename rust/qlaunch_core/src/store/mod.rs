@@ -93,11 +93,17 @@ impl Store {
 
     /// Reads the document. When there is none, writes and returns the defaults.
     ///
-    /// What counts as damage and what counts as repairable:
-    /// **a value of the correct JSON type that is outside the permitted range
-    /// is repaired by clamping; a value of the wrong JSON type (`"big"` where a
-    /// number belongs) is corruption and is quarantined.** Clamping keeps the
-    /// nearest bound, so the user's entry is not thrown away.
+    /// What counts as damage and what counts as repairable, for the clamped
+    /// numeric settings:
+    /// - an **integer that fits in `i64`** but is outside the permitted range
+    ///   is **clamped to the nearest bound and written back**, so the user's
+    ///   entry is not thrown away;
+    /// - anything else is **corruption and is quarantined**: a value that is
+    ///   not an integer (`40.5`), that does not fit in `i64` (`1e30`), or that
+    ///   is the wrong JSON type altogether (`"big"`).
+    ///
+    /// That boundary is deliberate: a fractional or astronomically large
+    /// number in a settings file is not worth a lenient number parser.
     ///
     /// A document that is corrupt, or that is not a valid model, is moved aside
     /// (see [`Store::quarantine`]), replaced by the defaults, and described in

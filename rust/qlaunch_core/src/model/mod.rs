@@ -54,6 +54,7 @@ pub enum ShortcutPayload {
         categories: Vec<String>,
         package: Option<String>,
         component: Option<String>,
+        #[serde(default)]
         flags: i32,
         #[serde(default)]
         extras: Vec<Extra>,
