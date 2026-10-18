@@ -36,4 +36,6 @@ pub enum ModelError {
     ItemInRoot(Id),
     #[error("item {0} has both an app and a shortcut")]
     ItemHasAppAndShortcut(Id),
+    #[error("item {0} is a shortcut and cannot also have an app")]
+    ItemHasShortcut(Id),
 }

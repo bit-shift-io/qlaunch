@@ -218,6 +218,30 @@ impl Model {
         id
     }
 
+    /// Points the item `id` at `app`, leaving its group, order and label alone.
+    /// Setting an item's own app to the value it already has is fine.
+    ///
+    /// Refused, with the model left untouched: an unknown item (`UnknownItem`),
+    /// an item that is a shortcut, since an item carries at most one of app and
+    /// shortcut (`ItemHasShortcut`), and an app that another item already refers
+    /// to (`DuplicateAppRef`).
+    pub fn set_item_app(&mut self, id: &Id, app: AppRef) -> Result<(), ModelError> {
+        if self.item_or_err(id)?.shortcut.is_some() {
+            return Err(ModelError::ItemHasShortcut(id.clone()));
+        }
+        if self
+            .items
+            .iter()
+            .any(|i| i.id != *id && i.app.as_ref() == Some(&app))
+        {
+            return Err(ModelError::DuplicateAppRef(app));
+        }
+        if let Some(item) = self.items.iter_mut().find(|i| i.id == *id) {
+            item.app = Some(app);
+        }
+        Ok(())
+    }
+
     /// Adds an item for a shortcut as the last item of `group`; see
     /// [`Model::add_item_to`] for where it goes when `group` is not usable.
     pub fn add_shortcut(&mut self, group: &Id, label: &str, payload: ShortcutPayload) -> Id {

@@ -1,4 +1,4 @@
-use qlaunch_core::model::{AppRef, GroupRole, Id, Model, ModelError};
+use qlaunch_core::model::{AppRef, GroupRole, Id, Model, ModelError, ShortcutPayload};
 
 fn page_labels(m: &Model) -> Vec<String> {
     m.pages().iter().map(|g| g.label.clone()).collect()
@@ -399,5 +399,57 @@ fn the_home_group_can_take_over_apps_leaving_home_unset() {
         m.groups.iter().find(|g| g.id == old_apps).unwrap().role,
         None
     );
+    assert_eq!(m.validate(), Ok(()));
+}
+
+fn appref(package: &str, activity: &str) -> AppRef {
+    AppRef {
+        package: package.into(),
+        activity: activity.into(),
+    }
+}
+
+#[test]
+fn set_item_app_sets_the_app_and_allows_the_same_value_again() {
+    let mut m = Model::new_default();
+    let apps = role_id(&m, GroupRole::Apps);
+    let it = m.add_item_to(&apps, "Signal");
+    m.set_item_app(&it, appref("org.signal", "Main")).unwrap();
+    assert_eq!(m.item(&it).unwrap().app, Some(appref("org.signal", "Main")));
+    m.set_item_app(&it, appref("org.signal", "Main")).unwrap();
+    m.set_item_app(&it, appref("org.signal", "Other")).unwrap();
+    assert_eq!(m.validate(), Ok(()));
+}
+
+#[test]
+fn set_item_app_refuses_unknown_items_duplicates_and_shortcut_items() {
+    let mut m = Model::new_default();
+    let apps = role_id(&m, GroupRole::Apps);
+    let a = m.add_app(appref("com.a", "Main"), "A");
+    let b = m.add_item_to(&apps, "B");
+    let sc = m.add_shortcut(
+        &apps,
+        "S",
+        ShortcutPayload::Command {
+            command: "x".into(),
+        },
+    );
+    let before = m.clone();
+
+    let unknown: Id = "nope".into();
+    assert_eq!(
+        m.set_item_app(&unknown, appref("com.z", "Main")),
+        Err(ModelError::UnknownItem(unknown.clone()))
+    );
+    assert_eq!(
+        m.set_item_app(&b, appref("com.a", "Main")),
+        Err(ModelError::DuplicateAppRef(appref("com.a", "Main")))
+    );
+    assert_eq!(
+        m.set_item_app(&sc, appref("com.z", "Main")),
+        Err(ModelError::ItemHasShortcut(sc.clone()))
+    );
+    assert_eq!(m, before);
+    assert_eq!(m.item(&a).unwrap().app, Some(appref("com.a", "Main")));
     assert_eq!(m.validate(), Ok(()));
 }
