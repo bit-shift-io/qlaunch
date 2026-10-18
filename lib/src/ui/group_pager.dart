@@ -17,8 +17,12 @@ class GroupPagerController {
   List<String> _pageIds;
   late int _currentPage;
 
-  /// The page ids in display order. Unmodifiable: change the list by assigning
-  /// [pageIds], never by mutating what this returns.
+  /// The page ids in display order. Ids are expected to be distinct: lookups by
+  /// id take the first occurrence, so with `['a', 'b', 'a']` a user on the
+  /// second `'a'` lands on the first after the list changes.
+  ///
+  /// Unmodifiable: change the list by assigning [pageIds], never by mutating
+  /// what this returns.
   List<String> get pageIds => List.unmodifiable(_pageIds);
 
   /// Replaces the page list, keeping the user on the same *group* if it is
@@ -88,7 +92,9 @@ class GroupPagerController {
 ///
 /// It talks to [GroupPagerController] and plain group ids only. After changing
 /// `controller.pageIds`, rebuild the pager so it moves to the controller's
-/// [GroupPagerController.currentPage].
+/// [GroupPagerController.currentPage]. It jumps to that canonical index rather
+/// than the nearest copy of the group, which resets a fractional scroll
+/// position and cancels a drag in progress; the group shown is the same.
 class GroupPager extends StatefulWidget {
   const GroupPager({
     super.key,
@@ -102,7 +108,8 @@ class GroupPager extends StatefulWidget {
   /// Builds the content for a group. Receives `''` when there are no pages.
   final Widget Function(BuildContext context, String groupId) gridFor;
 
-  /// Called with the group the user has moved to.
+  /// Called when the group the pager is showing changes, whether the user
+  /// swiped or the controller's page list changed under it.
   final ValueChanged<String>? onGroupChanged;
 
   @override
@@ -111,11 +118,14 @@ class GroupPager extends StatefulWidget {
 
 class _GroupPagerState extends State<GroupPager> {
   late final PageController _pageController;
+  late String _reportedGroup;
   bool _syncing = false;
+  bool _reconcileQueued = false;
 
   // With no pages every index maps to '', and 100000 blank pages would be an
   // endless scroll through nothing. One page lets the caller draw an empty
-  // state.
+  // state. In that case this is deliberately 0 while the controller's
+  // currentPage is still the anchor, so the two diverge on purpose.
   int get _targetPage =>
       widget.controller.pageIds.isEmpty ? 0 : widget.controller.currentPage;
 
@@ -123,26 +133,18 @@ class _GroupPagerState extends State<GroupPager> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _targetPage);
+    _reportedGroup = widget.controller.currentGroupId(
+      widget.controller.currentPage,
+    );
   }
 
   @override
   void didUpdateWidget(GroupPager oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_pageController.hasClients ||
-        !_pageController.position.haveDimensions) {
-      return;
-    }
-    final shown = _pageController.page?.round();
-    if (shown != _targetPage) {
-      // The jump reports a page change; the controller already holds this
-      // page, and calling out to the parent while it is building is not safe.
-      _syncing = true;
-      try {
-        _pageController.jumpToPage(_targetPage);
-      } finally {
-        _syncing = false;
-      }
-    }
+    _syncPage();
+    // Reporting cannot happen here: calling the parent while it is building is
+    // not safe. It also has to wait for a layout if there has not been one yet.
+    _queueReconcile();
   }
 
   @override
@@ -151,10 +153,55 @@ class _GroupPagerState extends State<GroupPager> {
     super.dispose();
   }
 
+  /// Moves the view to the controller's page. Returns false if the view has
+  /// not been laid out yet, so there is nothing to move.
+  bool _syncPage() {
+    if (!_pageController.hasClients ||
+        !_pageController.position.haveDimensions) {
+      return false;
+    }
+    if (_pageController.page?.round() != _targetPage) {
+      // The jump reports a page change; the controller already holds this
+      // page and _reconcile reports the group.
+      _syncing = true;
+      try {
+        _pageController.jumpToPage(_targetPage);
+      } finally {
+        _syncing = false;
+      }
+    }
+    return true;
+  }
+
+  void _queueReconcile() {
+    if (_reconcileQueued) return;
+    _reconcileQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reconcileQueued = false;
+      _reconcile();
+    });
+  }
+
+  void _reconcile() {
+    if (!mounted) return;
+    if (!_syncPage()) {
+      _queueReconcile();
+      return;
+    }
+    final controller = widget.controller;
+    final group = controller.currentGroupId(controller.currentPage);
+    if (group != _reportedGroup) _report(group);
+  }
+
+  void _report(String group) {
+    _reportedGroup = group;
+    widget.onGroupChanged?.call(group);
+  }
+
   void _onPageChanged(int page) {
     if (_syncing) return;
     widget.controller.onPageChanged(page);
-    widget.onGroupChanged?.call(widget.controller.currentGroupId(page));
+    _report(widget.controller.currentGroupId(page));
   }
 
   @override

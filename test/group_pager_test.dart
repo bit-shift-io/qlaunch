@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 
@@ -342,5 +343,161 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('group:home'), findsOneWidget);
     });
+
+    testWidgets('the first build reports no change', (tester) async {
+      final c = GroupPagerController(pageIds: ['apps', 'home', 'games']);
+      final reported = <String>[];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+      await tester.pumpAndSettle();
+      expect(reported, isEmpty);
+    });
+
+    testWidgets('dropping the visible group reports the new first group', (
+      tester,
+    ) async {
+      final c = GroupPagerController(pageIds: ['apps', 'home', 'games']);
+      final reported = <String>[];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+      await swipeToNext(tester);
+      expect(reported, ['home']);
+
+      c.pageIds = ['x', 'apps', 'games'];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+      await tester.pump();
+      expect(reported, ['home', 'x']);
+      expect(find.text('group:x'), findsOneWidget);
+    });
+
+    testWidgets('a list change that keeps the visible group reports nothing', (
+      tester,
+    ) async {
+      final c = GroupPagerController(pageIds: ['apps', 'home', 'games']);
+      final reported = <String>[];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+      await swipeToNext(tester);
+      expect(reported, ['home']);
+
+      c.pageIds = ['games', 'new', 'home', 'apps'];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+      await tester.pumpAndSettle();
+      expect(reported, ['home']);
+      expect(find.text('group:home'), findsOneWidget);
+    });
+
+    testWidgets('pages appearing and disappearing are reported', (
+      tester,
+    ) async {
+      final c = GroupPagerController(pageIds: []);
+      final reported = <String>[];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+
+      c.pageIds = ['a', 'b'];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+      await tester.pump();
+      expect(reported, ['a']);
+
+      c.pageIds = [];
+      await tester.pumpWidget(host(c, onGroupChanged: reported.add));
+      await tester.pump();
+      expect(reported, ['a', '']);
+    });
+
+    testWidgets('an empty page list has exactly one page', (tester) async {
+      final c = GroupPagerController(pageIds: []);
+      await tester.pumpWidget(host(c));
+      final position = tester
+          .state<ScrollableState>(find.byType(Scrollable))
+          .position;
+      expect(position.maxScrollExtent, 0);
+
+      await tester.drag(find.byType(PageView), const Offset(-300, 0));
+      await tester.pumpAndSettle();
+      expect(position.pixels, 0);
+      expect(find.text('group:'), findsOneWidget);
+    });
+
+    testWidgets('a list change before the first layout is applied once laid '
+        'out', (tester) async {
+      final c = GroupPagerController(pageIds: ['a', 'b', 'c']);
+      final reported = <String>[];
+      final layOut = ValueNotifier(false);
+      addTearDown(layOut.dispose);
+      Widget pager() => MaterialApp(
+        home: Scaffold(
+          body: ValueListenableBuilder<bool>(
+            valueListenable: layOut,
+            builder: (context, value, child) =>
+                _MaybeLaidOut(layOut: value, child: child!),
+            child: GroupPager(
+              controller: c,
+              gridFor: (context, groupId) =>
+                  Center(child: Text('group:$groupId')),
+              onGroupChanged: reported.add,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(pager());
+      c.pageIds = ['x', 'y', 'z', 'a'];
+      await tester.pumpWidget(pager());
+      layOut.value = true;
+      await tester.pumpAndSettle();
+
+      expect(c.currentGroupId(c.currentPage), 'a');
+      expect(find.text('group:a'), findsOneWidget);
+      expect(find.text('group:x'), findsNothing);
+      expect(reported, isEmpty);
+    });
   });
+}
+
+/// Mounts [child] but only lays it out when [layOut] is true.
+class _MaybeLaidOut extends SingleChildRenderObjectWidget {
+  const _MaybeLaidOut({required this.layOut, required super.child});
+
+  final bool layOut;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderMaybeLaidOut(layOut);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderMaybeLaidOut renderObject,
+  ) {
+    renderObject.layOut = layOut;
+  }
+}
+
+class _RenderMaybeLaidOut extends RenderProxyBox {
+  _RenderMaybeLaidOut(this._layOut);
+
+  bool _layOut;
+
+  set layOut(bool value) {
+    if (value == _layOut) return;
+    _layOut = value;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    if (_layOut) {
+      super.performLayout();
+    } else {
+      size = constraints.biggest;
+    }
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (_layOut) super.paint(context, offset);
+  }
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    if (_layOut) super.visitChildrenForSemantics(visitor);
+  }
 }
