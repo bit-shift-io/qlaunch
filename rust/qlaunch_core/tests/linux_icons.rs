@@ -574,15 +574,33 @@ fn icon_png_does_not_follow_a_hostile_icon_name_out_of_the_roots() {
 
 #[test]
 fn icon_png_does_not_follow_a_hostile_id_out_of_the_applications_dirs() {
+    // Every desktop file below names a real, readable PNG by absolute path, so
+    // only the guard on the id can stop the lookup: without it the file is
+    // found, the icon resolves and its bytes come back.
+    let icon = fixture("decoy/secret.png");
+    let entry = format!(
+        "[Desktop Entry]\nType=Application\nIcon={}\n",
+        icon.display()
+    );
     let dir = tempfile::tempdir().unwrap();
-    fs::create_dir_all(dir.path().join("applications")).unwrap();
-    fs::write(
-        dir.path().join("outside.desktop"),
-        "[Desktop Entry]\nIcon=/etc/hostname\n",
-    )
-    .unwrap();
+    fs::create_dir_all(dir.path().join("applications/sub")).unwrap();
+    fs::write(dir.path().join("applications/legit.desktop"), &entry).unwrap();
+    fs::write(dir.path().join("applications/sub/inner.desktop"), &entry).unwrap();
+    fs::write(dir.path().join("outside.desktop"), &entry).unwrap();
     let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None);
-    for id in ["../outside.desktop", "a/b.desktop", "..", ""] {
+
+    assert_eq!(
+        source.icon_png(&app("legit.desktop"), 48).unwrap(),
+        Some(fs::read(&icon).unwrap()),
+        "control: the same entry under a plain id resolves"
+    );
+    for id in [
+        "../outside.desktop",
+        "sub/inner.desktop",
+        "./legit.desktop",
+        "..",
+        "",
+    ] {
         assert_eq!(source.icon_png(&app(id), 48).unwrap(), None, "id {id:?}");
     }
 }
