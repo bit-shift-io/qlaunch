@@ -22,7 +22,7 @@ pub struct Group {
     pub order: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AppRef {
     pub package: String,
     pub activity: String,
