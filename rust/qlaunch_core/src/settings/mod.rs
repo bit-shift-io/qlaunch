@@ -43,16 +43,17 @@ pub enum Orientation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub grid_columns_portrait: u32,
     pub grid_columns_landscape: u32,
     pub layout: LayoutStyle,
     pub tab_visibility: TabVisibility,
-    pub wallpaper_alpha: u8,
+    pub wallpaper_alpha: u32,
     pub status_bar_visible: bool,
     pub icons_visible: bool,
     pub icon_size: u32,
-    pub icon_alpha: u8,
+    pub icon_alpha: u32,
     pub labels_visible: bool,
     pub label_size: u32,
     pub label_typeface: Typeface,
@@ -67,11 +68,11 @@ pub struct SettingsPatch {
     pub grid_columns_landscape: Option<u32>,
     pub layout: Option<LayoutStyle>,
     pub tab_visibility: Option<TabVisibility>,
-    pub wallpaper_alpha: Option<u8>,
+    pub wallpaper_alpha: Option<u32>,
     pub status_bar_visible: Option<bool>,
     pub icons_visible: Option<bool>,
     pub icon_size: Option<u32>,
-    pub icon_alpha: Option<u8>,
+    pub icon_alpha: Option<u32>,
     pub labels_visible: Option<bool>,
     pub label_size: Option<u32>,
     pub label_typeface: Option<Typeface>,

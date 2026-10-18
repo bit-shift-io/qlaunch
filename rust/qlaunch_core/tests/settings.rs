@@ -182,3 +182,49 @@ fn field_names_serialise_verbatim() {
         ]
     );
 }
+
+#[test]
+fn alphas_above_255_arrive_and_clamp_to_100() {
+    let mut s = Settings::default();
+    s.apply(&SettingsPatch {
+        wallpaper_alpha: Some(999),
+        icon_alpha: Some(999),
+        ..Default::default()
+    });
+    assert_eq!(s.wallpaper_alpha, 999);
+    assert_eq!(s.icon_alpha, 999);
+    s.clamp();
+    assert_eq!(s.wallpaper_alpha, 100);
+    assert_eq!(s.icon_alpha, 100);
+}
+
+#[test]
+fn out_of_range_alphas_survive_a_serde_round_trip() {
+    let s = Settings {
+        wallpaper_alpha: 999,
+        icon_alpha: 999,
+        ..Settings::default()
+    };
+    let json = serde_json::to_string(&s).unwrap();
+    assert!(json.contains("\"wallpaper_alpha\":999"), "{json}");
+    assert!(json.contains("\"icon_alpha\":999"), "{json}");
+    let mut back: Settings = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, s);
+    back.clamp();
+    assert_eq!(back.wallpaper_alpha, 100);
+    assert_eq!(back.icon_alpha, 100);
+}
+
+#[test]
+fn missing_keys_fill_in_from_the_defaults() {
+    let s: Settings = serde_json::from_str(r#"{"icon_size": 55}"#).unwrap();
+    assert_eq!(
+        s,
+        Settings {
+            icon_size: 55,
+            ..Settings::default()
+        }
+    );
+    let empty: Settings = serde_json::from_str("{}").unwrap();
+    assert_eq!(empty, Settings::default());
+}
