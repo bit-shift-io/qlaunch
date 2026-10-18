@@ -34,4 +34,6 @@ pub enum ModelError {
     NotChildOfRoot(Id),
     #[error("item {0} is in the root group")]
     ItemInRoot(Id),
+    #[error("item {0} has both an app and a shortcut")]
+    ItemHasAppAndShortcut(Id),
 }

@@ -5,13 +5,15 @@ mod roles;
 
 use std::collections::HashSet;
 
+use serde::{Deserialize, Serialize};
+
 pub use error::ModelError;
 pub use ids::Id;
 pub use roles::GroupRole;
 
 use ids::new_id;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Group {
     pub id: Id,
     pub label: String,
@@ -20,27 +22,29 @@ pub struct Group {
     pub order: i32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppRef {
     pub package: String,
     pub activity: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExtraKind {
     String,
     Bool,
     Int,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Extra {
     pub key: String,
     pub kind: ExtraKind,
     pub value: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ShortcutPayload {
     Android {
         action: Option<String>,
@@ -57,7 +61,7 @@ pub enum ShortcutPayload {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Item {
     pub id: Id,
     pub group_id: Id,
@@ -70,7 +74,7 @@ pub struct Item {
     pub icon_override: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AppEntry {
     pub package: String,
     pub activity: String,
@@ -78,7 +82,8 @@ pub struct AppEntry {
     pub category: AppCategory,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum AppCategory {
     Game,
     App,
@@ -187,6 +192,9 @@ impl Model {
             }
             if !seen_groups.contains(item.group_id.as_str()) {
                 return Err(ModelError::UnknownGroup(item.group_id.clone()));
+            }
+            if item.app.is_some() && item.shortcut.is_some() {
+                return Err(ModelError::ItemHasAppAndShortcut(item.id.clone()));
             }
         }
 

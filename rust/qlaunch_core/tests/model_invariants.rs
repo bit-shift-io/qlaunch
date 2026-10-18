@@ -261,3 +261,42 @@ fn item_in_the_root_group_is_rejected() {
     m.items.push(app_item("i1", &root, "a", "b"));
     assert_eq!(m.validate(), Err(ModelError::ItemInRoot("i1".into())));
 }
+
+#[test]
+fn item_with_both_an_app_and_a_shortcut_is_rejected() {
+    use qlaunch_core::model::ShortcutPayload;
+    let mut m = Model::new_default();
+    let apps = m.role_holder(GroupRole::Apps).unwrap().id.clone();
+    let mut item = app_item("i1", &apps, "a", "b");
+    item.shortcut = Some(ShortcutPayload::Command {
+        command: "ls".into(),
+    });
+    m.items.push(item);
+    assert_eq!(
+        m.validate(),
+        Err(ModelError::ItemHasAppAndShortcut("i1".into()))
+    );
+}
+
+#[test]
+fn item_with_neither_an_app_nor_a_shortcut_is_valid() {
+    let mut m = Model::new_default();
+    let apps = m.role_holder(GroupRole::Apps).unwrap().id.clone();
+    m.add_item_to(&apps, "Waiting for an app");
+    assert_eq!(m.validate(), Ok(()));
+}
+
+#[test]
+fn item_with_only_a_shortcut_is_valid() {
+    use qlaunch_core::model::ShortcutPayload;
+    let mut m = Model::new_default();
+    let apps = m.role_holder(GroupRole::Apps).unwrap().id.clone();
+    m.add_shortcut(
+        &apps,
+        "ls",
+        ShortcutPayload::Command {
+            command: "ls".into(),
+        },
+    );
+    assert_eq!(m.validate(), Ok(()));
+}

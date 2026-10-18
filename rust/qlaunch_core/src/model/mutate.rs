@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use unicode_normalization::UnicodeNormalization;
 use unicode_normalization::char::is_combining_mark;
 
-use super::{AppRef, Group, GroupRole, Id, Item, Model, ModelError, new_id};
+use super::{AppRef, Group, GroupRole, Id, Item, Model, ModelError, ShortcutPayload, new_id};
 
 // `order` is dense and explicit: after any insertion, removal, move or sort the
 // affected list (the pages, or the items of one group) is rewritten to `0..n` in
@@ -214,6 +214,16 @@ impl Model {
         let id = self.add_item_to(&self.apps_group_id(), label);
         if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
             item.app = Some(app);
+        }
+        id
+    }
+
+    /// Adds an item for a shortcut as the last item of `group`; see
+    /// [`Model::add_item_to`] for where it goes when `group` is not usable.
+    pub fn add_shortcut(&mut self, group: &Id, label: &str, payload: ShortcutPayload) -> Id {
+        let id = self.add_item_to(group, label);
+        if let Some(item) = self.items.iter_mut().find(|i| i.id == id) {
+            item.shortcut = Some(payload);
         }
         id
     }
