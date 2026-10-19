@@ -21,10 +21,10 @@ This document outlines the step-by-step phased approach for building the cross-p
 ---
 
 ## Phase 3: Android Integration
-- [ ] **Task 3.1:** Configure `AndroidManifest.xml` with intent filters for `android.intent.category.HOME` and `android.intent.category.DEFAULT`.
-- [ ] **Task 3.2:** Write Kotlin/JNI bindings or use Flutter Platform Channels to query `PackageManager` for launcher apps and icons.
-- [ ] **Task 3.3:** Implement Android intent launcher for starting selected applications.
-- [ ] **Task 3.4:** Handle Android home button and back button events cleanly.
+- [x] **Task 3.1:** Configure `AndroidManifest.xml` with intent filters for `android.intent.category.HOME` and `android.intent.category.DEFAULT`.
+- [x] **Task 3.2:** Write Kotlin/JNI bindings or use Flutter Platform Channels to query `PackageManager` for launcher apps and icons.
+- [x] **Task 3.3:** Implement Android intent launcher for starting selected applications.
+- [x] **Task 3.4:** Handle Android home button and back button events cleanly.
 
 ---
 

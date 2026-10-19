@@ -6,3 +6,11 @@ pub mod reconcile;
 pub mod search;
 pub mod settings;
 pub mod store;
+
+// Keeps the JNI entry points in the cdylib so the JVM can resolve them.
+#[cfg(target_os = "android")]
+#[allow(unused_imports)]
+pub use crate::platform::android::jni_host::{
+    JNI_OnLoad, Java_bitshift_qlaunch_MainActivity_onBackPressedEvent,
+    Java_bitshift_qlaunch_MainActivity_onHomePressed,
+};

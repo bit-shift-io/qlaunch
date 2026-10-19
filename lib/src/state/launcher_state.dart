@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
+import 'package:qlaunch/src/rust/search.dart' show SearchHit;
 import 'package:qlaunch/src/rust/settings.dart' show SettingsPatch;
 import 'package:qlaunch/src/state/launcher_backend.dart';
 
@@ -16,6 +17,7 @@ class LauncherState extends ChangeNotifier {
   StreamSubscription<CoreEvent>? _sub;
   ModelSnapshot? _snapshot;
   String? _error;
+  int _homeRequests = 0;
   bool _disposed = false;
 
   // Generations only move forward. A fetch's result is dropped only when a
@@ -29,6 +31,11 @@ class LauncherState extends ChangeNotifier {
   /// The latest platform or re-fetch failure, cleared by the next successful
   /// fetch.
   String? get error => _error;
+
+  /// How many times the system Home button has been pressed since the launcher
+  /// started. A counter rather than a flag: a listener compares it against the
+  /// value it last saw, so it reacts to every press and never to a rebuild.
+  int get homeRequests => _homeRequests;
 
   List<String> get pageIds => _snapshot?.pageIds ?? const [];
 
@@ -69,13 +76,15 @@ class LauncherState extends ChangeNotifier {
       case CoreEvent_Error(:final field0):
         _error = field0;
         _notify();
-      // The spec defers shortcuts, wallpaper and the system button events, so
-      // v1 does nothing with them. Listed rather than defaulted so a variant
-      // added later is a compile error here.
+      case CoreEvent_HomePressed():
+        _homeRequests++;
+        _notify();
+      // The spec defers shortcuts, wallpaper and Back, so v1 does nothing with
+      // them. Listed rather than defaulted so a variant added later is a
+      // compile error here.
       case CoreEvent_ShortcutCreated():
       case CoreEvent_ShortcutCancelled():
       case CoreEvent_WallpaperChanged():
-      case CoreEvent_HomePressed():
       case CoreEvent_BackPressed():
         break;
     }
@@ -120,6 +129,21 @@ class LauncherState extends ChangeNotifier {
       await _backend.launchApp(package, activity);
     } catch (e, st) {
       _fail(e, st);
+    }
+  }
+
+  /// Searches every app for [query], ranked by the core. An empty query
+  /// returns every app.
+  ///
+  /// A failure yields no hits rather than an error: search is ephemeral, and a
+  /// stale message under the field would be noise. A throw is still reported,
+  /// since it means the bridge is broken.
+  Future<List<SearchHit>> searchAllApps(String query) async {
+    try {
+      return await _backend.searchAllApps(query);
+    } catch (e, st) {
+      _report(e, st);
+      return const [];
     }
   }
 

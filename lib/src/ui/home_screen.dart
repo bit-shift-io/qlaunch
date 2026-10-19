@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
+import 'package:qlaunch/src/ui/app_search.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
+import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
 /// The home screen: the group pages, with the tab strip along the top.
@@ -23,14 +27,38 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late final GroupPagerController _controller;
   late String _currentGroupId;
+  late int _seenHomeRequests;
   String? _shownError;
+
+  /// Whether the Home-button search panel is over the launcher.
+  bool _searching = false;
 
   @override
   void initState() {
     super.initState();
     _controller = GroupPagerController(pageIds: widget.state.pageIds);
+    // Open on the Home group, or the first page if no group holds it (§8.2):
+    // the old app always opened on its home screen, and a launcher that opens
+    // somewhere else is a surprise.
+    _goToHome();
     _currentGroupId = _controller.currentGroupId(_controller.currentPage);
+    _seenHomeRequests = widget.state.homeRequests;
     widget.state.addListener(_onStateChanged);
+  }
+
+  /// Moves the controller to the group the Home button would go to: the group
+  /// holding the Home role, or the first page if none does. Returns whether the
+  /// pager moved. `false` also covers the Home group not being one of the
+  /// pages, in which case the pager stays where it is.
+  bool _goToHome() {
+    final pages = widget.state.pageIds;
+    final target =
+        widget.state.homeGroup?.id ?? (pages.isEmpty ? null : pages.first);
+    if (target == null) return false;
+    if (_controller.currentGroupId(_controller.currentPage) == target) {
+      return false;
+    }
+    return _controller.goToGroup(target);
   }
 
   @override
@@ -41,7 +69,59 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onStateChanged() {
     _syncPages();
+    _handleHomePress();
     _reportNewError();
+  }
+
+  /// What the system Home button does, in order: leave a pushed screen; close
+  /// the search; go to the home group; and, already home, open the search.
+  ///
+  /// §8.2 defines the first three and leaves the last as a no-op; opening the
+  /// search there is at the user's request, and pressing Home again closes it.
+  void _handleHomePress() {
+    if (widget.state.homeRequests == _seenHomeRequests) return;
+    _seenHomeRequests = widget.state.homeRequests;
+
+    // A pushed screen (the settings) is what the user is looking at: Home
+    // returns to the launcher rather than changing something underneath it.
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      Navigator.of(context).popUntil((r) => r.isFirst);
+      return;
+    }
+
+    if (_searching) {
+      _closeSearch();
+      return;
+    }
+
+    if (_goToHome()) {
+      setState(
+        () => _currentGroupId = _controller.currentGroupId(
+          _controller.currentPage,
+        ),
+      );
+      return;
+    }
+
+    _openSearch();
+  }
+
+  void _openSearch() => setState(() => _searching = true);
+
+  void _closeSearch() => setState(() => _searching = false);
+
+  /// Opens the launcher settings, the destination §8.2 gives a long press on
+  /// blank space. Pushed directly rather than by route name: this screen holds
+  /// the state the settings need.
+  void _openSettings() {
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (context) => SettingsScreen(state: widget.state),
+        ),
+      ),
+    );
   }
 
   /// Shows a failure the user would otherwise never see.
@@ -124,19 +204,34 @@ class _HomeScreenState extends State<HomeScreen> {
                         currentGroupId: _currentGroupId,
                       ),
                     Expanded(
-                      child: GroupPager(
-                        controller: _controller,
-                        onGroupChanged: _onGroupChanged,
-                        // Each page is built with the group the controller puts
-                        // at that index, so nothing here converts an index
-                        // itself.
-                        gridFor: (context, groupId) =>
-                            AppGrid(state: widget.state, groupId: groupId),
+                      // A long press on blank space opens the settings (§8.2).
+                      // Opaque so a press in a gap between cells still reaches
+                      // this, while a cell claims its own press (AppCell does),
+                      // so a press on an item never opens the settings.
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onLongPress: _openSettings,
+                        child: GroupPager(
+                          controller: _controller,
+                          onGroupChanged: _onGroupChanged,
+                          // Each page is built with the group the controller
+                          // puts at that index, so nothing here converts an
+                          // index itself.
+                          gridFor: (context, groupId) =>
+                              AppGrid(state: widget.state, groupId: groupId),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
+              if (_searching)
+                Positioned.fill(
+                  child: AppSearch(
+                    state: widget.state,
+                    onDone: _closeSearch,
+                  ),
+                ),
             ],
           ),
         );

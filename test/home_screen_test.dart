@@ -6,9 +6,11 @@ import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
+import 'package:qlaunch/src/ui/app_search.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
+import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
 import 'fake_backend.dart';
@@ -43,11 +45,13 @@ void main() {
 
   Future<void> load({
     List<String> pageIds = const ['home', 'apps'],
+    String? homeGroupId,
     List<Item>? items,
     Settings? settings,
   }) async {
     var snapshot = snapshotOf(
       pageIds: pageIds,
+      homeGroupId: homeGroupId,
       groups: [for (final id in pageIds) makeGroup(id)],
       items: items ?? [for (final id in pageIds) launchable('item-$id', id)],
     );
@@ -228,6 +232,141 @@ void main() {
         expect(find.text('item-home'), findsOneWidget);
       },
     );
+  });
+
+  group('the system Home button', () {
+    testWidgets('opens on the home group even when it is not the first page', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['apps', 'home', 'games'], homeGroupId: 'home');
+      await pumpHome(tester);
+
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+      expect(
+        pagerPage(tester),
+        GroupPagerController(pageIds: ['apps', 'home', 'games']).virtualIndexFor(
+          'home',
+        ),
+      );
+    });
+
+    testWidgets('returns the pager to the home group', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'apps');
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+      expect(find.text('item-home'), findsOneWidget);
+    });
+
+    testWidgets('goes to the first page when no group holds Home', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps']);
+      await pumpHome(tester);
+
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'apps');
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the search, opened by the Home button', () {
+    testWidgets('the Home button on the home group opens the search', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+      expect(find.byType(AppSearch), findsNothing);
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(AppSearch), findsOneWidget);
+    });
+
+    testWidgets('from another group the first press only goes home', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'apps');
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+      expect(find.byType(AppSearch), findsNothing);
+
+      // Now that it is home, a second press opens the search.
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(AppSearch), findsOneWidget);
+    });
+
+    testWidgets('a second press closes the search again', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(AppSearch), findsOneWidget);
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(AppSearch), findsNothing);
+    });
+  });
+
+  group('a long press on blank space', () {
+    testWidgets('opens the settings screen', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load();
+      await pumpHome(tester);
+
+      // A point inside the grid but clear of the one item in the first row.
+      final grid = tester.getRect(find.byType(GridView));
+      await tester.longPressAt(Offset(grid.left + 30, grid.bottom - 30));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsOneWidget);
+    });
+
+    testWidgets('on an item does not open the settings screen', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load();
+      await pumpHome(tester);
+
+      await tester.longPress(find.text('item-home'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SettingsScreen), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   });
 
   group('errors', () {

@@ -275,6 +275,12 @@ pub(crate) fn subscribe(deliver: Box<dyn Fn(&CoreEvent) -> bool + Send + Sync>) 
     lock().bus.subscribe(deliver)
 }
 
+/// Emits an event without touching the model. Used by the platform host to
+/// report something the OS did, such as the Home or Back button.
+pub(crate) fn emit(event: CoreEvent) {
+    lock().bus.emit(&event);
+}
+
 /// Runs `f` on the initialised state with the lock held. `f` must not drop
 /// the `App` or call back into this module.
 pub(crate) fn with_app<T>(

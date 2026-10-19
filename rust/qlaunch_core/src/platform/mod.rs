@@ -1,4 +1,7 @@
 mod fake;
+pub mod android;
+// linux is desktop-only; its dependencies and APIs are not built for Android.
+#[cfg(not(target_os = "android"))]
 pub mod linux;
 
 use thiserror::Error;

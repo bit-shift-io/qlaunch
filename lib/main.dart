@@ -44,6 +44,10 @@ class _QLaunchAppState extends State<QLaunchApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'QLaunch',
+      // The launcher is a dark surface, so the whole app defaults to a dark
+      // theme; the settings screen and its dialogs follow it.
+      theme: ThemeData.dark(useMaterial3: true),
+      themeMode: ThemeMode.dark,
       // §8.1's routes are declared here: the settings screen is pushed by name
       // so the left drawer (Plan 3) can reach it without holding the state.
       // Nothing pushes it yet — the drawer is deferred (F3).

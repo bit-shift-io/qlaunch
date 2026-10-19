@@ -142,9 +142,20 @@ class FakeBackend implements LauncherBackend {
   @override
   Future<String?> homeGroupId() => _plain('homeGroupId', current.homeGroupId);
 
+  /// What [searchAllApps] answers for a query. Defaults to no hits.
+  List<SearchHit> Function(String query)? searchAllAppsResults;
+
+  /// Every query [searchAllApps] was asked, in order.
+  final List<String> searchQueries = [];
+
   @override
-  Future<List<SearchHit>> searchAllApps(String query) =>
-      _plain('searchAllApps($query)', const <SearchHit>[]);
+  Future<List<SearchHit>> searchAllApps(String query) {
+    searchQueries.add(query);
+    return _plain(
+      'searchAllApps($query)',
+      searchAllAppsResults?.call(query) ?? const <SearchHit>[],
+    );
+  }
 
   @override
   Future<Uint8List?> iconFor(String package, String activity, int sizePx) =>

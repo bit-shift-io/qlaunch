@@ -173,6 +173,30 @@ fn the_event_bus_delivers_in_subscription_order_and_unsubscribes() {
 }
 
 #[test]
+fn the_home_button_reaches_subscribers_as_home_pressed() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    let seen = record_events();
+
+    api::emit_for_test(CoreEvent::HomePressed);
+
+    assert_eq!(*seen.lock().unwrap(), vec![CoreEvent::HomePressed]);
+}
+
+#[test]
+fn the_back_button_reaches_subscribers_as_back_pressed() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    let seen = record_events();
+
+    api::emit_for_test(CoreEvent::BackPressed);
+
+    assert_eq!(*seen.lock().unwrap(), vec![CoreEvent::BackPressed]);
+}
+
+#[test]
 fn deleting_a_role_holding_group_returns_an_error_string_and_changes_nothing() {
     let _guard = serial();
     let dir = tempdir().unwrap();

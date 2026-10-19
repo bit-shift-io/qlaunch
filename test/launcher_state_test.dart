@@ -187,13 +187,36 @@ void main() {
       fake.emit(const CoreEvent.shortcutCreated(itemId: 'x'));
       fake.emit(const CoreEvent.shortcutCancelled());
       fake.emit(const CoreEvent.wallpaperChanged());
-      fake.emit(const CoreEvent.homePressed());
       fake.emit(const CoreEvent.backPressed());
       await pumpEventQueue();
 
       expect(fake.calls, isEmpty);
       expect(state.error, isNull);
+      expect(state.homeRequests, 0);
       expect(notifications, 1);
+    });
+
+    test('the Home button bumps homeRequests and notifies', () async {
+      await state.load();
+      fake.calls.clear();
+      final before = notifications;
+
+      fake.emit(const CoreEvent.homePressed());
+      await pumpEventQueue();
+
+      expect(state.homeRequests, 1);
+      expect(notifications, before + 1);
+      expect(fake.calls, isEmpty);
+    });
+
+    test('every Home press is a new request', () async {
+      await state.load();
+
+      fake.emit(const CoreEvent.homePressed());
+      fake.emit(const CoreEvent.homePressed());
+      await pumpEventQueue();
+
+      expect(state.homeRequests, 2);
     });
   });
 

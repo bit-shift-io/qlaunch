@@ -8,8 +8,15 @@ interfacing, bridged with `flutter_rust_bridge`.
 
 ## Status
 
-Project setup. No application code yet — the design documents below are the
-current spec.
+Android and Linux both discover and launch apps from a Flutter UI over the Rust
+core. The Linux build runs under Wayland. On Android (verified on Android 14,
+device `6bfcc911`) the grid shows each app's real icon, tapping launches it, and
+QLaunch can be chosen as the system home app (*Settings → Home app*): the Home
+button returns to the Home-role group and Back does nothing. Home-app selection
+is manual, not automatic.
+
+Not yet implemented: shortcuts, wallpaper, the side drawers, the package-change
+receiver, and the notification-shade toggle (deferred in §8.2).
 
 ## Documents
 

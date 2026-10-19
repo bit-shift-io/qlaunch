@@ -136,6 +136,30 @@ void main() {
       expect(c.virtualIndexFor(''), -1);
     });
 
+    test('goToGroup moves the pager to that group', () {
+      final c = GroupPagerController(pageIds: ['apps', 'home', 'games']);
+      expect(c.currentGroupId(c.currentPage), 'apps');
+
+      expect(c.goToGroup('games'), isTrue);
+      expect(c.currentGroupId(c.currentPage), 'games');
+      expect(c.currentPage, c.virtualIndexFor('games'));
+    });
+
+    test('goToGroup leaves the pager alone when the group is not shown', () {
+      final c = GroupPagerController(pageIds: ['apps', 'home']);
+      final before = c.currentPage;
+
+      expect(c.goToGroup('missing'), isFalse);
+      expect(c.currentPage, before);
+    });
+
+    test('goToGroup on an empty list does nothing', () {
+      final c = GroupPagerController(pageIds: []);
+      final before = c.currentPage;
+      expect(c.goToGroup('anything'), isFalse);
+      expect(c.currentPage, before);
+    });
+
     test(
       'virtualIndexFor is the canonical index in the cycle at initialPage',
       () {

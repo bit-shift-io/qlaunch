@@ -5,7 +5,10 @@ use flutter_rust_bridge::frb;
 use crate::frb_generated::StreamSink;
 use crate::model::{AppRef, Group, GroupRole, Id, Item};
 use crate::platform::AppSource;
+#[cfg(not(target_os = "android"))]
 use crate::platform::linux::LinuxSource;
+#[cfg(target_os = "android")]
+use crate::platform::android::{AndroidSource, jni_host::JniHost};
 use crate::search::{SearchCandidate, search};
 use crate::settings::{Settings, SettingsPatch};
 use crate::store;
@@ -14,6 +17,18 @@ pub use crate::search::SearchHit;
 
 use super::events::CoreEvent;
 use super::state;
+
+/// The platform's `AppSource`. Rust resolves this; Dart never chooses.
+fn platform_source() -> Box<dyn AppSource> {
+    #[cfg(target_os = "android")]
+    {
+        Box::new(AndroidSource::new(JniHost::new()))
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Box::new(LinuxSource::new())
+    }
+}
 
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
@@ -64,7 +79,7 @@ pub async fn init(config_root_override: Option<String>) -> Result<ModelSnapshot,
             ),
         },
     };
-    state::install(root, Box::new(LinuxSource::new()), warnings)
+    state::install(root, platform_source(), warnings)
 }
 
 /// The testable core of [`init`], not part of the bridge surface.
@@ -98,6 +113,14 @@ pub fn subscribe_for_test(
 ) -> Result<(), String> {
     state::subscribe(Box::new(move |event| deliver(event.clone())));
     Ok(())
+}
+
+/// Emits a core event to subscribers. For tests only: the Android host emits
+/// the Home and Back events itself, from the JNI callbacks.
+#[doc(hidden)]
+#[frb(ignore)]
+pub fn emit_for_test(event: CoreEvent) {
+    state::emit(event);
 }
 
 pub async fn snapshot() -> Result<ModelSnapshot, String> {

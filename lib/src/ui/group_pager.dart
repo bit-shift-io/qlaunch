@@ -83,6 +83,19 @@ class GroupPagerController {
     return position < 0 ? -1 : initialPage + position;
   }
 
+  /// Moves the pager to [groupId]'s canonical index, if the group is shown.
+  ///
+  /// Returns `false` and changes nothing when the group is not in the list, so
+  /// a caller asking for a group that no longer exists leaves the user where
+  /// they were. This only moves the controller; the pager moves the next time
+  /// it is rebuilt.
+  bool goToGroup(String groupId) {
+    final index = virtualIndexFor(groupId);
+    if (index < 0) return false;
+    _currentPage = index;
+    return true;
+  }
+
   /// The group on [currentPage], the page the pager is actually showing. Same
   /// as [groupIdAt]; it exists to say what the caller means.
   String currentGroupId(int currentPage) => groupIdAt(currentPage);
