@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/events.dart';
+import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
+import 'package:qlaunch/src/rust/usage.dart';
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 
@@ -187,13 +189,26 @@ void main() {
       fake.emit(const CoreEvent.shortcutCreated(itemId: 'x'));
       fake.emit(const CoreEvent.shortcutCancelled());
       fake.emit(const CoreEvent.wallpaperChanged());
-      fake.emit(const CoreEvent.backPressed());
       await pumpEventQueue();
 
       expect(fake.calls, isEmpty);
       expect(state.error, isNull);
       expect(state.homeRequests, 0);
+      expect(state.backRequests, 0);
       expect(notifications, 1);
+    });
+
+    test('the Back button bumps backRequests and notifies', () async {
+      await state.load();
+      fake.calls.clear();
+      final before = notifications;
+
+      fake.emit(const CoreEvent.backPressed());
+      await pumpEventQueue();
+
+      expect(state.backRequests, 1);
+      expect(notifications, before + 1);
+      expect(fake.calls, isEmpty);
     });
 
     test('the Home button bumps homeRequests and notifies', () async {
@@ -217,6 +232,51 @@ void main() {
       await pumpEventQueue();
 
       expect(state.homeRequests, 2);
+    });
+  });
+
+  group('chooseWallpaper', () {
+    test('reaches the backend', () async {
+      await state.load();
+      fake.calls.clear();
+
+      await state.chooseWallpaper();
+
+      expect(fake.calls, contains('chooseWallpaper'));
+      expect(state.error, isNull);
+    });
+
+    test('a failure is state, not a throw', () async {
+      await state.load();
+      fake.failure = StateError('no chooser');
+
+      await state.chooseWallpaper();
+
+      expect(state.error, contains('no chooser'));
+      expect(reported, hasLength(1));
+    });
+  });
+
+  group('usage queries', () {
+    test('pass the limit through and answer with the backend result', () async {
+      await state.load();
+      fake.frequentAppsResults = (limit) => [
+        UsageHit(app: AppRef(package: 'p', activity: 'Main'), label: 'P'),
+      ];
+
+      final hits = await state.frequentApps(24);
+
+      expect(hits.single.label, 'P');
+      expect(fake.usageQueries, ['frequent(24)']);
+    });
+
+    test('a failure yields no hits and is reported, not thrown', () async {
+      await state.load();
+      fake.failure = StateError('boom');
+
+      expect(await state.recentApps(24), isEmpty);
+      expect(reported, hasLength(1));
+      expect(state.error, isNull, reason: 'search-like failures are not state');
     });
   });
 

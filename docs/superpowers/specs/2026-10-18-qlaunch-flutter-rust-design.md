@@ -235,7 +235,7 @@ all returning plain data:
 | `uninstall(package)` / `appInfo(package)` | `ACTION_DELETE` / app-info screen |
 | `queryShortcutProviders()` | Activities handling `ACTION_CREATE_SHORTCUT` |
 | `createShortcut(package, activity)` | Start for result; the returned intent is delivered back to Rust asynchronously |
-| `wallpaperPng()` | Current wallpaper as PNG bytes (§7.7) |
+| `chooseWallpaper()` | Opens the system wallpaper chooser (`ACTION_SET_WALLPAPER`); the window shows the result (§7.7) |
 | `setOrientation(mode)` / `setStatusBarVisible(bool)` | Window behaviour |
 | `watchPackages(bool)` | Start/stop the `PACKAGE_ADDED`/`PACKAGE_REMOVED` receiver |
 
@@ -331,12 +331,22 @@ means a translucent `FlutterView`, which is a known source of compositing
 problems (opaque surfaces, black flicker on resume, no reliable transparency on
 some devices).
 
-**Decision:** fetch the wallpaper as bytes (`QLaunchBridge.wallpaperPng()`) and
-draw it in Flutter as the bottom layer, with the overlay on top. Same visual
-result, testable, no translucent-surface fragility, and it reuses the icon byte
-transport that already exists. A `WallpaperManager` change listener refreshes it.
+**Decision (revised on device):** show the wallpaper the way a launcher
+normally does — a transparent window that shows the system wallpaper
+(`android:windowShowWallpaper` with a transparent `windowBackground`, and
+`FlutterActivityLaunchConfigs.BackgroundMode.transparent`), with Flutter's base
+layer transparent and the overlay on top. The original plan — fetch the bytes
+via `QLaunchBridge.wallpaperPng()` and draw them in Flutter — is **not possible**
+on Android 14+: `WallpaperManager.getDrawable()` throws
+`SecurityException: READ_EXTERNAL_STORAGE denied` (the OS checks
+`checkPermissionReadImages`), and a launcher must not request a broad media
+permission to read its own wallpaper. `wallpaperPng` was removed.
 
-Known limitation: a *live* wallpaper will show as a still frame. Accepted for v1.
+A setting action (`QLaunchBridge.chooseWallpaper()`, `ACTION_SET_WALLPAPER`)
+opens the system wallpaper chooser.
+
+Known limitation: a *live* wallpaper shows as whatever the window composites.
+Accepted for v1.
 
 On Linux the wallpaper concept does not exist for a windowed app; the base layer
 is a solid colour and the overlay setting still applies.
@@ -447,11 +457,15 @@ reassignment safe:
 - A group holding any role cannot be deleted. Deleting an ordinary group moves
   its items to the `Apps` group — the old app's behaviour, and the only
   non-arbitrary choice.
-- **Visibility is group membership, nothing else.** The old item-level
+- **Item visibility is group membership, nothing else.** The old item-level
   `VISIBLE`/`HIDDEN` flags are gone; there is no `set_item_flag`. An item is
-  hidden iff its group is the `Hidden` group; a group is a page iff it is a
-  child of `Root` and does not hold the `Hidden` role. The App Settings group
-  picker can move an item to `Hidden`, which is the whole hiding mechanism.
+  hidden iff its group is the `Hidden` group. The App Settings group picker can
+  move an item to `Hidden`, which is the whole item-hiding mechanism.
+- **Group visibility is a flag.** A group is a page iff it is a child of `Root`,
+  does not hold the `Hidden` role, and its `hidden` flag is false. Any group can
+  be hidden and shown again with a switch in the group editor
+  (`set_group_hidden`); the root and the `Hidden`-role group cannot be toggled.
+  Hiding keeps a group's items and order, so showing it again restores it.
 - **`AppRef` is unique across all items.** One item per (package, activity) in
   the whole model. This is what makes reconciliation a clean set-diff and makes
   "return to its previous group after reinstall" well-defined; the store
@@ -607,6 +621,7 @@ async fn add_group(label: String) -> ModelSnapshot;
 async fn rename_group(id: String, label: String) -> ModelSnapshot;
 async fn move_group(id: String, new_order: i32) -> ModelSnapshot;
 async fn set_group_role(id: String, role: Option<GroupRole>) -> ModelSnapshot;
+async fn set_group_hidden(id: String, hidden: bool) -> ModelSnapshot;  // not the root or the Hidden group
 async fn delete_group(id: String) -> ModelSnapshot;   // fails if the group holds a role
 async fn move_item(id: String, to_group: String, new_order: i32) -> ModelSnapshot;
 async fn rename_item(id: String, label: String) -> ModelSnapshot;
@@ -614,14 +629,16 @@ async fn set_item_icon(id: String, png: Vec<u8>) -> ModelSnapshot;
 async fn remove_item(id: String) -> ModelSnapshot;
 async fn sort_group(id: String) -> ModelSnapshot;
 // queries
-async fn search_all_apps(query: String) -> Vec<SearchHit>;
+async fn search_all_apps(query: String) -> Vec<SearchHit>;   // "" returns nothing
+async fn frequent_apps(limit: u32) -> Vec<UsageHit>;
+async fn recent_apps(limit: u32) -> Vec<UsageHit>;
 async fn icon_for(app: AppRef, size_px: u32) -> Option<Vec<u8>>;
-async fn wallpaper_png() -> Option<Vec<u8>>;
 async fn home_group_id() -> Option<String>;
 // actions
 async fn launch_app(app: AppRef) -> Result<(), String>;
 async fn launch_shortcut(id: String) -> Result<(), String>;
 async fn uninstall_app(app: AppRef) -> Result<(), String>;
+async fn choose_wallpaper() -> Result<(), String>;
 async fn begin_add_shortcut() -> Vec<ShortcutProvider>;
 async fn create_shortcut(provider: ShortcutProvider, target_group_id: String) -> Result<(), String>;
 // settings
@@ -648,7 +665,7 @@ enum CoreEvent {
     AppsChanged,                        // reconciliation finished; new/removed apps
     ShortcutCreated { item_id: Uuid },  // the provider activity returned one
     ShortcutCancelled,                  // the user backed out of the provider activity
-    WallpaperChanged,                   // re-fetch and re-render the base layer
+    WallpaperChanged,                   // reserved: the window shows the wallpaper itself (§7.7)
     HomePressed,                        // Dart decides: close drawer, or go to Home group
     BackPressed,
     Error(String),
@@ -656,8 +673,8 @@ enum CoreEvent {
 ```
 
 Without `ShortcutCreated`/`ShortcutCancelled` the Add Shortcut flow has no way
-to close its dialog or report a failure; without `WallpaperChanged` the base
-layer goes stale.
+to close its dialog or report a failure. `WallpaperChanged` is reserved: the
+window shows the system wallpaper itself (§7.7), so nothing re-reads it today.
 
 `ModelSnapshot` is the whole view-relevant model in one object. Returning a full
 snapshot from every mutation is a deliberate simplification at this scale: it

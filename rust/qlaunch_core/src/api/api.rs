@@ -15,6 +15,7 @@ use crate::settings::{Settings, SettingsPatch};
 use crate::store;
 
 pub use crate::search::SearchHit;
+pub use crate::usage::UsageHit;
 
 use super::events::CoreEvent;
 use super::state;
@@ -183,6 +184,11 @@ pub async fn delete_group(id: Id) -> Result<ModelSnapshot, String> {
     state::mutate_model(|m| m.delete_group(&id))
 }
 
+/// Shows or hides the group `id` from the pager and the tab strip.
+pub async fn set_group_hidden(id: Id, hidden: bool) -> Result<ModelSnapshot, String> {
+    state::mutate_model(|m| m.set_group_hidden(&id, hidden))
+}
+
 pub async fn move_item(id: Id, to_group: Id, new_order: i32) -> Result<ModelSnapshot, String> {
     state::mutate_model(|m| m.move_item(&id, &to_group, new_order))
 }
@@ -250,11 +256,28 @@ pub async fn icon_for(package: String, activity: String, size_px: u32) -> Option
         .flatten()
 }
 
+/// The most-launched apps, in launch-count order, up to `limit`. Apps that are
+/// not in the launcher, or are uninstalled, are not included. Empty before
+/// `init`.
+pub async fn frequent_apps(limit: u32) -> Vec<UsageHit> {
+    state::usage_hits(limit, true)
+}
+
+/// The most-recently-launched apps, newest first, up to `limit`. The same
+/// exclusions as [`frequent_apps`]. Empty before `init`.
+pub async fn recent_apps(limit: u32) -> Vec<UsageHit> {
+    state::usage_hits(limit, false)
+}
+
+/// Launches an app, and records the launch once it has opened. Only a launch
+/// that succeeds is recorded, so Frequent and Recent never hold an app the user
+/// did not actually open.
 pub async fn launch_app(package: String, activity: String) -> Result<(), String> {
     let source = state::with_app(|app, _| Ok(app.source.clone()))?;
-    source
-        .launch(&AppRef { package, activity })
-        .map_err(|e| state::launch_error(&e))
+    let app = AppRef { package, activity };
+    source.launch(&app).map_err(|e| state::launch_error(&e))?;
+    state::record_launch(&app);
+    Ok(())
 }
 
 /// Asks the system to uninstall `package_name`. On Android this opens the
@@ -269,6 +292,21 @@ pub async fn uninstall_app(package_name: String) -> Result<(), String> {
     {
         let _ = package_name;
         Err("uninstalling an app is only available on Android".into())
+    }
+}
+
+/// Opens the system wallpaper chooser. Only Android has one; elsewhere this is
+/// an error the settings screen reports like any other. There is no result: the
+/// user chooses in the system UI, and the change arrives as
+/// [`CoreEvent::WallpaperChanged`].
+pub async fn choose_wallpaper() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        JniHost::choose_wallpaper().map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("choosing a wallpaper is only available on Android".into())
     }
 }
 

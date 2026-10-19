@@ -78,6 +78,46 @@ fn pages_are_root_children_except_hidden_in_order() {
 }
 
 #[test]
+fn hiding_a_group_removes_it_from_the_pages_and_showing_it_restores_it() {
+    let mut m = Model::new_default();
+    let g = m.add_group("Chat");
+    m.set_group_hidden(&g, true).unwrap();
+    assert_eq!(page_labels(&m), ["Apps", "Home", "Games"]);
+    m.set_group_hidden(&g, false).unwrap();
+    assert_eq!(page_labels(&m).last().unwrap(), "Chat");
+}
+
+#[test]
+fn hiding_a_group_keeps_its_items_and_order() {
+    let mut m = Model::new_default();
+    let g = m.add_group("Chat");
+    m.add_item_to(&g, "Item");
+    let before = m.groups.iter().find(|x| x.id == g).unwrap().order;
+    m.set_group_hidden(&g, true).unwrap();
+    assert_eq!(item_labels(&m, &g), ["Item"]);
+    assert_eq!(m.groups.iter().find(|x| x.id == g).unwrap().order, before);
+}
+
+#[test]
+fn the_root_and_the_hidden_group_cannot_be_toggled() {
+    let mut m = Model::new_default();
+    let root = m.root_group_id.clone();
+    let hidden = m.role_holder(GroupRole::Hidden).unwrap().id.clone();
+    assert_eq!(
+        m.set_group_hidden(&root, true),
+        Err(ModelError::NotAPage(root))
+    );
+    assert_eq!(
+        m.set_group_hidden(&hidden, true),
+        Err(ModelError::NotAPage(hidden))
+    );
+    assert_eq!(
+        m.set_group_hidden(&"nope".to_string(), true),
+        Err(ModelError::UnknownGroup("nope".into()))
+    );
+}
+
+#[test]
 fn add_group_goes_after_the_last_page_and_orders_stay_dense() {
     let mut m = Model::new_default();
     let g = m.add_group("Chat");

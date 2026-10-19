@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::model::{Item, Model, ModelError};
+use crate::model::{AppRef, Item, Model, ModelError};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
 use crate::reconcile::reconcile;
 use crate::settings::Settings;
 use crate::store::{Store, StoreError};
+use crate::usage::{Usage, UsageHit};
 
 use super::api::ModelSnapshot;
 use super::events::{CoreEvent, EventBus};
@@ -25,6 +27,8 @@ pub(crate) struct App {
     pub(crate) store: Option<Store>,
     pub(crate) model: Model,
     pub(crate) settings: Settings,
+    /// What has been launched, and when; saved beside the model and settings.
+    pub(crate) usage: Usage,
     pub(crate) source: Arc<dyn AppSource>,
     /// Owns the platform watcher. Dropping it joins a thread that calls back
     /// into this module and takes the state lock, so an `App` must never be
@@ -152,11 +156,12 @@ pub(crate) fn persist(
     store: Option<&Store>,
     model: &Model,
     settings: &Settings,
+    usage: &Usage,
 ) -> Result<Option<String>, String> {
     let Some(store) = store else {
         return Ok(None);
     };
-    match store.save(model, settings) {
+    match store.save(model, settings, usage) {
         Ok(()) => Ok(None),
         Err(e @ (StoreError::WritesBlocked | StoreError::Io(_))) => Ok(Some(format!(
             "Changes are not being saved ({}).",
@@ -169,6 +174,60 @@ pub(crate) fn persist(
             | StoreError::InvalidIconName(_)),
         ) => Err(store_error(&e)),
     }
+}
+
+/// Unix milliseconds, or 0 if the clock is somehow before the epoch. Only ever
+/// compared with another value from this clock, so that floor is harmless.
+fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis().min(i64::MAX as u128) as i64)
+        .unwrap_or(0)
+}
+
+/// Records a successful launch of `app` and saves it. The app has already
+/// opened, so a failed save is only a warning on the state, never an error
+/// here, and it is reported the same way as any other failed save.
+pub(crate) fn record_launch(app: &AppRef) {
+    let _ = with_app(|state, _bus| {
+        state.usage.record(app, now_ms());
+        let problem = persist(
+            state.store.as_ref(),
+            &state.model,
+            &state.settings,
+            &state.usage,
+        )?;
+        state.save_problem = problem;
+        Ok(())
+    });
+}
+
+/// The apps to show under Frequent (`frequent` true) or Recent, up to `limit`,
+/// resolved to the label the launcher currently shows for each. Empty before
+/// `init`.
+pub(crate) fn usage_hits(limit: u32, frequent: bool) -> Vec<UsageHit> {
+    with_app(|state, _bus| {
+        let labels: HashMap<(String, String), String> = state
+            .model
+            .items
+            .iter()
+            .filter(|i| !i.uninstalled)
+            .filter_map(|i| {
+                i.app
+                    .as_ref()
+                    .map(|a| ((a.package.clone(), a.activity.clone()), i.label.clone()))
+            })
+            .collect();
+        let label_of = |a: &AppRef| labels.get(&(a.package.clone(), a.activity.clone())).cloned();
+        let limit = limit as usize;
+        Ok(if frequent {
+            state.usage.frequent(limit, label_of)
+        } else {
+            state.usage.recent(limit, label_of)
+        })
+    })
+    .unwrap_or_default()
 }
 
 fn list_problem(e: &PlatformError) -> String {
@@ -193,14 +252,19 @@ pub(crate) fn install(
     // the app being replaced cannot save over what is loaded here.
     let mut global = lock();
 
-    let (store, mut model, settings) = match config_root {
+    let (store, mut model, settings, usage) = match config_root {
         Some(root) => {
             let store = Store::new(root);
             let loaded = store.load().map_err(|e| store_error(&e))?;
             warnings.extend(loaded.warnings);
-            (Some(store), loaded.model, loaded.settings)
+            (Some(store), loaded.model, loaded.settings, loaded.usage)
         }
-        None => (None, Model::new_default(), Settings::default()),
+        None => (
+            None,
+            Model::new_default(),
+            Settings::default(),
+            Usage::default(),
+        ),
     };
 
     // A failed listing must not reach `reconcile`: an empty list would mark
@@ -213,7 +277,7 @@ pub(crate) fn install(
         Err(e) => Some(list_problem(&e)),
     };
 
-    let save_problem = persist(store.as_ref(), &model, &settings)?;
+    let save_problem = persist(store.as_ref(), &model, &settings, &usage)?;
 
     // Registered last, with nothing after it that can return early: from here
     // on an `App` exists that owns a running watcher, and it must only ever
@@ -236,6 +300,7 @@ pub(crate) fn install(
         store,
         model,
         settings,
+        usage,
         source,
         _watch: watch,
         base_warnings: warnings,
@@ -310,7 +375,7 @@ pub(crate) fn mutate_model(
 }
 
 fn commit_model(app: &mut App, bus: &mut EventBus, next: Model) -> Result<ModelSnapshot, String> {
-    let problem = persist(app.store.as_ref(), &next, &app.settings)?;
+    let problem = persist(app.store.as_ref(), &next, &app.settings, &app.usage)?;
     app.model = next;
     app.save_problem = problem;
     bus.emit(&CoreEvent::ModelChanged);
@@ -321,7 +386,7 @@ pub(crate) fn mutate_settings(change: impl FnOnce(&mut Settings)) -> Result<Mode
     with_app(|app, bus| {
         let mut next = app.settings.clone();
         change(&mut next);
-        let problem = persist(app.store.as_ref(), &app.model, &next)?;
+        let problem = persist(app.store.as_ref(), &app.model, &next, &app.usage)?;
         app.settings = next;
         app.save_problem = problem;
         bus.emit(&CoreEvent::ModelChanged);
@@ -368,7 +433,7 @@ pub(crate) fn refresh_apps_now() -> Result<ModelSnapshot, String> {
                     && outcome.marked_uninstalled.is_empty()
                     && outcome.restored.is_empty());
                 if changed {
-                    let problem = persist(app.store.as_ref(), &next, &app.settings)?;
+                    let problem = persist(app.store.as_ref(), &next, &app.settings, &app.usage)?;
                     app.model = next;
                     app.save_problem = problem;
                     bus.emit(&CoreEvent::AppsChanged);

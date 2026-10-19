@@ -1,26 +1,10 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 
-// A 1x1 PNG.
-final Uint8List _png = base64Decode(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-);
-
-Future<void> _pump(
-  WidgetTester tester, {
-  int alpha = 0,
-  Uint8List? wallpaper,
-}) async {
+Future<void> _pump(WidgetTester tester, {int alpha = 0}) async {
   await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: BackgroundLayer(alpha: alpha, wallpaper: wallpaper),
-      ),
-    ),
+    MaterialApp(home: Scaffold(body: BackgroundLayer(alpha: alpha))),
   );
 }
 
@@ -64,33 +48,14 @@ void main() {
   });
 
   group('base layer', () {
-    testWidgets('no wallpaper draws the solid base colour', (tester) async {
+    testWidgets('draws the solid base colour', (tester) async {
       await _pump(tester);
-      expect(find.byKey(BackgroundLayer.baseKey), findsOneWidget);
-      expect(find.byType(Image), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('wallpaper bytes are drawn instead of the base colour', (
-      tester,
-    ) async {
-      await _pump(tester, alpha: 0, wallpaper: _png);
-      expect(find.byKey(BackgroundLayer.wallpaperKey), findsOneWidget);
-      expect(find.byKey(BackgroundLayer.baseKey), findsNothing);
-      expect(tester.widget<Image>(find.byType(Image)).fit, BoxFit.cover);
-    });
-
-    testWidgets('bytes that are not an image fall back to the base colour', (
-      tester,
-    ) async {
-      await _pump(tester, wallpaper: Uint8List.fromList(const [1, 2, 3]));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      final base = tester.widget<ColoredBox>(
+        find.byKey(BackgroundLayer.baseKey),
       );
-      await tester.pump();
-      // The decode failure is reported to the framework; it is handled here.
-      tester.takeException();
-      expect(find.byKey(BackgroundLayer.baseKey), findsOneWidget);
+      // Tests run where there is no window wallpaper, so the base is solid.
+      expect(base.color, BackgroundLayer.baseColour);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('it covers the whole surface', (tester) async {

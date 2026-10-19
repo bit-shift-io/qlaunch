@@ -80,6 +80,21 @@ object QLaunchBridge {
         }
     }
 
+    /// Opens the system wallpaper chooser. There is no result the app needs:
+    /// the window already shows the system wallpaper (theme
+    /// `windowShowWallpaper`), so the change is visible as soon as the system
+    /// applies it.
+    @JvmStatic
+    fun chooseWallpaper() {
+        val context = getAppContext()
+        val intent = Intent(Intent.ACTION_SET_WALLPAPER)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(
+            Intent.createChooser(intent, "Choose wallpaper")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+
     /// Opens the system's uninstall confirmation for `packageName`.
     @JvmStatic
     fun uninstall(packageName: String) {

@@ -21,8 +21,8 @@ const testSettings = Settings(
   orientation: Orientation.auto,
 );
 
-Group makeGroup(String id, {GroupRole? role, int order = 0}) =>
-    Group(id: id, label: id, role: role, order: order);
+Group makeGroup(String id, {GroupRole? role, int order = 0, bool hidden = false}) =>
+    Group(id: id, label: id, role: role, order: order, hidden: hidden);
 
 Item makeItem(
   String id,
@@ -48,12 +48,13 @@ ModelSnapshot snapshotOf({
   List<String> pageIds = const [],
   List<Group> groups = const [],
   List<Item> items = const [],
+  Settings settings = testSettings,
 }) => ModelSnapshot(
   rootGroupId: rootGroupId,
   homeGroupId: homeGroupId,
   pageIds: pageIds,
   groups: groups,
   items: items,
-  settings: testSettings,
+  settings: settings,
   warnings: const [],
 );

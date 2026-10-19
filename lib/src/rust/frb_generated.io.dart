@@ -18,6 +18,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
 
 import 'search.dart';
 import 'settings.dart';
+import 'usage.dart';
 
 abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RustLibApiImplPlatform({
@@ -127,6 +128,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<SearchHit> dco_decode_list_search_hit(dynamic raw);
 
   @protected
+  List<UsageHit> dco_decode_list_usage_hit(dynamic raw);
+
+  @protected
   MatchKind dco_decode_match_kind(dynamic raw);
 
   @protected
@@ -197,6 +201,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void dco_decode_unit(dynamic raw);
+
+  @protected
+  UsageHit dco_decode_usage_hit(dynamic raw);
 
   @protected
   AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
@@ -306,6 +313,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<SearchHit> sse_decode_list_search_hit(SseDeserializer deserializer);
 
   @protected
+  List<UsageHit> sse_decode_list_usage_hit(SseDeserializer deserializer);
+
+  @protected
   MatchKind sse_decode_match_kind(SseDeserializer deserializer);
 
   @protected
@@ -388,6 +398,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_decode_unit(SseDeserializer deserializer);
+
+  @protected
+  UsageHit sse_decode_usage_hit(SseDeserializer deserializer);
 
   @protected
   void sse_encode_AnyhowException(
@@ -525,6 +538,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_usage_hit(List<UsageHit> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_match_kind(MatchKind self, SseSerializer serializer);
 
   @protected
@@ -628,6 +644,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_usage_hit(UsageHit self, SseSerializer serializer);
 }
 
 // Section: wire_class

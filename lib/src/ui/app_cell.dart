@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
+import 'package:qlaunch/src/ui/label_style.dart';
 
 /// One app in the grid: an icon and a label laid out per `Settings.layout`.
 ///
@@ -137,24 +138,6 @@ class AppCell extends StatelessWidget {
   }
 
   Widget _label(bool list) {
-    final colour = switch (settings.labelColour) {
-      LabelColour.white => Colors.white,
-      LabelColour.black => Colors.black,
-      LabelColour.grey => Colors.grey,
-    };
-    final family = switch (settings.labelTypeface) {
-      Typeface.normal => null,
-      Typeface.sans => 'sans-serif',
-      Typeface.serif => 'serif',
-      Typeface.monospace => 'monospace',
-    };
-    // The shadow keeps the text readable over a wallpaper; black text gets a
-    // light one, since a dark halo would only smudge it.
-    final shadow = Shadow(
-      color: colour == Colors.black ? Colors.white : Colors.black,
-      blurRadius: 2,
-      offset: const Offset(1, 1),
-    );
     return Text(
       item.label,
       key: labelKey,
@@ -162,14 +145,8 @@ class AppCell extends StatelessWidget {
       softWrap: false,
       overflow: TextOverflow.ellipsis,
       textAlign: list ? TextAlign.start : TextAlign.center,
-      style: TextStyle(
-        // Logical pixels. Flutter applies the user's text scale on top, which
-        // is what makes this "sp".
-        fontSize: settings.labelSize.toDouble(),
-        fontFamily: family,
-        color: colour,
-        shadows: settings.labelShadow ? [shadow] : null,
-      ),
+      // The same style the tab strip reads, so labels cannot drift apart.
+      style: labelTextStyle(settings),
     );
   }
 }

@@ -23,10 +23,9 @@ pub struct SearchHit {
 pub fn search(candidates: &[SearchCandidate], query: &str) -> Vec<SearchHit> {
     let query = query.trim().to_lowercase();
     if query.is_empty() {
-        return candidates
-            .iter()
-            .map(|c| hit(c, MatchKind::Prefix))
-            .collect();
+        // Nothing asked for, nothing to show: the search screen presents its
+        // own Frequent/Recent lists before the user types.
+        return Vec::new();
     }
 
     let mut hits: Vec<SearchHit> = candidates

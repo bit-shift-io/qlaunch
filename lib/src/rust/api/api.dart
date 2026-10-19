@@ -8,6 +8,7 @@ import '../model.dart';
 import '../model/roles.dart';
 import '../search.dart';
 import '../settings.dart';
+import '../usage.dart';
 import 'events.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
@@ -52,6 +53,12 @@ Future<ModelSnapshot> setGroupRole({required String id, GroupRole? role}) =>
 
 Future<ModelSnapshot> deleteGroup({required String id}) =>
     RustLib.instance.api.crateApiApiDeleteGroup(id: id);
+
+/// Shows or hides the group `id` from the pager and the tab strip.
+Future<ModelSnapshot> setGroupHidden({
+  required String id,
+  required bool hidden,
+}) => RustLib.instance.api.crateApiApiSetGroupHidden(id: id, hidden: hidden);
 
 Future<ModelSnapshot> moveItem({
   required String id,
@@ -102,6 +109,20 @@ Future<Uint8List?> iconFor({
   sizePx: sizePx,
 );
 
+/// The most-launched apps, in launch-count order, up to `limit`. Apps that are
+/// not in the launcher, or are uninstalled, are not included. Empty before
+/// `init`.
+Future<List<UsageHit>> frequentApps({required int limit}) =>
+    RustLib.instance.api.crateApiApiFrequentApps(limit: limit);
+
+/// The most-recently-launched apps, newest first, up to `limit`. The same
+/// exclusions as [`frequent_apps`]. Empty before `init`.
+Future<List<UsageHit>> recentApps({required int limit}) =>
+    RustLib.instance.api.crateApiApiRecentApps(limit: limit);
+
+/// Launches an app, and records the launch once it has opened. Only a launch
+/// that succeeds is recorded, so Frequent and Recent never hold an app the user
+/// did not actually open.
 Future<void> launchApp({required String package, required String activity}) =>
     RustLib.instance.api.crateApiApiLaunchApp(
       package: package,
@@ -113,6 +134,13 @@ Future<void> launchApp({required String package, required String activity}) =>
 /// receiver, not here.
 Future<void> uninstallApp({required String packageName}) =>
     RustLib.instance.api.crateApiApiUninstallApp(packageName: packageName);
+
+/// Opens the system wallpaper chooser. Only Android has one; elsewhere this is
+/// an error the settings screen reports like any other. There is no result: the
+/// user chooses in the system UI, and the change arrives as
+/// [`CoreEvent::WallpaperChanged`].
+Future<void> chooseWallpaper() =>
+    RustLib.instance.api.crateApiApiChooseWallpaper();
 
 /// Streams the core's events to Dart. A subscriber that misses an event can
 /// always re-read `snapshot()`. The subscription ends when the stream is

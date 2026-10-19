@@ -57,12 +57,20 @@ class Group {
   final GroupRole? role;
   final int order;
 
+  /// Whether the group is hidden from the pager and the tab strip. Ordinary
+  /// groups can be hidden and shown again from the group editor; the group
+  /// holding the `Hidden` *role* is never a page regardless of this, and the
+  /// root can never be hidden. Defaulted so a document written before this
+  /// field still loads (the schema stays at 1).
+  final bool hidden;
+
   const Group({
     required this.id,
     required this.label,
     this.parentId,
     this.role,
     required this.order,
+    required this.hidden,
   });
 
   @override
@@ -71,7 +79,8 @@ class Group {
       label.hashCode ^
       parentId.hashCode ^
       role.hashCode ^
-      order.hashCode;
+      order.hashCode ^
+      hidden.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -82,7 +91,8 @@ class Group {
           label == other.label &&
           parentId == other.parentId &&
           role == other.role &&
-          order == other.order;
+          order == other.order &&
+          hidden == other.hidden;
 }
 
 class Item {

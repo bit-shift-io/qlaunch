@@ -5,6 +5,7 @@ import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart';
 import 'package:qlaunch/src/rust/settings.dart';
+import 'package:qlaunch/src/rust/usage.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +112,10 @@ class FakeBackend implements LauncherBackend {
       _snapshotFor('setGroupRole($id,${role?.name})');
 
   @override
+  Future<ModelSnapshot> setGroupHidden(String id, bool hidden) =>
+      _snapshotFor('setGroupHidden($id,$hidden)');
+
+  @override
   Future<ModelSnapshot> deleteGroup(String id) =>
       _snapshotFor('deleteGroup($id)');
 
@@ -157,6 +162,33 @@ class FakeBackend implements LauncherBackend {
     );
   }
 
+  /// What [frequentApps] answers for a limit. Defaults to no hits.
+  List<UsageHit> Function(int limit)? frequentAppsResults;
+
+  /// What [recentApps] answers for a limit. Defaults to no hits.
+  List<UsageHit> Function(int limit)? recentAppsResults;
+
+  /// Every usage query asked, in order, e.g. `frequent(24)`.
+  final List<String> usageQueries = [];
+
+  @override
+  Future<List<UsageHit>> frequentApps(int limit) {
+    usageQueries.add('frequent($limit)');
+    return _plain(
+      'frequentApps($limit)',
+      frequentAppsResults?.call(limit) ?? const <UsageHit>[],
+    );
+  }
+
+  @override
+  Future<List<UsageHit>> recentApps(int limit) {
+    usageQueries.add('recent($limit)');
+    return _plain(
+      'recentApps($limit)',
+      recentAppsResults?.call(limit) ?? const <UsageHit>[],
+    );
+  }
+
   @override
   Future<Uint8List?> iconFor(String package, String activity, int sizePx) =>
       _plain<Uint8List?>(
@@ -173,6 +205,11 @@ class FakeBackend implements LauncherBackend {
   @override
   Future<void> uninstallApp(String package) async {
     await _plain('uninstallApp($package)', null);
+  }
+
+  @override
+  Future<void> chooseWallpaper() async {
+    await _plain('chooseWallpaper', null);
   }
 
   @override

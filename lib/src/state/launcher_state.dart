@@ -7,6 +7,7 @@ import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart' show SearchHit;
 import 'package:qlaunch/src/rust/settings.dart' show SettingsPatch;
+import 'package:qlaunch/src/rust/usage.dart' show UsageHit;
 import 'package:qlaunch/src/state/launcher_backend.dart';
 
 /// A cache over the core's `snapshot()`. Everything it reports was computed by
@@ -19,6 +20,7 @@ class LauncherState extends ChangeNotifier {
   ModelSnapshot? _snapshot;
   String? _error;
   int _homeRequests = 0;
+  int _backRequests = 0;
   bool _disposed = false;
 
   // Generations only move forward. A fetch's result is dropped only when a
@@ -37,6 +39,11 @@ class LauncherState extends ChangeNotifier {
   /// started. A counter rather than a flag: a listener compares it against the
   /// value it last saw, so it reacts to every press and never to a rebuild.
   int get homeRequests => _homeRequests;
+
+  /// How many times the system Back button has been pressed since the launcher
+  /// started. A counter, like [homeRequests], so a listener reacts to each
+  /// press rather than to every rebuild.
+  int get backRequests => _backRequests;
 
   List<String> get pageIds => _snapshot?.pageIds ?? const [];
 
@@ -100,13 +107,15 @@ class LauncherState extends ChangeNotifier {
       case CoreEvent_HomePressed():
         _homeRequests++;
         _notify();
-      // The spec defers shortcuts, wallpaper and Back, so v1 does nothing with
-      // them. Listed rather than defaulted so a variant added later is a
-      // compile error here.
+      case CoreEvent_BackPressed():
+        _backRequests++;
+        _notify();
+      // The window shows the system wallpaper itself, so a change needs no
+      // action here; shortcuts are deferred. Listed rather than defaulted so a
+      // variant added later is a compile error here.
+      case CoreEvent_WallpaperChanged():
       case CoreEvent_ShortcutCreated():
       case CoreEvent_ShortcutCancelled():
-      case CoreEvent_WallpaperChanged():
-      case CoreEvent_BackPressed():
         break;
     }
   }
@@ -154,7 +163,8 @@ class LauncherState extends ChangeNotifier {
   }
 
   /// Searches every app for [query], ranked by the core. An empty query
-  /// returns every app.
+  /// returns nothing, not every app: the search screen shows its own
+  /// Frequent/Recent lists before the user types.
   ///
   /// A failure yields no hits rather than an error: search is ephemeral, and a
   /// stale message under the field would be noise. A throw is still reported,
@@ -162,6 +172,28 @@ class LauncherState extends ChangeNotifier {
   Future<List<SearchHit>> searchAllApps(String query) async {
     try {
       return await _backend.searchAllApps(query);
+    } catch (e, st) {
+      _report(e, st);
+      return const [];
+    }
+  }
+
+  /// The most-launched apps, up to [limit], as the core ranks them. A failure
+  /// yields no hits and is reported, exactly like [searchAllApps].
+  Future<List<UsageHit>> frequentApps(int limit) async {
+    try {
+      return await _backend.frequentApps(limit);
+    } catch (e, st) {
+      _report(e, st);
+      return const [];
+    }
+  }
+
+  /// The most-recently-launched apps, up to [limit]. A failure behaves as in
+  /// [frequentApps].
+  Future<List<UsageHit>> recentApps(int limit) async {
+    try {
+      return await _backend.recentApps(limit);
     } catch (e, st) {
       _report(e, st);
       return const [];
@@ -190,6 +222,9 @@ class LauncherState extends ChangeNotifier {
   Future<void> moveGroup(String id, int newOrder) =>
       _fetch(() => _backend.moveGroup(id, newOrder));
 
+  Future<void> setGroupHidden(String id, bool hidden) =>
+      _fetch(() => _backend.setGroupHidden(id, hidden));
+
   Future<void> deleteGroup(String id) => _fetch(() => _backend.deleteGroup(id));
 
   Future<void> setGroupRole(String id, GroupRole? role) =>
@@ -200,6 +235,18 @@ class LauncherState extends ChangeNotifier {
   Future<void> uninstallApp(String package) async {
     try {
       await _backend.uninstallApp(package);
+    } catch (e, st) {
+      _fail(e, st);
+    }
+  }
+
+  /// Opens the system wallpaper chooser. A device with no chooser is a failure
+  /// surfaced through [error], never a throw. There is nothing to fetch back:
+  /// the window shows the system wallpaper itself, so the change is visible as
+  /// soon as the system applies it.
+  Future<void> chooseWallpaper() async {
+    try {
+      await _backend.chooseWallpaper();
     } catch (e, st) {
       _fail(e, st);
     }

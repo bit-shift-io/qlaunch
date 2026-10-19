@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
@@ -51,6 +52,34 @@ void main() {
       }
       expect(find.byKey(SettingsScreen.restartKey), findsOneWidget);
       expect(find.byKey(SettingsScreen.factoryResetKey), findsOneWidget);
+    });
+
+    testWidgets('the text size row is called "Font size"', (tester) async {
+      await pumpSettings(tester);
+
+      // One "Font size" drives the app labels and the tab strip alike, so it
+      // is no longer named for labels only.
+      expect(find.text('Font size'), findsOneWidget);
+      expect(find.text('Label size'), findsNothing);
+    });
+
+    testWidgets('the rows take the Font size', (tester) async {
+      await pumpSettings(tester);
+
+      // A list row's title uses the theme's body text, which the Font size
+      // setting scales; unset it and this would be the 16 of the base theme.
+      final title = find.descendant(
+        of: find.byKey(SettingsScreen.groupsKey),
+        matching: find.text('Groups'),
+      );
+      expect(
+        tester
+            .renderObject<RenderParagraph>(title)
+            .text
+            .style
+            ?.fontSize,
+        testSettings.labelSize.toDouble(),
+      );
     });
 
     testWidgets('they open showing the snapshot\'s values', (tester) async {
@@ -151,6 +180,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('the Choose wallpaper row opens the system chooser', (
+    tester,
+  ) async {
+    await pumpSettings(tester);
+    fake.calls.clear();
+
+    await tapControl(tester, find.byKey(SettingsScreen.chooseWallpaperKey));
+
+    expect(fake.calls, contains('chooseWallpaper'));
   });
 
   testWidgets('the Groups row opens the group editor', (tester) async {

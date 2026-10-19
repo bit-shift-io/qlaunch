@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use qlaunch_core::settings::Settings;
 use qlaunch_core::store::{Store, StoreError, config_root_from};
+use qlaunch_core::usage::Usage;
 use tempfile::tempdir;
 
 fn root(xdg: Option<&str>, home: Option<&str>) -> Result<PathBuf, StoreError> {
@@ -200,7 +201,7 @@ fn after_an_unreadable_load_save_is_refused_and_the_document_is_untouched() {
     let loaded = store.load().unwrap();
     assert!(!loaded.warnings.is_empty());
 
-    let saved = store.save(&loaded.model, &loaded.settings);
+    let saved = store.save(&loaded.model, &loaded.settings, &Usage::default());
     let quarantined = store.quarantine();
 
     make_readable(&store);
@@ -225,7 +226,7 @@ fn the_block_is_shared_by_clones() {
     let clone = store.clone();
     let loaded = store.load().unwrap();
 
-    let saved = clone.save(&loaded.model, &loaded.settings);
+    let saved = clone.save(&loaded.model, &loaded.settings, &Usage::default());
 
     make_readable(&store);
     assert!(matches!(saved, Err(StoreError::WritesBlocked)));
@@ -245,7 +246,7 @@ fn a_later_successful_load_lifts_the_block() {
 
     let loaded = store.load().unwrap();
 
-    store.save(&loaded.model, &loaded.settings).unwrap();
+    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
 }
 
 #[test]
@@ -257,7 +258,7 @@ fn save_works_after_loading_a_good_document() {
     let mut loaded = store.load().unwrap();
     loaded.settings.icon_size = 80;
 
-    store.save(&loaded.model, &loaded.settings).unwrap();
+    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
     assert_eq!(store.load().unwrap().settings.icon_size, 80);
 }
 
@@ -269,7 +270,7 @@ fn save_works_after_a_load_that_quarantined_a_corrupt_document() {
     let mut loaded = store.load().unwrap();
     loaded.settings.icon_size = 80;
 
-    store.save(&loaded.model, &loaded.settings).unwrap();
+    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
 
     assert_eq!(store.load().unwrap().settings.icon_size, 80);
     assert_eq!(
@@ -288,7 +289,7 @@ fn save_works_after_a_load_found_nothing_even_if_creating_it_failed() {
 
     fs::remove_file(dir.path().join("icons")).unwrap();
 
-    store.save(&loaded.model, &loaded.settings).unwrap();
+    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
 }
 
 #[test]
@@ -297,7 +298,7 @@ fn a_new_store_can_save_without_loading_first() {
     let store = Store::new(dir.path().to_path_buf());
     let model = qlaunch_core::model::Model::new_default();
 
-    store.save(&model, &Settings::default()).unwrap();
+    store.save(&model, &Settings::default(), &Usage::default()).unwrap();
 
     assert!(store.document_path().exists());
 }

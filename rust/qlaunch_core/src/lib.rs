@@ -6,6 +6,7 @@ pub mod reconcile;
 pub mod search;
 pub mod settings;
 pub mod store;
+pub mod usage;
 
 // Keeps the JNI entry points in the cdylib so the JVM can resolve them.
 #[cfg(target_os = "android")]

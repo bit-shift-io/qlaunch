@@ -3,6 +3,7 @@ use qlaunch_core::model::{
 };
 use qlaunch_core::settings::Settings;
 use qlaunch_core::store::{Document, SCHEMA_VERSION, Store, StoreError};
+use qlaunch_core::usage::Usage;
 use serde_json::{Value, json};
 use tempfile::tempdir;
 
@@ -35,6 +36,7 @@ fn write_document(s: &Store, m: &Model, settings: &Settings) {
     let doc = Document {
         schema: SCHEMA_VERSION,
         settings: settings.clone(),
+        usage: Usage::default(),
         root_group_id: m.root_group_id.clone(),
         groups: m.groups.clone(),
         items: m.items.clone(),
@@ -79,7 +81,7 @@ fn round_trips_unicode_and_hostile_shortcut_extras() {
             }],
         },
     );
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     let loaded = s.load().unwrap();
     assert_eq!(loaded.model, m);
     assert_eq!(loaded.model.items_in(&g)[0].label, "Café ☕ 日本");
@@ -120,7 +122,7 @@ fn a_command_shortcut_and_an_app_item_round_trip_with_settings() {
         ..Settings::default()
     };
 
-    s.save(&m, &settings).unwrap();
+    s.save(&m, &settings, &Usage::default()).unwrap();
     let loaded = s.load().unwrap();
     assert_eq!(loaded.model, m);
     assert_eq!(loaded.settings, settings);
@@ -130,7 +132,7 @@ fn a_command_shortcut_and_an_app_item_round_trip_with_settings() {
 fn a_truncated_document_is_quarantined_and_defaults_rebuilt() {
     let dir = tempdir().unwrap();
     let s = Store::new(dir.path().to_path_buf());
-    s.save(&Model::new_default(), &Settings::default()).unwrap();
+    s.save(&Model::new_default(), &Settings::default(), &Usage::default()).unwrap();
     let mut bytes = std::fs::read(s.document_path()).unwrap();
     bytes.truncate(bytes.len() / 2);
     std::fs::write(s.document_path(), &bytes).unwrap();
@@ -159,7 +161,7 @@ fn a_wrong_schema_is_quarantined_not_reinterpreted() {
         let s = store_in(&dir);
         let mut m = Model::new_default();
         m.add_group("From the future");
-        s.save(&m, &Settings::default()).unwrap();
+        s.save(&m, &Settings::default(), &Usage::default()).unwrap();
 
         let mut doc = read_json(&s);
         doc["schema"] = json!(schema);
@@ -239,7 +241,7 @@ fn a_missing_required_key_is_quarantined() {
     for key in ["schema", "root_group_id", "groups", "items"] {
         let dir = tempdir().unwrap();
         let s = store_in(&dir);
-        s.save(&Model::new_default(), &Settings::default()).unwrap();
+        s.save(&Model::new_default(), &Settings::default(), &Usage::default()).unwrap();
         let mut doc = read_json(&s);
         doc.as_object_mut().unwrap().remove(key);
         std::fs::write(s.document_path(), serde_json::to_vec(&doc).unwrap()).unwrap();
@@ -259,7 +261,7 @@ fn missing_settings_fall_back_to_defaults_without_losing_the_model() {
     let s = store_in(&dir);
     let mut m = Model::new_default();
     m.add_group("Mine");
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
 
     let mut doc = read_json(&s);
     doc.as_object_mut().unwrap().remove("settings");
@@ -429,7 +431,7 @@ fn on_disk_strings_are_the_documented_ones() {
         },
         "App",
     );
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     let doc = read_json(&s);
 
     let mut top: Vec<&str> = doc
@@ -441,7 +443,14 @@ fn on_disk_strings_are_the_documented_ones() {
     top.sort();
     assert_eq!(
         top,
-        ["groups", "items", "root_group_id", "schema", "settings"]
+        [
+            "groups",
+            "items",
+            "root_group_id",
+            "schema",
+            "settings",
+            "usage"
+        ]
     );
     assert_eq!(doc["schema"], json!(1));
     assert_eq!(doc["root_group_id"], json!(m.root_group_id));
@@ -464,8 +473,12 @@ fn on_disk_strings_are_the_documented_ones() {
         .map(String::as_str)
         .collect();
     group_keys.sort();
-    assert_eq!(group_keys, ["id", "label", "order", "parent_id", "role"]);
+    assert_eq!(
+        group_keys,
+        ["hidden", "id", "label", "order", "parent_id", "role"]
+    );
     assert_eq!(root["parent_id"], Value::Null);
+    assert_eq!(root["hidden"], json!(false));
 
     let items = doc["items"].as_array().unwrap();
     let by_label = |l: &str| items.iter().find(|i| i["label"] == l).unwrap();
@@ -515,6 +528,29 @@ fn on_disk_strings_are_the_documented_ones() {
 }
 
 #[test]
+fn a_group_written_before_the_hidden_field_loads_as_shown() {
+    // Backward compatibility: `hidden` is defaulted, so a document from an
+    // older build (or a hand-written one) loads with the group shown.
+    let json = r#"{"id":"g","label":"G","parent_id":"root","role":null,"order":0}"#;
+    let group: qlaunch_core::model::Group = serde_json::from_str(json).unwrap();
+    assert!(!group.hidden);
+}
+
+#[test]
+fn a_hidden_group_round_trips_through_the_store() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let mut m = Model::new_default();
+    let g = m.add_group("Chat");
+    m.set_group_hidden(&g, true).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
+
+    let loaded = s.load().unwrap();
+    let group = loaded.model.groups.iter().find(|x| x.id == g).unwrap();
+    assert!(group.hidden);
+}
+
+#[test]
 fn app_category_strings_are_stable() {
     assert_eq!(
         serde_json::to_value(AppCategory::Game).unwrap(),
@@ -541,7 +577,7 @@ fn save_leaves_no_temp_file_and_overwrites_a_corrupt_document() {
     std::fs::write(s.document_path(), b"{ not json").unwrap();
 
     let m = Model::new_default();
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
 
     assert_eq!(
         leftover_temp_files(dir.path()),
@@ -557,13 +593,13 @@ fn save_refuses_a_model_that_load_would_reject() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
     let good = Model::new_default();
-    s.save(&good, &Settings::default()).unwrap();
+    s.save(&good, &Settings::default(), &Usage::default()).unwrap();
     let before = std::fs::read(s.document_path()).unwrap();
 
     let mut bad = good.clone();
     bad.groups.retain(|g| g.role != Some(GroupRole::Apps));
     assert!(matches!(
-        s.save(&bad, &Settings::default()),
+        s.save(&bad, &Settings::default(), &Usage::default()),
         Err(StoreError::Invalid(_))
     ));
     assert_eq!(std::fs::read(s.document_path()).unwrap(), before);
@@ -578,7 +614,7 @@ fn save_writes_nothing_at_all_for_an_invalid_model() {
     bad.items.push(app_item("a", &apps, "A", "dup", 0));
     bad.items.push(app_item("b", &apps, "B", "dup", 1));
 
-    let err = s.save(&bad, &Settings::default()).unwrap_err();
+    let err = s.save(&bad, &Settings::default(), &Usage::default()).unwrap_err();
     assert!(matches!(err, StoreError::Invalid(_)), "{err:?}");
     assert!(!s.document_path().exists());
     assert!(!dir.path().join("icons").exists());
@@ -595,7 +631,7 @@ fn an_unreadable_document_warns_and_then_refuses_every_save_and_leaves_it_alone(
     loaded.model.validate().unwrap();
     assert!(!loaded.warnings.is_empty());
 
-    let err = s.save(&loaded.model, &loaded.settings).unwrap_err();
+    let err = s.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap_err();
     assert!(matches!(err, StoreError::WritesBlocked), "{err:?}");
     assert!(matches!(s.quarantine(), Err(StoreError::WritesBlocked)));
 
@@ -662,7 +698,7 @@ fn an_out_of_range_number_is_clamped_and_the_model_survives() {
     let apps = group_of(&m, GroupRole::Apps);
     m.items
         .push(app_item("i1", &apps, "My renamed app", "p", 0));
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     let mut doc = read_json(&s);
     doc["settings"]["icon_size"] = json!(-5);
     doc["settings"]["wallpaper_alpha"] = json!(999);
@@ -692,7 +728,7 @@ fn a_number_field_of_the_wrong_json_type_is_quarantined() {
     let s = store_in(&dir);
     let mut m = Model::new_default();
     m.add_group("Mine");
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     let mut doc = read_json(&s);
     doc["settings"]["icon_size"] = json!("big");
     let original = serde_json::to_vec_pretty(&doc).unwrap();
@@ -726,7 +762,7 @@ fn a_hand_written_android_shortcut_may_omit_its_lists() {
         extras: Vec::new(),
     });
     m.items.push(item);
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     let mut doc = read_json(&s);
     let shortcut = doc["items"][0]["shortcut"].as_object_mut().unwrap();
     shortcut.remove("categories");
@@ -818,7 +854,7 @@ fn a_clean_load_creates_no_backup() {
     assert!(s.load().unwrap().warnings.is_empty());
     let mut m = Model::new_default();
     m.add_group("Mine");
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     assert!(s.load().unwrap().warnings.is_empty());
 
     let names: Vec<String> = std::fs::read_dir(dir.path())
@@ -889,6 +925,7 @@ fn two_writers_never_leave_a_mixed_document() {
     let expect = |(m, settings): &(Model, Settings)| Document {
         schema: SCHEMA_VERSION,
         settings: settings.clone(),
+        usage: Usage::default(),
         root_group_id: m.root_group_id.clone(),
         groups: m.groups.clone(),
         items: m.items.clone(),
@@ -899,7 +936,7 @@ fn two_writers_never_leave_a_mixed_document() {
             .expect("the document is always complete JSON")
     };
 
-    s.save(&a.0, &a.1).unwrap();
+    s.save(&a.0, &a.1, &Usage::default()).unwrap();
     let done = Arc::new(AtomicBool::new(false));
     let writers: Vec<_> = [a, b]
         .into_iter()
@@ -907,7 +944,7 @@ fn two_writers_never_leave_a_mixed_document() {
             let s = s.clone();
             std::thread::spawn(move || {
                 for _ in 0..150 {
-                    s.save(&m, &settings).unwrap();
+                    s.save(&m, &settings, &Usage::default()).unwrap();
                 }
             })
         })
@@ -942,7 +979,7 @@ fn an_android_shortcut_needs_nothing_but_its_type() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
     let m = Model::new_default();
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     let home = group_of(&m, GroupRole::Home);
     let mut doc = read_json(&s);
     doc["items"] = json!([
@@ -997,7 +1034,7 @@ fn a_command_shortcut_without_its_command_is_quarantined() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
     let m = Model::new_default();
-    s.save(&m, &Settings::default()).unwrap();
+    s.save(&m, &Settings::default(), &Usage::default()).unwrap();
     let home = group_of(&m, GroupRole::Home);
     let mut doc = read_json(&s);
     doc["items"] = json!([{
@@ -1031,7 +1068,7 @@ fn a_setting_that_is_not_an_i64_integer_is_quarantined() {
         let s = store_in(&dir);
         let mut m = Model::new_default();
         m.add_group("Mine");
-        s.save(&m, &Settings::default()).unwrap();
+        s.save(&m, &Settings::default(), &Usage::default()).unwrap();
         let mut doc = read_json(&s);
         doc["settings"]["icon_size"] = serde_json::from_str(literal).unwrap();
         let original = serde_json::to_vec_pretty(&doc).unwrap();
@@ -1198,4 +1235,44 @@ fn write_icon_derives_the_file_name_from_the_item_id() {
     ));
     assert!(!dir.path().join("escape.png").exists());
     assert!(!dir.path().parent().unwrap().join("escape.png").exists());
+}
+
+#[test]
+fn usage_round_trips_through_save_and_load() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let m = Model::new_default();
+    let mut usage = Usage::default();
+    usage.record(
+        &AppRef {
+            package: "p".into(),
+            activity: "Main".into(),
+        },
+        7,
+    );
+    s.save(&m, &Settings::default(), &usage).unwrap();
+    assert_eq!(s.load().unwrap().usage, usage);
+}
+
+#[test]
+fn a_document_without_usage_loads_with_defaults_and_is_not_repaired() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    let m = Model::new_default();
+    let doc = json!({
+        "schema": SCHEMA_VERSION,
+        "root_group_id": m.root_group_id.clone(),
+        "groups": m.groups.clone(),
+        "items": m.items.clone(),
+    });
+    std::fs::create_dir_all(s.document_path().parent().unwrap()).unwrap();
+    std::fs::write(s.document_path(), serde_json::to_vec_pretty(&doc).unwrap()).unwrap();
+
+    let loaded = s.load().unwrap();
+    assert_eq!(loaded.usage, Usage::default());
+    assert!(
+        loaded.warnings.is_empty(),
+        "a missing usage field is not damage: {:?}",
+        loaded.warnings
+    );
 }

@@ -22,16 +22,9 @@ fn holders(m: &Model, role: GroupRole) -> Vec<&Group> {
 }
 
 fn page_labels(m: &Model) -> Vec<String> {
-    let mut pages: Vec<&Group> = m
-        .groups
-        .iter()
-        .filter(|g| {
-            g.parent_id.as_deref() == Some(m.root_group_id.as_str())
-                && g.role != Some(GroupRole::Hidden)
-        })
-        .collect();
-    pages.sort_by_key(|g| g.order);
-    pages.iter().map(|g| g.label.clone()).collect()
+    // Use the model's own rule rather than re-stating it, so this cannot drift
+    // from `Model::pages()` (for example over the `hidden` flag).
+    m.pages().iter().map(|g| g.label.clone()).collect()
 }
 
 #[test]
@@ -182,6 +175,7 @@ fn group_with_unknown_parent_is_rejected() {
         parent_id: Some("nowhere".into()),
         role: None,
         order: 5,
+        hidden: false,
     });
     assert_eq!(
         m.validate(),
@@ -221,6 +215,7 @@ fn group_whose_parent_is_not_the_root_is_rejected() {
         parent_id: Some(apps),
         role: None,
         order: 5,
+        hidden: false,
     });
     assert_eq!(
         m.validate(),
@@ -237,6 +232,7 @@ fn second_group_without_a_parent_is_rejected() {
         parent_id: None,
         role: None,
         order: 5,
+        hidden: false,
     });
     assert_eq!(m.validate(), Err(ModelError::SecondRoot("floating".into())));
 }

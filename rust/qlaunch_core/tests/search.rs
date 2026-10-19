@@ -20,15 +20,10 @@ fn summary(hits: &[SearchHit]) -> Vec<(&str, MatchKind)> {
 }
 
 #[test]
-fn empty_or_whitespace_query_returns_every_candidate_in_input_order() {
+fn empty_or_whitespace_query_returns_nothing() {
     let cs = cands(&["Zeta", "Alpha", "Mid"]);
-    let expected = vec![
-        ("Zeta", MatchKind::Prefix),
-        ("Alpha", MatchKind::Prefix),
-        ("Mid", MatchKind::Prefix),
-    ];
-    assert_eq!(summary(&search(&cs, "")), expected);
-    assert_eq!(summary(&search(&cs, "  \t ")), expected);
+    assert!(search(&cs, "").is_empty());
+    assert!(search(&cs, "  \t ").is_empty());
 }
 
 #[test]

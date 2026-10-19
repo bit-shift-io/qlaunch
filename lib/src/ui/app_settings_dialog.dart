@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/label_style.dart';
 
 /// The per-app popup: rename it, move it to another group, or uninstall it.
 ///
@@ -79,67 +80,70 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
     final canUninstall = item.app != null && !item.uninstalled;
     final canSave = _label.text.trim().isNotEmpty;
 
-    return AlertDialog(
-      title: Text(item.label),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            key: AppSettingsDialog.labelFieldKey,
-            controller: _label,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: 'Name'),
-          ),
-          if (item.app != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              item.app!.package,
-              style: Theme.of(context).textTheme.bodySmall,
+    return LauncherFontScope(
+      settings: widget.state.snapshot?.settings,
+      child: AlertDialog(
+        title: Text(item.label),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: AppSettingsDialog.labelFieldKey,
+              controller: _label,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: 'Name'),
             ),
-            if (item.uninstalled)
+            if (item.app != null) ...[
+              const SizedBox(height: 12),
               Text(
-                'Uninstalled',
+                item.app!.package,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-          ],
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            key: AppSettingsDialog.groupKey,
-            initialValue: _groupId,
-            decoration: const InputDecoration(labelText: 'Group'),
-            items: [
-              for (final group in destinations)
-                DropdownMenuItem(
-                  key: AppSettingsDialog.groupOptionKey(group.id),
-                  value: group.id,
-                  child: Text(group.label),
+              if (item.uninstalled)
+                Text(
+                  'Uninstalled',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
             ],
-            onChanged: (value) {
-              if (value != null) setState(() => _groupId = value);
-            },
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              key: AppSettingsDialog.groupKey,
+              initialValue: _groupId,
+              decoration: const InputDecoration(labelText: 'Group'),
+              items: [
+                for (final group in destinations)
+                  DropdownMenuItem(
+                    key: AppSettingsDialog.groupOptionKey(group.id),
+                    value: group.id,
+                    child: Text(group.label),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _groupId = value);
+              },
+            ),
+          ],
+        ),
+        actions: [
+          if (canUninstall)
+            TextButton(
+              key: AppSettingsDialog.uninstallKey,
+              onPressed: _uninstall,
+              child: const Text('Uninstall'),
+            ),
+          TextButton(
+            key: AppSettingsDialog.cancelKey,
+            onPressed: _close,
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: AppSettingsDialog.saveKey,
+            onPressed: canSave ? _save : null,
+            child: const Text('Save'),
           ),
         ],
       ),
-      actions: [
-        if (canUninstall)
-          TextButton(
-            key: AppSettingsDialog.uninstallKey,
-            onPressed: _uninstall,
-            child: const Text('Uninstall'),
-          ),
-        TextButton(
-          key: AppSettingsDialog.cancelKey,
-          onPressed: _close,
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: AppSettingsDialog.saveKey,
-          onPressed: canSave ? _save : null,
-          child: const Text('Save'),
-        ),
-      ],
     );
   }
 }

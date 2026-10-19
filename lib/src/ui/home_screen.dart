@@ -10,6 +10,7 @@ import 'package:qlaunch/src/ui/app_search.dart';
 import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
+import 'package:qlaunch/src/ui/page_pips.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
@@ -30,10 +31,15 @@ class _HomeScreenState extends State<HomeScreen> {
   late final GroupPagerController _controller;
   late String _currentGroupId;
   late int _seenHomeRequests;
+  late int _seenBackRequests;
   String? _shownError;
 
   /// Whether the Home-button search panel is over the launcher.
   bool _searching = false;
+
+  /// Whether the tab strip has more pages than it can show at once. The page
+  /// pips fade in with it, since a strip that fits already shows every page.
+  bool _tabsOverflow = false;
 
   @override
   void initState() {
@@ -45,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _goToHome();
     _currentGroupId = _controller.currentGroupId(_controller.currentPage);
     _seenHomeRequests = widget.state.homeRequests;
+    _seenBackRequests = widget.state.backRequests;
     widget.state.addListener(_onStateChanged);
   }
 
@@ -54,13 +61,25 @@ class _HomeScreenState extends State<HomeScreen> {
   /// pages, in which case the pager stays where it is.
   bool _goToHome() {
     final pages = widget.state.pageIds;
-    final target =
-        widget.state.homeGroup?.id ?? (pages.isEmpty ? null : pages.first);
+    // The Home group can itself be hidden (any group can be hidden), and then
+    // it is not one of the pages: fall back to the first page rather than
+    // leaving the Home button with nowhere to go.
+    final home = widget.state.homeGroup?.id;
+    final target = (home != null && pages.contains(home))
+        ? home
+        : (pages.isEmpty ? null : pages.first);
     if (target == null) return false;
     if (_controller.currentGroupId(_controller.currentPage) == target) {
       return false;
     }
     return _controller.goToGroup(target);
+  }
+
+  /// The strip calls this from its own layout pass, so it is posted rather than
+  /// set during build.
+  void _onTabsOverflowChanged(bool overflow) {
+    if (!mounted || overflow == _tabsOverflow) return;
+    setState(() => _tabsOverflow = overflow);
   }
 
   /// Tapping a tab switches the pager to that group, same as a swipe would.
@@ -83,7 +102,30 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onStateChanged() {
     _syncPages();
     _handleHomePress();
+    _handleBackPress();
     _reportNewError();
+  }
+
+  /// What the system Back button does. On the launcher it does nothing
+  /// (§8.2); the one thing it does is close the open search, which otherwise
+  /// traps the user behind a full-screen panel with only a close button.
+  ///
+  /// A pushed screen (the settings, from the gear or a long press) is what the
+  /// user is looking at, so Back leaves it first — returning to the panel with
+  /// its query, tab and focus intact — exactly as Home does with a pushed
+  /// screen. The manifest opts out of predictive back, so this is the only path
+  /// the button takes.
+  void _handleBackPress() {
+    if (widget.state.backRequests == _seenBackRequests) return;
+    _seenBackRequests = widget.state.backRequests;
+
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isCurrent) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    if (_searching) _closeSearch();
   }
 
   /// What the system Home button does, in order: leave a pushed screen; close
@@ -127,15 +169,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Opens the launcher settings, the destination §8.2 gives a long press on
   /// blank space. Pushed directly rather than by route name: this screen holds
   /// the state the settings need.
-  void _openSettings() {
-    unawaited(
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (context) => SettingsScreen(state: widget.state),
-        ),
-      ),
-    );
-  }
+  ///
+  /// Returns when the settings screen is popped, so the search gear can take
+  /// focus back to its field.
+  Future<void> _openSettings() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (context) => SettingsScreen(state: widget.state),
+    ),
+  );
 
   /// Opens the per-app popup, the destination §8.2 gives a long press on an
   /// item: rename, move to another group, or uninstall.
@@ -184,6 +225,13 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _currentGroupId = groupId);
   }
 
+  /// The index of the group on screen, for the page pips. Falls back to the
+  /// first page if the current group is somehow not one of the pages.
+  int get _currentPage {
+    final index = _controller.pageIds.indexOf(_currentGroupId);
+    return index < 0 ? 0 : index;
+  }
+
   bool _tabsVisible(TabVisibility visibility, Orientation orientation) =>
       switch (visibility) {
         TabVisibility.always => true,
@@ -207,11 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
               MediaQuery.orientationOf(context),
             );
         return Scaffold(
-          // The wallpaper base layer is under everything, per §7.7. It carries
-          // no wallpaper bytes: `wallpaper_png()` is Android's and was not part
-          // of the bridge Task 14 built, so Linux gets the solid base colour.
-          // TODO(plan-2): fetch the bytes and pass them here (F2).
-          //
+          // Transparent so the window's wallpaper shows behind the grid on
+          // Android (§7.7); the base layer is the solid colour elsewhere. The
+          // settings screen and dialogs paint their own surfaces.
+          backgroundColor: Colors.transparent,
           // No drawers: their destinations are Plan 3's (F3).
           body: Stack(
             children: [
@@ -227,7 +274,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         pageIds: _controller.pageIds,
                         groups: widget.state.groups,
                         currentGroupId: _currentGroupId,
+                        settings: settings,
                         onGroupTap: _goToGroup,
+                        onOverflowChanged: _onTabsOverflowChanged,
                       ),
                     Expanded(
                       // A long press on blank space opens the settings (§8.2).
@@ -254,11 +303,39 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+              // Only when the tabs cannot show every page: a strip that fits
+              // already says how many there are, so pips would be noise. Fades
+              // in and out with the overflow rather than popping.
+              if (showTabs)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: SafeArea(
+                    top: false,
+                    child: IgnorePointer(
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 200),
+                        opacity: _tabsOverflow ? 1 : 0,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Center(
+                            child: PagePips(
+                              count: _controller.pageIds.length,
+                              current: _currentPage,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (_searching)
                 Positioned.fill(
                   child: AppSearch(
                     state: widget.state,
                     onDone: _closeSearch,
+                    onOpenSettings: _openSettings,
                   ),
                 ),
             ],

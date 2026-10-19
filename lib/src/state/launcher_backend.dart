@@ -6,6 +6,7 @@ import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart';
 import 'package:qlaunch/src/rust/settings.dart';
+import 'package:qlaunch/src/rust/usage.dart';
 
 /// The whole bridge surface, with positional parameters. Only `LauncherState`
 /// talks to this.
@@ -17,6 +18,7 @@ abstract class LauncherBackend {
   Future<ModelSnapshot> renameGroup(String id, String label);
   Future<ModelSnapshot> moveGroup(String id, int newOrder);
   Future<ModelSnapshot> setGroupRole(String id, GroupRole? role);
+  Future<ModelSnapshot> setGroupHidden(String id, bool hidden);
   Future<ModelSnapshot> deleteGroup(String id);
   Future<ModelSnapshot> moveItem(String id, String toGroup, int newOrder);
   Future<ModelSnapshot> renameItem(String id, String label);
@@ -26,9 +28,12 @@ abstract class LauncherBackend {
   Future<ModelSnapshot> updateSettings(SettingsPatch patch);
   Future<String?> homeGroupId();
   Future<List<SearchHit>> searchAllApps(String query);
+  Future<List<UsageHit>> frequentApps(int limit);
+  Future<List<UsageHit>> recentApps(int limit);
   Future<Uint8List?> iconFor(String package, String activity, int sizePx);
   Future<void> launchApp(String package, String activity);
   Future<void> uninstallApp(String package);
+  Future<void> chooseWallpaper();
   Stream<CoreEvent> events();
 }
 
@@ -60,6 +65,10 @@ class RustBackend implements LauncherBackend {
   @override
   Future<ModelSnapshot> setGroupRole(String id, GroupRole? role) =>
       rust.setGroupRole(id: id, role: role);
+
+  @override
+  Future<ModelSnapshot> setGroupHidden(String id, bool hidden) =>
+      rust.setGroupHidden(id: id, hidden: hidden);
 
   @override
   Future<ModelSnapshot> deleteGroup(String id) => rust.deleteGroup(id: id);
@@ -94,6 +103,13 @@ class RustBackend implements LauncherBackend {
       rust.searchAllApps(query: query);
 
   @override
+  Future<List<UsageHit>> frequentApps(int limit) =>
+      rust.frequentApps(limit: limit);
+
+  @override
+  Future<List<UsageHit>> recentApps(int limit) => rust.recentApps(limit: limit);
+
+  @override
   Future<Uint8List?> iconFor(String package, String activity, int sizePx) =>
       rust.iconFor(package: package, activity: activity, sizePx: sizePx);
 
@@ -104,6 +120,9 @@ class RustBackend implements LauncherBackend {
   @override
   Future<void> uninstallApp(String package) =>
       rust.uninstallApp(packageName: package);
+
+  @override
+  Future<void> chooseWallpaper() => rust.chooseWallpaper();
 
   @override
   Stream<CoreEvent> events() => rust.events();

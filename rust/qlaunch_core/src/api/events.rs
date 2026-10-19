@@ -10,6 +10,9 @@ pub enum CoreEvent {
     AppsChanged,
     ShortcutCreated { item_id: Id },
     ShortcutCancelled,
+    /// Reserved. The window shows the system wallpaper itself, so nothing needs
+    /// to re-read it today; the variant stays so the event list still matches
+    /// the spec and a future reader (a live wallpaper, say) can emit it.
     WallpaperChanged,
     HomePressed,
     BackPressed,

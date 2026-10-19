@@ -45,6 +45,7 @@ impl Model {
             parent_id: Some(self.root_group_id.clone()),
             role: None,
             order,
+            hidden: false,
         });
         self.renumber_pages();
         id
@@ -138,6 +139,21 @@ impl Model {
         self.set_item_orders(&ids);
         self.groups.retain(|g| g.id != *id);
         self.renumber_pages();
+        Ok(())
+    }
+
+    /// Shows or hides the group `id` from the pager and the tab strip. Its
+    /// items and order are untouched, so showing it again puts it back. The
+    /// root and the group holding the `Hidden` role are not pages and cannot be
+    /// toggled: `NotAPage`.
+    pub fn set_group_hidden(&mut self, id: &Id, hidden: bool) -> Result<(), ModelError> {
+        let group = self.group(id)?;
+        if group.id == self.root_group_id || group.role == Some(GroupRole::Hidden) {
+            return Err(ModelError::NotAPage(id.clone()));
+        }
+        if let Some(group) = self.groups.iter_mut().find(|g| g.id == *id) {
+            group.hidden = hidden;
+        }
         Ok(())
     }
 
@@ -290,6 +306,7 @@ impl Model {
     fn is_page(&self, group: &Group) -> bool {
         group.parent_id.as_ref() == Some(&self.root_group_id)
             && group.role != Some(GroupRole::Hidden)
+            && !group.hidden
     }
 
     fn group(&self, id: &Id) -> Result<&Group, ModelError> {

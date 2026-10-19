@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
+import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
@@ -11,6 +12,7 @@ import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
+import 'package:qlaunch/src/ui/page_pips.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
@@ -116,6 +118,62 @@ void main() {
         });
       }
     }
+  });
+
+  group('page pips', () {
+    AnimatedOpacity pipsFade(WidgetTester tester) => tester.widget<AnimatedOpacity>(
+      find.ancestor(
+        of: find.byType(PagePips),
+        matching: find.byType(AnimatedOpacity),
+      ),
+    );
+
+    testWidgets('fade in when the tabs cannot all fit', (tester) async {
+      setSurface(tester, const Size(300, 600));
+      await load(pageIds: [for (var i = 0; i < 8; i++) 'group$i']);
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PagePips), findsOneWidget);
+      expect(pipsFade(tester).opacity, 1);
+    });
+
+    testWidgets('stay hidden when every tab fits', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: const ['home', 'apps']);
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+
+      // Still in the tree, only transparent, so it can fade rather than pop.
+      expect(find.byType(PagePips), findsOneWidget);
+      expect(pipsFade(tester).opacity, 0);
+    });
+
+    testWidgets('fade out again when the window widens enough', (tester) async {
+      setSurface(tester, const Size(300, 600));
+      await load(pageIds: [for (var i = 0; i < 8; i++) 'group$i']);
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+      expect(pipsFade(tester).opacity, 1);
+
+      // Same portrait orientation, just wider, so only the strip's own
+      // re-check can bring the pips back down.
+      tester.view.physicalSize = const Size(1200, 600);
+      await tester.pumpAndSettle();
+
+      expect(pipsFade(tester).opacity, 0);
+    });
+
+    testWidgets('draw one dot per page', (tester) async {
+      setSurface(tester, const Size(300, 600));
+      await load(pageIds: [for (var i = 0; i < 8; i++) 'group$i']);
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+
+      for (var i = 0; i < 8; i++) {
+        expect(find.byKey(PagePips.dotKey(i)), findsOneWidget);
+      }
+    });
   });
 
   group('pages', () {
@@ -282,6 +340,28 @@ void main() {
       expect(find.text('item-home'), findsOneWidget);
     });
 
+    testWidgets('falls back to the first page when the Home group is hidden', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      fake.current = snapshotOf(
+        pageIds: ['apps'],
+        homeGroupId: 'home',
+        groups: [
+          makeGroup('home', role: GroupRole.home, order: 0, hidden: true),
+          makeGroup('apps', role: GroupRole.apps, order: 1),
+        ],
+        items: [makeItem('item-apps', 'apps')],
+      );
+      await state.load();
+      await pumpHome(tester);
+
+      // The Home group is hidden, so it is not a page: the launcher opens on
+      // the first page rather than showing nothing.
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'apps');
+      expect(find.text('item-apps'), findsOneWidget);
+    });
+
     testWidgets('goes to the first page when no group holds Home', (
       tester,
     ) async {
@@ -353,6 +433,63 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byType(AppSearch), findsNothing);
+    });
+  });
+
+  group('the system Back button', () {
+    testWidgets('closes the open search', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(AppSearch), findsOneWidget);
+
+      fake.emit(const CoreEvent.backPressed());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(AppSearch), findsNothing);
+    });
+
+    testWidgets('while the settings screen is open, leaves it and keeps the '
+        'search', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+      expect(find.byType(AppSearch), findsOneWidget);
+
+      await tester.tap(find.byKey(AppSearch.gearKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(SettingsScreen), findsOneWidget);
+
+      fake.emit(const CoreEvent.backPressed());
+      await tester.pumpAndSettle();
+
+      // Back leaves the settings and returns to the panel, which was kept.
+      expect(find.byType(SettingsScreen), findsNothing);
+      expect(find.byType(AppSearch), findsOneWidget);
+    });
+
+    testWidgets('with no search open does nothing', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+      expect(find.byType(AppSearch), findsNothing);
+
+      fake.emit(const CoreEvent.backPressed());
+      await tester.pump();
+      await tester.pump();
+
+      // The launcher is still there; Back never opens the search or changes
+      // the group.
+      expect(find.byType(AppSearch), findsNothing);
+      expect(find.byType(AppGrid), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 

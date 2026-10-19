@@ -3,6 +3,7 @@ import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/group_apps_screen.dart';
+import 'package:qlaunch/src/ui/label_style.dart';
 
 /// The label a role shows as in the editor. A page never holds `root` or
 /// `hidden`, but the mapping is total so the list cannot draw a blank.
@@ -42,6 +43,8 @@ class GroupEditorScreen extends StatelessWidget {
   static Key rowKey(String groupId) => ValueKey('groupEditor.row.$groupId');
   static Key upKey(String groupId) => ValueKey('groupEditor.up.$groupId');
   static Key downKey(String groupId) => ValueKey('groupEditor.down.$groupId');
+  static Key hiddenKey(String groupId) =>
+      ValueKey('groupEditor.hidden.$groupId');
 
   /// One per role choice, plus the null "None" chip, addressed by name.
   static Key roleKey(GroupRole? role) =>
@@ -50,7 +53,10 @@ class GroupEditorScreen extends StatelessWidget {
   Future<void> _add(BuildContext context) async {
     final label = await showDialog<String>(
       context: context,
-      builder: (context) => const _AddGroupDialog(),
+      builder: (context) => LauncherFontScope(
+        settings: state.snapshot?.settings,
+        child: const _AddGroupDialog(),
+      ),
     );
     if (label == null) return;
     await state.addGroup(label);
@@ -63,57 +69,88 @@ class GroupEditorScreen extends StatelessWidget {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(title),
-        actions: [
-          IconButton(
-            key: addKey,
-            icon: const Icon(Icons.add),
-            onPressed: () => _add(context),
+  /// A group row: its label, its role, a hide switch, and — only for a page —
+  /// the reorder arrows. [pageIndex] is -1 for a group that is not shown.
+  Widget _row(BuildContext context, Group group, int pageIndex, int pageCount) {
+    // The group holding the Hidden role is never a page whatever its flag, so
+    // its switch is shown on but disabled.
+    final alwaysHidden = group.role == GroupRole.hidden;
+    return ListTile(
+      key: rowKey(group.id),
+      title: Text(group.label),
+      subtitle: group.role == null ? null : Text(_roleName(group.role!)),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Switch(
+            key: hiddenKey(group.id),
+            value: group.hidden || alwaysHidden,
+            onChanged: alwaysHidden
+                ? null
+                : (hidden) => state.setGroupHidden(group.id, hidden),
           ),
+          if (pageIndex >= 0) ...[
+            IconButton(
+              key: upKey(group.id),
+              icon: const Icon(Icons.arrow_upward),
+              onPressed: pageIndex == 0
+                  ? null
+                  : () => state.moveGroup(group.id, pageIndex - 1),
+            ),
+            IconButton(
+              key: downKey(group.id),
+              icon: const Icon(Icons.arrow_downward),
+              onPressed: pageIndex == pageCount - 1
+                  ? null
+                  : () => state.moveGroup(group.id, pageIndex + 1),
+            ),
+          ],
         ],
       ),
-      body: ListenableBuilder(
-        listenable: state,
-        builder: (context, _) {
-          final pages = state.pages;
-          return ListView.builder(
-            itemCount: pages.length,
-            itemBuilder: (context, index) {
-              final group = pages[index];
-              return ListTile(
-                key: rowKey(group.id),
-                title: Text(group.label),
-                subtitle: group.role == null
-                    ? null
-                    : Text(_roleName(group.role!)),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      key: upKey(group.id),
-                      icon: const Icon(Icons.arrow_upward),
-                      onPressed: index == 0
-                          ? null
-                          : () => state.moveGroup(group.id, index - 1),
-                    ),
-                    IconButton(
-                      key: downKey(group.id),
-                      icon: const Icon(Icons.arrow_downward),
-                      onPressed: index == pages.length - 1
-                          ? null
-                          : () => state.moveGroup(group.id, index + 1),
-                    ),
-                  ],
-                ),
-                onTap: () => _edit(context, group),
-              );
-            },
-          );
-        },
+      onTap: () => _edit(context, group),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LauncherFontScope(
+      settings: state.snapshot?.settings,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text(title),
+          actions: [
+            IconButton(
+              key: addKey,
+              icon: const Icon(Icons.add),
+              onPressed: () => _add(context),
+            ),
+          ],
+        ),
+        body: ListenableBuilder(
+          listenable: state,
+          builder: (context, _) {
+            // Every top-level group (everything but the root), in `order`, so a
+            // hidden group is still listed and can be shown again here. The
+            // switch hides a group; the arrows, only on a group that is a page,
+            // reorder it.
+            final pageIds = state.pageIds;
+            final rootId = state.snapshot?.rootGroupId;
+            final groups =
+                state.groups.where((g) => g.id != rootId).toList()
+                  ..sort((a, b) => a.order.compareTo(b.order));
+            return ListView(
+              children: [
+                for (final group in groups)
+                  _row(
+                    context,
+                    group,
+                    pageIds.indexOf(group.id),
+                    pageIds.length,
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -142,8 +179,7 @@ class _GroupEditDialogState extends State<_GroupEditDialog> {
   late GroupRole? _role = widget.group.role;
 
   /// A role the core will not let go of. `Hidden` is never a page.
-  bool get _locked =>
-      _role != null && _role != GroupRole.home;
+  bool get _locked => _role != null && _role != GroupRole.home;
 
   @override
   void initState() {
@@ -177,20 +213,23 @@ class _GroupEditDialogState extends State<_GroupEditDialog> {
     final navigator = Navigator.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete ${widget.group.label}?'),
-        content: const Text('The apps in this group move to the Apps group.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            key: GroupEditorScreen.confirmDeleteKey,
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
+      builder: (context) => LauncherFontScope(
+        settings: widget.state.snapshot?.settings,
+        child: AlertDialog(
+          title: Text('Delete ${widget.group.label}?'),
+          content: const Text('The apps in this group move to the Apps group.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              key: GroupEditorScreen.confirmDeleteKey,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true) return;
@@ -202,76 +241,81 @@ class _GroupEditDialogState extends State<_GroupEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: GroupEditorScreen.editDialogKey,
-      title: Text(widget.group.label),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            key: GroupEditorScreen.editLabelFieldKey,
-            controller: _label,
-            decoration: const InputDecoration(labelText: 'Name'),
-          ),
-          const SizedBox(height: 16),
-          Text('Role', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final role in const [
-                GroupRole.home,
-                GroupRole.apps,
-                GroupRole.games,
-              ])
+    return LauncherFontScope(
+      settings: widget.state.snapshot?.settings,
+      child: AlertDialog(
+        key: GroupEditorScreen.editDialogKey,
+        title: Text(widget.group.label),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              key: GroupEditorScreen.editLabelFieldKey,
+              controller: _label,
+              decoration: const InputDecoration(labelText: 'Name'),
+            ),
+            const SizedBox(height: 16),
+            Text('Role', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final role in const [
+                  GroupRole.home,
+                  GroupRole.apps,
+                  GroupRole.games,
+                ])
+                  ChoiceChip(
+                    key: GroupEditorScreen.roleKey(role),
+                    label: Text(_roleName(role)),
+                    selected: _role == role,
+                    onSelected: _locked ? null : (_) => _setRole(role),
+                  ),
                 ChoiceChip(
-                  key: GroupEditorScreen.roleKey(role),
-                  label: Text(_roleName(role)),
-                  selected: _role == role,
-                  onSelected: _locked ? null : (_) => _setRole(role),
+                  key: GroupEditorScreen.roleKey(null),
+                  label: const Text('None'),
+                  selected: _role == null,
+                  onSelected: _role == GroupRole.home
+                      ? (_) => _setRole(null)
+                      : null,
                 ),
-              ChoiceChip(
-                key: GroupEditorScreen.roleKey(null),
-                label: const Text('None'),
-                selected: _role == null,
-                onSelected: _role == GroupRole.home
-                    ? (_) => _setRole(null)
-                    : null,
-              ),
-            ],
-          ),
-          ListTile(
-            key: GroupEditorScreen.selectAppsKey,
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.checklist),
-            title: const Text('Choose apps'),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    GroupAppsScreen(state: widget.state, groupId: widget.group.id),
+              ],
+            ),
+            ListTile(
+              key: GroupEditorScreen.selectAppsKey,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.checklist),
+              title: const Text('Choose apps'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => GroupAppsScreen(
+                    state: widget.state,
+                    groupId: widget.group.id,
+                  ),
+                ),
               ),
             ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            key: GroupEditorScreen.editDeleteKey,
+            onPressed: _role == null ? _confirmDelete : null,
+            child: const Text('Delete'),
+          ),
+          TextButton(
+            key: GroupEditorScreen.editCancelKey,
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: GroupEditorScreen.editSaveKey,
+            onPressed: _label.text.trim().isEmpty ? null : _save,
+            child: const Text('Save'),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          key: GroupEditorScreen.editDeleteKey,
-          onPressed: _role == null ? _confirmDelete : null,
-          child: const Text('Delete'),
-        ),
-        TextButton(
-          key: GroupEditorScreen.editCancelKey,
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: GroupEditorScreen.editSaveKey,
-          onPressed: _label.text.trim().isEmpty ? null : _save,
-          child: const Text('Save'),
-        ),
-      ],
     );
   }
 }

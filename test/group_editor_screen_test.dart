@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
@@ -18,10 +19,11 @@ void main() {
         rootGroupId: 'root',
         pageIds: ['apps', 'games', 'tools'],
         groups: [
-          Group(id: 'root', label: 'root', order: 0),
+          Group(id: 'root', label: 'root', order: 0, hidden: false),
           makeGroup('apps', role: GroupRole.apps, order: 0),
           makeGroup('games', role: GroupRole.games, order: 1),
           makeGroup('tools', order: 2),
+          makeGroup('hidden', role: GroupRole.hidden, order: 999),
         ],
       ),
     );
@@ -38,6 +40,19 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: GroupEditorScreen(state: state)));
     await tester.pump();
   }
+
+  testWidgets('the list rows take the Font size', (tester) async {
+    await pumpEditor(tester);
+
+    final title = find.descendant(
+      of: find.byKey(GroupEditorScreen.rowKey('apps')),
+      matching: find.text('apps'),
+    );
+    expect(
+      tester.renderObject<RenderParagraph>(title).text.style?.fontSize,
+      testSettings.labelSize.toDouble(),
+    );
+  });
 
   testWidgets('lists each page in order', (tester) async {
     await pumpEditor(tester);
@@ -141,5 +156,79 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fake.calls, contains('deleteGroup(tools)'));
+  });
+
+  testWidgets('lists the Hidden group', (tester) async {
+    await pumpEditor(tester);
+
+    expect(find.byKey(GroupEditorScreen.rowKey('hidden')), findsOneWidget);
+  });
+
+  testWidgets('the Hidden group cannot be reordered', (tester) async {
+    await pumpEditor(tester);
+
+    expect(find.byKey(GroupEditorScreen.upKey('hidden')), findsNothing);
+    expect(find.byKey(GroupEditorScreen.downKey('hidden')), findsNothing);
+  });
+
+  testWidgets('the Hidden group cannot be deleted', (tester) async {
+    await pumpEditor(tester);
+    await openEdit(tester, 'hidden');
+
+    expect(
+      tester
+          .widget<TextButton>(find.byKey(GroupEditorScreen.editDeleteKey))
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets("a group's switch hides it", (tester) async {
+    await pumpEditor(tester);
+
+    await tester.tap(find.byKey(GroupEditorScreen.hiddenKey('tools')));
+    await tester.pumpAndSettle();
+
+    expect(fake.calls, contains('setGroupHidden(tools,true)'));
+  });
+
+  testWidgets('the Hidden group switch is on and cannot be turned off', (
+    tester,
+  ) async {
+    await pumpEditor(tester);
+
+    final sw = tester.widget<Switch>(
+      find.byKey(GroupEditorScreen.hiddenKey('hidden')),
+    );
+    expect(sw.value, isTrue);
+    expect(sw.onChanged, isNull);
+  });
+
+  testWidgets('a group hidden by its switch is still listed, switch on', (
+    tester,
+  ) async {
+    await pumpEditor(tester);
+    fake.current = snapshotOf(
+      rootGroupId: 'root',
+      pageIds: ['apps', 'games'],
+      groups: [
+        Group(id: 'root', label: 'root', order: 0, hidden: false),
+        makeGroup('apps', role: GroupRole.apps, order: 0),
+        makeGroup('games', role: GroupRole.games, order: 1),
+        makeGroup('tools', order: 2, hidden: true),
+        makeGroup('hidden', role: GroupRole.hidden, order: 999),
+      ],
+    );
+
+    await state.load();
+    await tester.pump();
+
+    expect(find.byKey(GroupEditorScreen.rowKey('tools')), findsOneWidget);
+    expect(
+      tester
+          .widget<Switch>(find.byKey(GroupEditorScreen.hiddenKey('tools')))
+          .value,
+      isTrue,
+    );
   });
 }

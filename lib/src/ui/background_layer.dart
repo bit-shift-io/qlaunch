@@ -1,29 +1,25 @@
-import 'dart:typed_data';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-/// The bottom layer of the home screen: the wallpaper, or a solid base colour
-/// when there is none, under the black overlay whose opacity is
+/// The bottom layer of the home screen: the wallpaper (or a solid base colour
+/// where there is none), under the black overlay whose opacity is
 /// `wallpaper_alpha`.
 ///
-/// §7.7: the wallpaper is drawn in Flutter rather than letting a translucent
-/// surface show the OS wallpaper through, which is fragile. On Linux there is
-/// no wallpaper for a windowed app, so the base is a solid colour and only the
-/// overlay setting applies.
-///
-/// The bytes are a parameter because nothing in this plan fetches them: the
-/// spec's `wallpaper_png()` is Android's and was not part of the bridge Task 14
-/// built (F2).
+/// On Android the wallpaper is the system's own, shown through a transparent
+/// window (`windowShowWallpaper` in the theme, `BackgroundMode.transparent` in
+/// MainActivity) rather than read as bytes: Android 14+ refuses to hand an app
+/// the wallpaper bytes without a media permission, which a launcher should not
+/// need. So here the base is transparent on Android and the overlay dims the
+/// system wallpaper underneath. On Linux there is no wallpaper for a windowed
+/// app, so the base is a solid colour and only the overlay setting applies.
 class BackgroundLayer extends StatelessWidget {
-  const BackgroundLayer({super.key, required this.alpha, this.wallpaper});
+  const BackgroundLayer({super.key, required this.alpha});
 
   /// `wallpaper_alpha`, 0-100: 0 shows the wallpaper alone, 100 is black.
   final int alpha;
 
-  /// The wallpaper's PNG bytes, or `null` when there is none.
-  final Uint8List? wallpaper;
-
-  static const wallpaperKey = ValueKey('background.wallpaper');
   static const baseKey = ValueKey('background.base');
 
   /// The overlay. Its alpha is the setting, so a test can read it directly.
@@ -33,6 +29,10 @@ class BackgroundLayer extends StatelessWidget {
   /// reads as a background, where pure black reads as nothing having rendered.
   static const baseColour = Color(0xFF1B1B1F);
 
+  /// Whether the base is left transparent for the window's own wallpaper to
+  /// show through. Android only; tests run elsewhere and keep the solid base.
+  static bool get _transparentBase => !kIsWeb && Platform.isAndroid;
+
   @override
   Widget build(BuildContext context) {
     // Rust clamps the setting, but the overlay is the whole screen, so clamp
@@ -41,19 +41,10 @@ class BackgroundLayer extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (wallpaper == null)
-          const ColoredBox(key: baseKey, color: baseColour)
-        else
-          Image.memory(
-            wallpaper!,
-            key: wallpaperKey,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            // A wallpaper that cannot be decoded must not take the screen
-            // down with it; fall back to the base colour.
-            errorBuilder: (context, error, stack) =>
-                const ColoredBox(key: baseKey, color: baseColour),
-          ),
+        ColoredBox(
+          key: baseKey,
+          color: _transparentBase ? Colors.transparent : BackgroundLayer.baseColour,
+        ),
         ColoredBox(
           key: overlayKey,
           color: Colors.black.withValues(alpha: overlay),

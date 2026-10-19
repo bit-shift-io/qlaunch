@@ -20,6 +20,13 @@ pub struct Group {
     pub parent_id: Option<Id>,
     pub role: Option<GroupRole>,
     pub order: i32,
+    /// Whether the group is hidden from the pager and the tab strip. Ordinary
+    /// groups can be hidden and shown again from the group editor; the group
+    /// holding the `Hidden` *role* is never a page regardless of this, and the
+    /// root can never be hidden. Defaulted so a document written before this
+    /// field still loads (the schema stays at 1).
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -108,6 +115,7 @@ impl Model {
             parent_id: None,
             role: Some(GroupRole::Root),
             order: 0,
+            hidden: false,
         };
         let child = |label: &str, role: GroupRole, order: i32| Group {
             id: new_id(),
@@ -115,6 +123,7 @@ impl Model {
             parent_id: Some(root.id.clone()),
             role: Some(role),
             order,
+            hidden: false,
         };
         let children = [
             child("Apps", GroupRole::Apps, 0),

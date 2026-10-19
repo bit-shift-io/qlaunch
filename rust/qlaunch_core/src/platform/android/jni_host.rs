@@ -156,6 +156,21 @@ impl AndroidHost for JniHost {
 }
 
 impl JniHost {
+    /// Opens the system wallpaper chooser. There is no result; the change comes
+    /// back as [`Java_bitshift_qlaunch_MainActivity_onWallpaperChanged`].
+    pub fn choose_wallpaper() -> Result<(), PlatformError> {
+        JniHost::with_env(|env| {
+            let class = JniHost::class()?;
+            match env.call_static_method(class, "chooseWallpaper", "()V", &[]) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })
+    }
+
     /// Opens the system's uninstall confirmation for `package`.
     pub fn uninstall(package: &str) -> Result<(), PlatformError> {
         JniHost::with_env(|env| {
@@ -244,3 +259,5 @@ pub extern "system" fn Java_bitshift_qlaunch_PackageChangeReceiver_onPackagesCha
 ) {
     let _ = crate::api::state::refresh_apps_now();
 }
+
+

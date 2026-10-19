@@ -5,8 +5,17 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterActivityLaunchConfigs
 
 class MainActivity : FlutterActivity() {
+    /// A launcher shows the system wallpaper behind its own UI (§7.7). Android
+    /// 14+ refuses to hand an app the wallpaper bytes without a media
+    /// permission, so the wallpaper is shown the way every launcher does it:
+    /// the window is transparent where Flutter is, and `windowShowWallpaper`
+    /// puts the wallpaper underneath.
+    override fun getBackgroundMode(): FlutterActivityLaunchConfigs.BackgroundMode =
+        FlutterActivityLaunchConfigs.BackgroundMode.transparent
+
     private val packageReceiver = PackageChangeReceiver()
 
     override fun onCreate(savedInstanceState: Bundle?) {

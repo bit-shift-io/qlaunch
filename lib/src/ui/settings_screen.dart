@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' hide Orientation;
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/group_editor_screen.dart';
+import 'package:qlaunch/src/ui/label_style.dart';
 
 /// Every setting in §8.6, grouped as Display / Window / Icon / Text / Advanced.
 ///
@@ -32,6 +33,7 @@ class SettingsScreen extends StatefulWidget {
   static const restartKey = ValueKey('setting.restart');
   static const factoryResetKey = ValueKey('setting.factoryReset');
   static const groupsKey = ValueKey('setting.groups');
+  static const chooseWallpaperKey = ValueKey('setting.chooseWallpaper');
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -74,182 +76,193 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Launcher Settings')),
-      body: ListenableBuilder(
-        listenable: widget.state,
-        builder: (context, _) {
-          final settings = widget.state.snapshot?.settings;
-          if (settings == null) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return SingleChildScrollView(
-            // Every control is built, whether or not it is on screen: a screen
-            // as short as this does not need a lazy list, and this screen's
-            // test asserts one control per setting, which it could not do for
-            // children that had never been built.
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _header('Display'),
-                _number(
-                  SettingField.gridColumnsPortrait,
-                  'Portrait columns',
-                  settings.gridColumnsPortrait.toDouble(),
-                  1,
-                  12,
-                  (v) => SettingsPatch(gridColumnsPortrait: v.round()),
-                ),
-                _number(
-                  SettingField.gridColumnsLandscape,
-                  'Landscape columns',
-                  settings.gridColumnsLandscape.toDouble(),
-                  1,
-                  12,
-                  (v) => SettingsPatch(gridColumnsLandscape: v.round()),
-                ),
-                _choice(
-                  SettingField.layout,
-                  'Cell layout',
-                  LayoutStyle.values,
-                  settings.layout,
-                  _layoutName,
-                  (v) => SettingsPatch(layout: v),
-                ),
-                _choice(
-                  SettingField.tabVisibility,
-                  'Tab strip',
-                  TabVisibility.values,
-                  settings.tabVisibility,
-                  _tabVisibilityName,
-                  (v) => SettingsPatch(tabVisibility: v),
-                ),
-
-                _header('Window'),
-                _number(
-                  SettingField.wallpaperAlpha,
-                  'Wallpaper dimming',
-                  settings.wallpaperAlpha.toDouble(),
-                  0,
-                  100,
-                  (v) => SettingsPatch(wallpaperAlpha: v.round()),
-                ),
-                _switch(
-                  SettingField.statusBarVisible,
-                  'Show the status bar',
-                  settings.statusBarVisible,
-                  (v) => SettingsPatch(statusBarVisible: v),
-                ),
-                _choice(
-                  SettingField.orientation,
-                  'Requested orientation',
-                  Orientation.values,
-                  settings.orientation,
-                  _orientationName,
-                  (v) => SettingsPatch(orientation: v),
-                ),
-
-                _header('Icon'),
-                _switch(
-                  SettingField.iconsVisible,
-                  'Show icons',
-                  settings.iconsVisible,
-                  (v) => SettingsPatch(iconsVisible: v),
-                ),
-                _number(
-                  SettingField.iconSize,
-                  'Icon size',
-                  settings.iconSize.toDouble(),
-                  0,
-                  100,
-                  (v) => SettingsPatch(iconSize: v.round()),
-                ),
-                _number(
-                  SettingField.iconAlpha,
-                  'Icon opacity',
-                  settings.iconAlpha.toDouble(),
-                  0,
-                  100,
-                  (v) => SettingsPatch(iconAlpha: v.round()),
-                ),
-
-                _header('Text'),
-                _switch(
-                  SettingField.labelsVisible,
-                  'Show labels',
-                  settings.labelsVisible,
-                  (v) => SettingsPatch(labelsVisible: v),
-                ),
-                _number(
-                  SettingField.labelSize,
-                  'Label size',
-                  settings.labelSize.toDouble(),
-                  0,
-                  100,
-                  (v) => SettingsPatch(labelSize: v.round()),
-                ),
-                _choice(
-                  SettingField.labelTypeface,
-                  'Typeface',
-                  Typeface.values,
-                  settings.labelTypeface,
-                  _typefaceName,
-                  (v) => SettingsPatch(labelTypeface: v),
-                ),
-                _choice(
-                  SettingField.labelColour,
-                  'Colour',
-                  LabelColour.values,
-                  settings.labelColour,
-                  _labelColourName,
-                  (v) => SettingsPatch(labelColour: v),
-                ),
-                _switch(
-                  SettingField.labelShadow,
-                  'Label shadow',
-                  settings.labelShadow,
-                  (v) => SettingsPatch(labelShadow: v),
-                ),
-
-                _header('Groups'),
-                ListTile(
-                  key: SettingsScreen.groupsKey,
-                  title: const Text('Groups'),
-                  subtitle: const Text(
-                    'Add, rename, reorder and fill the tabs.',
+    return LauncherFontScope(
+      settings: widget.state.snapshot?.settings,
+      child: Scaffold(
+        appBar: AppBar(title: const Text('Launcher Settings')),
+        body: ListenableBuilder(
+          listenable: widget.state,
+          builder: (context, _) {
+            final settings = widget.state.snapshot?.settings;
+            if (settings == null) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            return SingleChildScrollView(
+              // Every control is built, whether or not it is on screen: a screen
+              // as short as this does not need a lazy list, and this screen's
+              // test asserts one control per setting, which it could not do for
+              // children that had never been built.
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _header('Display'),
+                  _number(
+                    SettingField.gridColumnsPortrait,
+                    'Portrait columns',
+                    settings.gridColumnsPortrait.toDouble(),
+                    1,
+                    12,
+                    (v) => SettingsPatch(gridColumnsPortrait: v.round()),
                   ),
-                  onTap: () => unawaited(
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (context) =>
-                            GroupEditorScreen(state: widget.state),
+                  _number(
+                    SettingField.gridColumnsLandscape,
+                    'Landscape columns',
+                    settings.gridColumnsLandscape.toDouble(),
+                    1,
+                    12,
+                    (v) => SettingsPatch(gridColumnsLandscape: v.round()),
+                  ),
+                  _choice(
+                    SettingField.layout,
+                    'Cell layout',
+                    LayoutStyle.values,
+                    settings.layout,
+                    _layoutName,
+                    (v) => SettingsPatch(layout: v),
+                  ),
+                  _choice(
+                    SettingField.tabVisibility,
+                    'Tab strip',
+                    TabVisibility.values,
+                    settings.tabVisibility,
+                    _tabVisibilityName,
+                    (v) => SettingsPatch(tabVisibility: v),
+                  ),
+
+                  _header('Window'),
+                  ListTile(
+                    key: SettingsScreen.chooseWallpaperKey,
+                    title: const Text('Choose wallpaper'),
+                    subtitle: const Text(
+                      'Pick one with the system wallpaper chooser.',
+                    ),
+                    onTap: () => unawaited(widget.state.chooseWallpaper()),
+                  ),
+                  _number(
+                    SettingField.wallpaperAlpha,
+                    'Wallpaper dimming',
+                    settings.wallpaperAlpha.toDouble(),
+                    0,
+                    100,
+                    (v) => SettingsPatch(wallpaperAlpha: v.round()),
+                  ),
+                  _switch(
+                    SettingField.statusBarVisible,
+                    'Show the status bar',
+                    settings.statusBarVisible,
+                    (v) => SettingsPatch(statusBarVisible: v),
+                  ),
+                  _choice(
+                    SettingField.orientation,
+                    'Requested orientation',
+                    Orientation.values,
+                    settings.orientation,
+                    _orientationName,
+                    (v) => SettingsPatch(orientation: v),
+                  ),
+
+                  _header('Icon'),
+                  _switch(
+                    SettingField.iconsVisible,
+                    'Show icons',
+                    settings.iconsVisible,
+                    (v) => SettingsPatch(iconsVisible: v),
+                  ),
+                  _number(
+                    SettingField.iconSize,
+                    'Icon size',
+                    settings.iconSize.toDouble(),
+                    0,
+                    100,
+                    (v) => SettingsPatch(iconSize: v.round()),
+                  ),
+                  _number(
+                    SettingField.iconAlpha,
+                    'Icon opacity',
+                    settings.iconAlpha.toDouble(),
+                    0,
+                    100,
+                    (v) => SettingsPatch(iconAlpha: v.round()),
+                  ),
+
+                  _header('Text'),
+                  _switch(
+                    SettingField.labelsVisible,
+                    'Show labels',
+                    settings.labelsVisible,
+                    (v) => SettingsPatch(labelsVisible: v),
+                  ),
+                  _number(
+                    SettingField.labelSize,
+                    'Font size',
+                    settings.labelSize.toDouble(),
+                    0,
+                    100,
+                    (v) => SettingsPatch(labelSize: v.round()),
+                  ),
+                  _choice(
+                    SettingField.labelTypeface,
+                    'Typeface',
+                    Typeface.values,
+                    settings.labelTypeface,
+                    _typefaceName,
+                    (v) => SettingsPatch(labelTypeface: v),
+                  ),
+                  _choice(
+                    SettingField.labelColour,
+                    'Colour',
+                    LabelColour.values,
+                    settings.labelColour,
+                    _labelColourName,
+                    (v) => SettingsPatch(labelColour: v),
+                  ),
+                  _switch(
+                    SettingField.labelShadow,
+                    'Label shadow',
+                    settings.labelShadow,
+                    (v) => SettingsPatch(labelShadow: v),
+                  ),
+
+                  _header('Groups'),
+                  ListTile(
+                    key: SettingsScreen.groupsKey,
+                    title: const Text('Groups'),
+                    subtitle: const Text(
+                      'Add, rename, reorder and fill the tabs.',
+                    ),
+                    onTap: () => unawaited(
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (context) =>
+                              GroupEditorScreen(state: widget.state),
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                _header('Advanced'),
-                ListTile(
-                  key: SettingsScreen.restartKey,
-                  title: const Text('Restart Launcher'),
-                  subtitle: const Text(
-                    'Re-reads the saved layout and the installed applications.',
+                  _header('Advanced'),
+                  ListTile(
+                    key: SettingsScreen.restartKey,
+                    title: const Text('Restart Launcher'),
+                    subtitle: const Text(
+                      'Re-reads the saved layout and the installed applications.',
+                    ),
+                    onTap: () => unawaited(widget.state.load()),
                   ),
-                  onTap: () => unawaited(widget.state.load()),
-                ),
-                ListTile(
-                  key: SettingsScreen.factoryResetKey,
-                  title: const Text('Factory Reset'),
-                  subtitle: const Text(
-                    'Wipes every group, item and setting, after confirmation.',
+                  ListTile(
+                    key: SettingsScreen.factoryResetKey,
+                    title: const Text('Factory Reset'),
+                    subtitle: const Text(
+                      'Wipes every group, item and setting, after confirmation.',
+                    ),
+                    onTap: _factoryReset,
                   ),
-                  onTap: _factoryReset,
-                ),
-                const SizedBox(height: 32),
-              ],
-            ),
-          );
-        },
+                  const SizedBox(height: 32),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

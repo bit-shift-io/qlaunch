@@ -17,6 +17,7 @@ use thiserror::Error;
 
 use crate::model::{Group, Id, Item, Model, ModelError};
 use crate::settings::Settings;
+use crate::usage::Usage;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -27,13 +28,18 @@ const ICONS_DIR: &str = "icons";
 
 /// The whole of what is stored on disk: one versioned JSON document.
 ///
-/// `settings` may be absent (it then takes the defaults); every other field is
-/// required, since a document without them is damaged, not merely old.
+/// `settings` and `usage` may be absent (they then take the defaults); every
+/// other field is required, since a document without them is damaged, not
+/// merely old.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
     pub schema: u32,
     #[serde(default)]
     pub settings: Settings,
+    /// What has been launched, and when. Absent in a document written before
+    /// the search screen existed, which is why it defaults rather than failing.
+    #[serde(default)]
+    pub usage: Usage,
     pub root_group_id: Id,
     pub groups: Vec<Group>,
     pub items: Vec<Item>,
@@ -43,6 +49,8 @@ pub struct Document {
 pub struct Loaded {
     pub model: Model,
     pub settings: Settings,
+    /// The document's usage, or the defaults when it had none.
+    pub usage: Usage,
     pub warnings: Vec<String>,
 }
 
@@ -209,12 +217,13 @@ impl Store {
     /// document). Refused with `WritesBlocked` while the document is unreadable
     /// (see [`Store`]). A model that [`Model::validate`] rejects
     /// is refused, since `load` would only quarantine it again.
-    pub fn save(&self, model: &Model, settings: &Settings) -> Result<(), StoreError> {
+    pub fn save(&self, model: &Model, settings: &Settings, usage: &Usage) -> Result<(), StoreError> {
         self.check_writable()?;
         model.validate()?;
         let document = Document {
             schema: SCHEMA_VERSION,
             settings: settings.clone(),
+            usage: usage.clone(),
             root_group_id: model.root_group_id.clone(),
             groups: model.groups.clone(),
             items: model.items.clone(),
@@ -285,7 +294,7 @@ impl Store {
                     "The saved layout was repaired. The original was kept as {}.",
                     kept.display()
                 ));
-                if let Err(e) = self.save(&loaded.model, &loaded.settings) {
+                if let Err(e) = self.save(&loaded.model, &loaded.settings, &loaded.usage) {
                     loaded.warnings.push(format!(
                         "The repaired layout could not be saved ({e}); it will be repaired again next time."
                     ));
@@ -303,6 +312,7 @@ impl Store {
         Loaded {
             model: Model::new_default(),
             settings: Settings::default(),
+            usage: Usage::default(),
             warnings: vec![format!(
                 "The saved layout at {} could not be read ({e}). It was left as it is, and a temporary default layout is being used.",
                 self.document_path().display()
@@ -317,7 +327,8 @@ impl Store {
     fn write_defaults(&self, mut warnings: Vec<String>) -> Loaded {
         let model = Model::new_default();
         let settings = Settings::default();
-        if let Err(e) = self.save(&model, &settings) {
+        let usage = Usage::default();
+        if let Err(e) = self.save(&model, &settings, &usage) {
             warnings.push(format!(
                 "The layout could not be saved to {} ({e}); changes will not be kept until it can be.",
                 self.root.display()
@@ -326,6 +337,7 @@ impl Store {
         Loaded {
             model,
             settings,
+            usage,
             warnings,
         }
     }
@@ -370,6 +382,7 @@ fn interpret(bytes: &[u8]) -> Result<(Loaded, bool), StoreError> {
     }
     let read = document.clone();
 
+    let usage = document.usage;
     let mut settings = document.settings;
     let mut warnings = clamp_settings(&mut settings);
     let mut model = Model {
@@ -388,6 +401,7 @@ fn interpret(bytes: &[u8]) -> Result<(Loaded, bool), StoreError> {
         Loaded {
             model,
             settings,
+            usage,
             warnings,
         },
         repaired,

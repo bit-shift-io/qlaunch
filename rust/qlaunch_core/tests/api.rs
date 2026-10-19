@@ -893,6 +893,76 @@ fn uninstall_app_is_unsupported_off_android() {
 }
 
 #[test]
+fn a_successful_launch_is_counted_and_a_failed_one_is_not() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    block_on(api::launch_app(
+        "org.alpha".into(),
+        "org.alpha.desktop".into(),
+    ))
+    .unwrap();
+    block_on(api::launch_app(
+        "org.alpha".into(),
+        "org.alpha.desktop".into(),
+    ))
+    .unwrap();
+    let failed = block_on(api::launch_app(
+        "org.ghost".into(),
+        "org.ghost.desktop".into(),
+    ));
+    assert!(failed.is_err());
+
+    let frequent = block_on(api::frequent_apps(10));
+    assert_eq!(frequent.len(), 1, "only alpha launched");
+    assert_eq!(frequent[0].label, "Alpha");
+    assert_eq!(block_on(api::recent_apps(10))[0].label, "Alpha");
+}
+
+#[test]
+fn usage_survives_a_reinit() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    block_on(api::launch_app("org.beta".into(), "org.beta.desktop".into())).unwrap();
+
+    // Start again over the same directory: the usage is read back.
+    init_fake(dir.path());
+    assert_eq!(block_on(api::recent_apps(10))[0].label, "Beta");
+}
+
+#[test]
+fn usage_queries_skip_apps_that_are_not_in_the_model() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    block_on(api::launch_app("org.alpha".into(), "org.alpha.desktop".into())).unwrap();
+
+    // Remove the item; its usage entry stays on disk but must not be shown.
+    let snap = block_on(api::snapshot()).unwrap();
+    let id = snap
+        .items
+        .iter()
+        .find(|i| i.label == "Alpha")
+        .unwrap()
+        .id
+        .clone();
+    block_on(api::remove_item(id)).unwrap();
+
+    assert!(block_on(api::frequent_apps(10)).is_empty());
+    assert!(block_on(api::recent_apps(10)).is_empty());
+}
+
+#[test]
+fn empty_search_no_longer_lists_every_app() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    assert!(block_on(api::search_all_apps(String::new())).is_empty());
+    assert!(!block_on(api::search_all_apps("al".into())).is_empty());
+}
+
+#[test]
 fn a_mutation_works_while_a_watcher_keeps_refreshing() {
     let _guard = serial();
     let dir = tempdir().unwrap();
