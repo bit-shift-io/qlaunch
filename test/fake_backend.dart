@@ -171,6 +171,11 @@ class FakeBackend implements LauncherBackend {
   }
 
   @override
+  Future<void> uninstallApp(String package) async {
+    await _plain('uninstallApp($package)', null);
+  }
+
+  @override
   Stream<CoreEvent> events() {
     calls.add('events');
     return _events.stream;

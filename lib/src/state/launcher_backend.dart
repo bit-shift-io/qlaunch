@@ -28,6 +28,7 @@ abstract class LauncherBackend {
   Future<List<SearchHit>> searchAllApps(String query);
   Future<Uint8List?> iconFor(String package, String activity, int sizePx);
   Future<void> launchApp(String package, String activity);
+  Future<void> uninstallApp(String package);
   Stream<CoreEvent> events();
 }
 
@@ -99,6 +100,10 @@ class RustBackend implements LauncherBackend {
   @override
   Future<void> launchApp(String package, String activity) =>
       rust.launchApp(package: package, activity: activity);
+
+  @override
+  Future<void> uninstallApp(String package) =>
+      rust.uninstallApp(packageName: package);
 
   @override
   Stream<CoreEvent> events() => rust.events();

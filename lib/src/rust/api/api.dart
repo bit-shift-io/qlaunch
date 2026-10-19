@@ -12,8 +12,9 @@ import 'events.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
+// These functions are ignored because they are not marked as `pub`: `choose_root`, `platform_config_root`, `platform_source`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`, `fmt`
-// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `init_with_source`, `reset_for_test`, `subscribe_for_test`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `emit_for_test`, `init_with_source`, `reset_for_test`, `subscribe_for_test`
 
 Future<String> version() => RustLib.instance.api.crateApiApiVersion();
 
@@ -106,6 +107,12 @@ Future<void> launchApp({required String package, required String activity}) =>
       package: package,
       activity: activity,
     );
+
+/// Asks the system to uninstall `package_name`. On Android this opens the
+/// system's confirmation; the app list is refreshed by the package-change
+/// receiver, not here.
+Future<void> uninstallApp({required String packageName}) =>
+    RustLib.instance.api.crateApiApiUninstallApp(packageName: packageName);
 
 /// Streams the core's events to Dart. A subscriber that misses an event can
 /// always re-read `snapshot()`. The subscription ends when the stream is

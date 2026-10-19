@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/group_editor_screen.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 
 import 'fake_backend.dart';
@@ -150,6 +151,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets('the Groups row opens the group editor', (tester) async {
+    await pumpSettings(tester);
+
+    await tapControl(tester, find.byKey(SettingsScreen.groupsKey));
+
+    expect(find.byType(GroupEditorScreen), findsOneWidget);
   });
 
   group('actions', () {

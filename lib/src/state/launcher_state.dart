@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
+import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart' show SearchHit;
 import 'package:qlaunch/src/rust/settings.dart' show SettingsPatch;
 import 'package:qlaunch/src/state/launcher_backend.dart';
@@ -56,6 +57,26 @@ class LauncherState extends ChangeNotifier {
       if (g.id == id) return g;
     }
     return null;
+  }
+
+  /// The group holding the Apps role, or `null` if none does. Every app has a
+  /// home here when it is unticked from another group.
+  Group? get appsGroup {
+    for (final g in groups) {
+      if (g.role == GroupRole.apps) return g;
+    }
+    return null;
+  }
+
+  /// The page groups in page order. `pageIds` is the order the core computed.
+  List<Group> get pages {
+    final s = _snapshot;
+    if (s == null) return const [];
+    final byId = {for (final g in s.groups) g.id: g};
+    return [
+      for (final id in s.pageIds)
+        if (byId[id] != null) byId[id]!,
+    ];
   }
 
   /// Subscribes to core events *before* fetching: the core registers its
@@ -154,6 +175,35 @@ class LauncherState extends ChangeNotifier {
   /// [error], never as a throw.
   Future<void> updateSettings(SettingsPatch patch) =>
       _fetch(() => _backend.updateSettings(patch));
+
+  Future<void> renameItem(String id, String label) =>
+      _fetch(() => _backend.renameItem(id, label));
+
+  Future<void> moveItem(String id, String toGroup, int newOrder) =>
+      _fetch(() => _backend.moveItem(id, toGroup, newOrder));
+
+  Future<void> addGroup(String label) => _fetch(() => _backend.addGroup(label));
+
+  Future<void> renameGroup(String id, String label) =>
+      _fetch(() => _backend.renameGroup(id, label));
+
+  Future<void> moveGroup(String id, int newOrder) =>
+      _fetch(() => _backend.moveGroup(id, newOrder));
+
+  Future<void> deleteGroup(String id) => _fetch(() => _backend.deleteGroup(id));
+
+  Future<void> setGroupRole(String id, GroupRole? role) =>
+      _fetch(() => _backend.setGroupRole(id, role));
+
+  /// Asks the system to uninstall an app. The core's own list updates when the
+  /// package-change receiver fires; a failure is reported through [error].
+  Future<void> uninstallApp(String package) async {
+    try {
+      await _backend.uninstallApp(package);
+    } catch (e, st) {
+      _fail(e, st);
+    }
+  }
 
   /// Surfaces a failure as state, and reports it so that a programming error
   /// is not hidden behind a one-line message.

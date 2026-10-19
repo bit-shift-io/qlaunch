@@ -1,4 +1,5 @@
 use std::ffi::c_void;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use jni::objects::GlobalRef;
@@ -40,6 +41,29 @@ impl JniHost {
         BRIDGE_CLASS
             .get()
             .ok_or_else(|| PlatformError::Unsupported("the bridge class was not captured".into()))
+    }
+
+    /// The app's private files directory (`Context.filesDir`), where the store
+    /// keeps `qlaunch.json`.
+    pub fn files_dir() -> Result<PathBuf, PlatformError> {
+        let path: String = JniHost::with_env(|env| {
+            let class = JniHost::class()?;
+            match env.call_static_method(class, "filesDirPath", "()Ljava/lang/String;", &[]) {
+                Ok(value) => {
+                    let object = value.l().map_err(|e| {
+                        clear_pending(env);
+                        jni_error(e)
+                    })?;
+                    let java_str: jni::objects::JString = object.into();
+                    env.get_string(&java_str).map_err(jni_error).map(Into::into)
+                }
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })?;
+        Ok(PathBuf::from(path))
     }
 }
 
@@ -131,6 +155,28 @@ impl AndroidHost for JniHost {
     }
 }
 
+impl JniHost {
+    /// Opens the system's uninstall confirmation for `package`.
+    pub fn uninstall(package: &str) -> Result<(), PlatformError> {
+        JniHost::with_env(|env| {
+            let class = JniHost::class()?;
+            let pkg = env.new_string(package).map_err(jni_error)?;
+            match env.call_static_method(
+                class,
+                "uninstall",
+                "(Ljava/lang/String;)V",
+                &[(&pkg).into()],
+            ) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })
+    }
+}
+
 /// Clears a pending exception left by a failed JNI call. Without this, the
 /// pending exception aborts every later call (Review Focus 3).
 pub(crate) fn clear_pending(env: &mut JNIEnv) {
@@ -185,4 +231,16 @@ pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onBackPressedEvent(
     _this: jni::objects::JObject,
 ) {
     crate::api::state::emit(CoreEvent::BackPressed);
+}
+
+/// The OS telling us an app was installed, removed or changed, from
+/// `PackageChangeReceiver`. Refresh now; the core emits `AppsChanged` and Dart
+/// refetches its snapshot. A failure (the core not yet started, say) is ignored:
+/// the next `init` reconciles anyway.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_bitshift_qlaunch_PackageChangeReceiver_onPackagesChanged(
+    _env: JNIEnv,
+    _this: jni::objects::JObject,
+) {
+    let _ = crate::api::state::refresh_apps_now();
 }

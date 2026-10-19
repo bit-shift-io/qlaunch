@@ -884,6 +884,14 @@ fn replacing_a_state_that_owns_a_busy_watcher_does_not_deadlock() {
     finishes_promptly("reset_for_test", api::reset_for_test);
 }
 
+#[cfg(not(target_os = "android"))]
+#[test]
+fn uninstall_app_is_unsupported_off_android() {
+    let result = block_on(api::uninstall_app("com.example".into()));
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Android"));
+}
+
 #[test]
 fn a_mutation_works_while_a_watcher_keeps_refreshing() {
     let _guard = serial();

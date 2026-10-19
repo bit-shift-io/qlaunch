@@ -11,6 +11,7 @@ use crate::platform::linux::LinuxSource;
 use crate::platform::android::{AndroidSource, jni_host::JniHost};
 use crate::search::{SearchCandidate, search};
 use crate::settings::{Settings, SettingsPatch};
+#[cfg(not(target_os = "android"))]
 use crate::store;
 
 pub use crate::search::SearchHit;
@@ -67,10 +68,24 @@ pub struct ModelSnapshot {
 /// with the defaults and a warning that nothing will be saved. Calling it again
 /// replaces the running state.
 pub async fn init(config_root_override: Option<String>) -> Result<ModelSnapshot, String> {
-    let (root, warnings) = match config_root_override {
-        Some(path) => (Some(PathBuf::from(path)), Vec::new()),
-        None => match store::config_root() {
-            Ok(root) => (Some(root), Vec::new()),
+    let (root, warnings) = choose_root(
+        config_root_override.map(PathBuf::from),
+        platform_config_root(),
+    );
+    state::install(root, platform_source(), warnings)
+}
+
+/// Chooses the configuration directory and the warnings `init` starts with: the
+/// override if there is one, else the platform default, else nothing and a
+/// warning that changes will not be saved.
+fn choose_root(
+    override_path: Option<PathBuf>,
+    default: Result<PathBuf, String>,
+) -> (Option<PathBuf>, Vec<String>) {
+    match override_path {
+        Some(path) => (Some(path), Vec::new()),
+        None => match default {
+            Ok(path) => (Some(path), Vec::new()),
             Err(e) => (
                 None,
                 vec![format!(
@@ -78,8 +93,19 @@ pub async fn init(config_root_override: Option<String>) -> Result<ModelSnapshot,
                 )],
             ),
         },
-    };
-    state::install(root, platform_source(), warnings)
+    }
+}
+
+/// Android hands its private files directory (`Context.filesDir`) through the
+/// bridge; there is no usable XDG home there.
+#[cfg(target_os = "android")]
+fn platform_config_root() -> Result<PathBuf, String> {
+    JniHost::files_dir().map_err(|e| e.to_string())
+}
+
+#[cfg(not(target_os = "android"))]
+fn platform_config_root() -> Result<PathBuf, String> {
+    store::config_root().map_err(|e| e.to_string())
 }
 
 /// The testable core of [`init`], not part of the bridge surface.
@@ -231,10 +257,54 @@ pub async fn launch_app(package: String, activity: String) -> Result<(), String>
         .map_err(|e| state::launch_error(&e))
 }
 
+/// Asks the system to uninstall `package_name`. On Android this opens the
+/// system's confirmation; the app list is refreshed by the package-change
+/// receiver, not here.
+pub async fn uninstall_app(package_name: String) -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        JniHost::uninstall(&package_name).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = package_name;
+        Err("uninstalling an app is only available on Android".into())
+    }
+}
+
 /// Streams the core's events to Dart. A subscriber that misses an event can
 /// always re-read `snapshot()`. The subscription ends when the stream is
 /// closed.
 pub fn events(sink: StreamSink<CoreEvent>) -> Result<(), String> {
     state::subscribe(Box::new(move |event| sink.add(event.clone()).is_ok()));
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::choose_root;
+    use std::path::PathBuf;
+
+    #[test]
+    fn choose_root_prefers_the_override() {
+        let (root, warnings) =
+            choose_root(Some(PathBuf::from("/tmp/x")), Err("no home".into()));
+        assert_eq!(root, Some(PathBuf::from("/tmp/x")));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn choose_root_uses_the_default_when_there_is_no_override() {
+        let (root, warnings) = choose_root(None, Ok(PathBuf::from("/tmp/y")));
+        assert_eq!(root, Some(PathBuf::from("/tmp/y")));
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn choose_root_warns_when_there_is_no_directory() {
+        let (root, warnings) = choose_root(None, Err("no home".into()));
+        assert_eq!(root, None);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("no home"));
+    }
 }

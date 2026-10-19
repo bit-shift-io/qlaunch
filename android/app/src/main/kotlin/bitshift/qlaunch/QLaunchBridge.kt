@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -26,6 +27,10 @@ object QLaunchBridge {
     @JvmStatic
     fun getAppContext(): Context =
         appContext ?: throw IllegalStateException("QLaunchBridge.install was not called")
+
+    /// The app's private files directory, where Rust keeps `qlaunch.json`.
+    @JvmStatic
+    fun filesDirPath(): String = getAppContext().filesDir.absolutePath
 
     /// Every launcher activity, as the JSON shape Rust's `parse_list_json` reads.
     /// `selfPackage` lets Rust drop our own package and is the package-name
@@ -73,6 +78,15 @@ object QLaunchBridge {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /// Opens the system's uninstall confirmation for `packageName`.
+    @JvmStatic
+    fun uninstall(packageName: String) {
+        val context = getAppContext()
+        val intent = Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
     }
 
     /// Starts the activity. Throws if the component is gone, so Rust can report it.

@@ -4,15 +4,16 @@ import 'package:qlaunch/src/rust/model.dart';
 /// The group pages as labels along the top of the home screen.
 ///
 /// §8.2 gives the strip the job of showing which group the user is on; the
-/// swipe is the navigation. It is an indicator, not a control: tapping a tab is
-/// deferred (F1), because switching pages would need a way to command the
-/// pager's `PageController` from outside, which the plan does not build.
+/// swipe is the navigation. A tap on a tab also switches to that group: the
+/// pager can be commanded from outside through the controller, so the strip is
+/// a control as well as an indicator.
 class TabStrip extends StatelessWidget {
   const TabStrip({
     super.key,
     required this.pageIds,
     required this.groups,
     required this.currentGroupId,
+    this.onGroupTap,
   });
 
   /// The pages in display order, one tab each, in the order given. The `''`
@@ -25,6 +26,11 @@ class TabStrip extends StatelessWidget {
 
   /// The group the pager is showing, drawn as the current tab.
   final String currentGroupId;
+
+  /// Called with a tab's group id when it is tapped. A null callback leaves the
+  /// strip as a plain indicator, so it still cannot be tapped where nothing
+  /// listens.
+  final ValueChanged<String>? onGroupTap;
 
   /// The highlight under the current tab.
   static const indicatorKey = ValueKey('tabStrip.indicator');
@@ -65,7 +71,7 @@ class TabStrip extends StatelessWidget {
 
   Widget _tab(ThemeData theme, int index, String groupId) {
     final current = groupId == currentGroupId;
-    return Padding(
+    final tab = Padding(
       key: tabKey(index),
       padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Column(
@@ -97,6 +103,13 @@ class TabStrip extends StatelessWidget {
             const SizedBox(height: 2),
         ],
       ),
+    );
+    final onTap = onGroupTap;
+    if (onTap == null) return tab;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => onTap(groupId),
+      child: tab,
     );
   }
 }

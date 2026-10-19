@@ -450,4 +450,55 @@ void main() {
       expect(reported.single.exception, isA<StateError>());
     });
   });
+
+  group('mutations', () {
+    test('renameItem forwards the label and adopts the snapshot', () async {
+      fake.current = snapshotOf(groups: [makeGroup('apps')]);
+      await state.load();
+
+      await state.renameItem('i1', 'Firefox');
+
+      expect(fake.calls, contains('renameItem(i1,Firefox)'));
+    });
+
+    test('moveItem forwards the destination and order', () async {
+      fake.current = snapshotOf(groups: [makeGroup('apps')]);
+      await state.load();
+
+      await state.moveItem('i1', 'games', 3);
+
+      expect(fake.calls, contains('moveItem(i1,games,3)'));
+    });
+
+    test('appsGroup is the group holding the Apps role', () async {
+      fake.current = snapshotOf(
+        groups: [
+          makeGroup('apps', role: GroupRole.apps),
+          makeGroup('games', role: GroupRole.games),
+        ],
+      );
+      await state.load();
+
+      expect(state.appsGroup?.id, 'apps');
+    });
+
+    test('pages are the page groups in page order', () async {
+      fake.current = snapshotOf(
+        pageIds: ['home', 'apps'],
+        groups: [makeGroup('apps'), makeGroup('home')],
+      );
+      await state.load();
+
+      expect(state.pages.map((g) => g.id), ['home', 'apps']);
+    });
+
+    test('uninstallApp reports a failure rather than throwing', () async {
+      await state.load();
+      fake.failure = StateError('gone');
+
+      await state.uninstallApp('com.example');
+
+      expect(state.error, contains('gone'));
+    });
+  });
 }

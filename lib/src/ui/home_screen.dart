@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
 import 'package:qlaunch/src/ui/app_search.dart';
+import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
@@ -59,6 +61,17 @@ class _HomeScreenState extends State<HomeScreen> {
       return false;
     }
     return _controller.goToGroup(target);
+  }
+
+  /// Tapping a tab switches the pager to that group, same as a swipe would.
+  void _goToGroup(String groupId) {
+    if (_controller.currentGroupId(_controller.currentPage) == groupId) {
+      return;
+    }
+    if (!_controller.goToGroup(groupId)) return;
+    setState(
+      () => _currentGroupId = _controller.currentGroupId(_controller.currentPage),
+    );
   }
 
   @override
@@ -120,6 +133,18 @@ class _HomeScreenState extends State<HomeScreen> {
         MaterialPageRoute<void>(
           builder: (context) => SettingsScreen(state: widget.state),
         ),
+      ),
+    );
+  }
+
+  /// Opens the per-app popup, the destination §8.2 gives a long press on an
+  /// item: rename, move to another group, or uninstall.
+  void _openAppSettings(Item item) {
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) =>
+            AppSettingsDialog(state: widget.state, item: item),
       ),
     );
   }
@@ -202,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         pageIds: _controller.pageIds,
                         groups: widget.state.groups,
                         currentGroupId: _currentGroupId,
+                        onGroupTap: _goToGroup,
                       ),
                     Expanded(
                       // A long press on blank space opens the settings (§8.2).
@@ -217,8 +243,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           // Each page is built with the group the controller
                           // puts at that index, so nothing here converts an
                           // index itself.
-                          gridFor: (context, groupId) =>
-                              AppGrid(state: widget.state, groupId: groupId),
+                          gridFor: (context, groupId) => AppGrid(
+                            state: widget.state,
+                            groupId: groupId,
+                            onItemLongPress: _openAppSettings,
+                          ),
                         ),
                       ),
                     ),

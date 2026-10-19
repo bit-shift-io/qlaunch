@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/group_editor_screen.dart';
 
 /// Every setting in §8.6, grouped as Display / Window / Icon / Text / Advanced.
 ///
@@ -30,6 +31,7 @@ class SettingsScreen extends StatefulWidget {
 
   static const restartKey = ValueKey('setting.restart');
   static const factoryResetKey = ValueKey('setting.factoryReset');
+  static const groupsKey = ValueKey('setting.groups');
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -207,6 +209,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'Label shadow',
                   settings.labelShadow,
                   (v) => SettingsPatch(labelShadow: v),
+                ),
+
+                _header('Groups'),
+                ListTile(
+                  key: SettingsScreen.groupsKey,
+                  title: const Text('Groups'),
+                  subtitle: const Text(
+                    'Add, rename, reorder and fill the tabs.',
+                  ),
+                  onTap: () => unawaited(
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (context) =>
+                            GroupEditorScreen(state: widget.state),
+                      ),
+                    ),
+                  ),
                 ),
 
                 _header('Advanced'),

@@ -7,6 +7,7 @@ import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
 import 'package:qlaunch/src/ui/app_search.dart';
+import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
@@ -234,6 +235,19 @@ void main() {
     );
   });
 
+  group('the tab strip', () {
+    testWidgets('tapping a tab switches to that group', (tester) async {
+      setSurface(tester, const Size(600, 800));
+      await load();
+      await pumpHome(tester);
+
+      await tester.tap(find.byKey(TabStrip.tabKey(1)));
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'apps');
+    });
+  });
+
   group('the system Home button', () {
     testWidgets('opens on the home group even when it is not the first page', (
       tester,
@@ -366,6 +380,19 @@ void main() {
 
       expect(find.byType(SettingsScreen), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('a long press on an item', () {
+    testWidgets('opens the app settings popup', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load();
+      await pumpHome(tester);
+
+      await tester.longPress(find.text('item-home'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AppSettingsDialog), findsOneWidget);
     });
   });
 
