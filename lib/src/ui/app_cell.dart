@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
@@ -22,7 +21,7 @@ class AppCell extends StatelessWidget {
   });
 
   final Item item;
-  final Uint8List? icon;
+  final ImageProvider? icon;
   final Settings settings;
 
   /// Called only for an item that can be launched: one with an app that is
@@ -61,7 +60,9 @@ class AppCell extends StatelessWidget {
     if (item.uninstalled) {
       cell = Opacity(opacity: _uninstalledOpacity, child: cell);
     }
-    return cell;
+    // One cell repainting (an icon fading in, say) must not repaint its
+    // neighbours, so give the grid's scroll a cheap per-cell layer boundary.
+    return RepaintBoundary(child: cell);
   }
 
   Widget _content(BuildContext context, BoxConstraints constraints) {
@@ -115,26 +116,22 @@ class AppCell extends StatelessWidget {
   }
 
   Widget _icon(double side) {
-    final bytes = item.uninstalled ? null : icon;
+    final provider = item.uninstalled ? null : icon;
     final placeholder = _Placeholder(side: side);
     // `icon_alpha` is 0-100. Rust clamps it, and Opacity asserts its range, so
     // clamp here as well rather than trust the value to be sane.
     final opacity = (settings.iconAlpha / 100).clamp(0.0, 1.0);
-    return SizedBox.square(
-      key: iconKey,
-      dimension: side,
-      child: Opacity(
-        opacity: opacity,
-        child: bytes == null
-            ? placeholder
-            : Image.memory(
-                bytes,
-                fit: BoxFit.contain,
-                gaplessPlayback: true,
-                errorBuilder: (context, error, stack) => placeholder,
-              ),
-      ),
-    );
+    Widget image = provider == null
+        ? placeholder
+        : Image(
+            image: provider,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stack) => placeholder,
+          );
+    // At full opacity the layer would be a no-op saveLayer, so skip it.
+    if (opacity < 1.0) image = Opacity(opacity: opacity, child: image);
+    return SizedBox.square(key: iconKey, dimension: side, child: image);
   }
 
   Widget _label(bool list) {

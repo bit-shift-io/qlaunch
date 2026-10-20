@@ -1,8 +1,7 @@
-import 'dart:typed_data';
-
 import 'package:qlaunch/src/rust/api/api.dart' as rust;
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
+import 'package:qlaunch/src/rust/model/icon.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart';
 import 'package:qlaunch/src/rust/settings.dart';
@@ -30,7 +29,7 @@ abstract class LauncherBackend {
   Future<List<SearchHit>> searchAllApps(String query);
   Future<List<UsageHit>> frequentApps(int limit);
   Future<List<UsageHit>> recentApps(int limit);
-  Future<Uint8List?> iconFor(String package, String activity, int sizePx);
+  Future<IconImage?> iconFor(String package, String activity, int sizePx);
   Future<void> launchApp(String package, String activity);
   Future<void> uninstallApp(String package);
   Future<void> chooseWallpaper();
@@ -110,7 +109,7 @@ class RustBackend implements LauncherBackend {
   Future<List<UsageHit>> recentApps(int limit) => rust.recentApps(limit: limit);
 
   @override
-  Future<Uint8List?> iconFor(String package, String activity, int sizePx) =>
+  Future<IconImage?> iconFor(String package, String activity, int sizePx) =>
       rust.iconFor(package: package, activity: activity, sizePx: sizePx);
 
   @override

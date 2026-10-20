@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
+import 'package:qlaunch/src/rust/model/icon.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
@@ -298,9 +299,56 @@ void main() {
   });
 
   group('icons', () {
+    testWidgets('garbage png bytes show the placeholder, not an exception', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      fake.icons[(package: 'pkg.a', activity: 'Main')] = IconImage(
+        format: IconFormat.png,
+        width: 0,
+        height: 0,
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
+      await load([_appItem('a')]);
+      await pumpGrid(tester);
+      await tester.pumpAndSettle();
+      expect(find.byKey(AppCell.placeholderKey), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a page disposed and rebuilt does not fetch its icons again', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load([_appItem('a')]);
+      await pumpGrid(tester);
+      expect(fake.iconCalls, 1);
+      await tester.pumpWidget(const SizedBox.shrink()); // page disposed
+      await pumpGrid(tester); // rebuilt
+      expect(fake.iconCalls, 1); // cache survived the widget
+    });
+
+    testWidgets('the backend icon bytes are what the cell draws', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      fake.icons[(package: 'pkg.a', activity: 'Main')] = IconImage(
+        format: IconFormat.png,
+        width: 0,
+        height: 0,
+        bytes: _png,
+      );
+      await load([_appItem('a')]);
+      await pumpGrid(tester);
+      expect(find.byType(Image), findsOneWidget);
+    });
+
     testWidgets('icons from the backend are drawn', (tester) async {
       setSurface(tester, const Size(400, 800));
-      fake.icons[(package: 'pkg.a', activity: 'Main')] = _png;
+      fake.icons[(package: 'pkg.a', activity: 'Main')] = IconImage(
+        format: IconFormat.png,
+        width: 0,
+        height: 0,
+        bytes: _png,
+      );
       await load([_appItem('a'), _appItem('b')]);
       await pumpGrid(tester);
       expect(find.byType(Image), findsOneWidget);
@@ -384,9 +432,18 @@ void main() {
   });
 
   group('LauncherState.iconFor and launchApp', () {
-    test('iconFor returns the bytes the backend has', () async {
-      fake.icons[(package: 'p', activity: 'a')] = _png;
-      expect(await state.iconFor('p', 'a', 48), _png);
+    test('iconFor returns a provider over the bytes the backend has', () async {
+      fake.icons[(package: 'p', activity: 'a')] = IconImage(
+        format: IconFormat.png,
+        width: 0,
+        height: 0,
+        bytes: _png,
+      );
+      final provider = await state.iconFor('p', 'a', 48);
+      expect(provider, isA<ResizeImage>());
+      expect((provider! as ResizeImage).imageProvider, isA<MemoryImage>());
+      final memory = (provider as ResizeImage).imageProvider as MemoryImage;
+      expect(memory.bytes, _png);
       expect(state.error, isNull);
     });
 

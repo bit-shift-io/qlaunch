@@ -7,11 +7,10 @@ import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
+import kotlin.math.roundToInt
 
 /// Everything the Rust core asks the OS for. Rust owns all data and logic; this
 /// class only answers questions and performs OS actions. Methods are `@JvmStatic`
@@ -42,17 +41,28 @@ object QLaunchBridge {
         val intent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
         val resolved = pm.queryIntentActivities(intent, 0)
         val activities = JSONArray()
+        // One PackageInfo lookup per package, not per activity. The update time
+        // is what lets the icon cache tell a new version's icon from the old.
+        val updateTimes = HashMap<String, Long>()
         for (ri in resolved) {
             val ai = ri.activityInfo
             val app = ai.applicationInfo ?: continue
             val isGame = (app.flags and ApplicationInfo.FLAG_IS_GAME) != 0 ||
                 app.category == ApplicationInfo.CATEGORY_GAME
+            val lastUpdateTime = updateTimes.getOrPut(ai.packageName) {
+                try {
+                    pm.getPackageInfo(ai.packageName, 0).lastUpdateTime
+                } catch (e: Exception) {
+                    0L
+                }
+            }
             activities.put(
                 JSONObject()
                     .put("package", ai.packageName)
                     .put("activity", ai.name)
                     .put("label", ai.loadLabel(pm)?.toString() ?: ai.name)
                     .put("isGame", isGame)
+                    .put("lastUpdateTime", lastUpdateTime)
             )
         }
         return JSONObject()
@@ -61,20 +71,27 @@ object QLaunchBridge {
             .toString()
     }
 
-    /// The activity's icon as PNG bytes at `sizePx`, or null if it cannot be had.
-    /// Draws through a Canvas rather than casting to BitmapDrawable, so adaptive,
-    /// vector and colour icons all work (Review Focus 4).
+    /// The activity's icon as raw pixels, or null if it cannot be had.
+    ///
+    /// The result is `[width, height, argb, argb, ...]`: two leading size slots
+    /// then `Bitmap.getPixels` output (`0xAARRGGBB` per pixel). Rust turns the
+    /// pixels into RGBA bytes, so no PNG is ever encoded or decoded. Drawing
+    /// through a Canvas rather than casting to BitmapDrawable is what lets
+    /// adaptive, vector and colour icons all work (Review Focus 4).
     @JvmStatic
-    fun iconPng(packageName: String, activity: String, sizePx: Int): ByteArray? {
+    fun iconRgba(packageName: String, activity: String, sizePx: Int): IntArray? {
         val context = getAppContext()
         return try {
             val drawable = context.packageManager
                 .getActivityIcon(ComponentName(packageName, activity))
             val bitmap = drawableToBitmap(drawable, sizePx)
-            ByteArrayOutputStream().use { out ->
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                out.toByteArray()
-            }
+            val width = bitmap.width
+            val height = bitmap.height
+            val out = IntArray(2 + width * height)
+            out[0] = width
+            out[1] = height
+            bitmap.getPixels(out, 2, width, 0, 0, width, height)
+            out
         } catch (e: Exception) {
             null
         }
@@ -116,15 +133,29 @@ object QLaunchBridge {
         context.startActivity(intent)
     }
 
+    /// Draws `drawable` into a fresh bitmap no larger than `sizePx` on either
+    /// side, at the icon's aspect ratio.
+    ///
+    /// Scaling here (rather than returning the intrinsic bitmap) is what keeps
+    /// the pixels crossing the bridge proportional to the size the grid actually
+    /// draws. The widget centres the result with `BoxFit.contain`.
     private fun drawableToBitmap(drawable: Drawable, sizePx: Int): Bitmap {
-        if (drawable is BitmapDrawable && drawable.bitmap != null) {
-            return drawable.bitmap
-        }
-        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else sizePx.coerceAtLeast(1)
-        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else sizePx.coerceAtLeast(1)
+        // Cap the request so a bogus size cannot overflow the pixel count or
+        // allocate an enormous bitmap.
+        val target = sizePx.coerceIn(1, 1024)
+        val intrinsicWidth =
+            if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else target
+        val intrinsicHeight =
+            if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else target
+        val scale = minOf(
+            target.toFloat() / intrinsicWidth,
+            target.toFloat() / intrinsicHeight,
+        )
+        val width = (intrinsicWidth * scale).roundToInt().coerceAtLeast(1)
+        val height = (intrinsicHeight * scale).roundToInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.setBounds(0, 0, width, height)
         drawable.draw(canvas)
         return bitmap
     }

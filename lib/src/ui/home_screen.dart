@@ -53,6 +53,30 @@ class _HomeScreenState extends State<HomeScreen> {
     _seenHomeRequests = widget.state.homeRequests;
     _seenBackRequests = widget.state.backRequests;
     widget.state.addListener(_onStateChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _warmIcons(_currentGroupId);
+    });
+  }
+
+  /// Requests the icons for every app on [groupId] now, so the cells hit the
+  /// session cache when they are built.
+  ///
+  /// The grid builds lazily, so without this the off-screen icons on a page are
+  /// only fetched once the user scrolls onto them, which is exactly where a
+  /// hitch is most visible.
+  void _warmIcons(String groupId) {
+    final snapshot = widget.state.snapshot;
+    if (snapshot == null) return;
+    final settings = snapshot.settings;
+    if (!settings.iconsVisible) return;
+    final sizePx =
+        (settings.iconSize * MediaQuery.devicePixelRatioOf(context)).round();
+    if (sizePx <= 0) return;
+    for (final item in widget.state.itemsIn(groupId)) {
+      final app = item.app;
+      if (app == null || item.uninstalled) continue;
+      unawaited(widget.state.iconFor(app.package, app.activity, sizePx));
+    }
   }
 
   /// Moves the controller to the group the Home button would go to: the group
@@ -91,6 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(
       () => _currentGroupId = _controller.currentGroupId(_controller.currentPage),
     );
+    _warmIcons(_currentGroupId);
   }
 
   @override
@@ -104,6 +129,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _handleHomePress();
     _handleBackPress();
     _reportNewError();
+    // A new snapshot (after `AppsChanged`, say) can change this page's items;
+    // the cache dedups, so warming again is cheap.
+    _warmIcons(_currentGroupId);
   }
 
   /// What the system Back button does. On the launcher it does nothing
@@ -223,6 +251,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onGroupChanged(String groupId) {
     if (!mounted || groupId == _currentGroupId) return;
     setState(() => _currentGroupId = groupId);
+    _warmIcons(groupId);
   }
 
   /// The index of the group on screen, for the page pips. Falls back to the

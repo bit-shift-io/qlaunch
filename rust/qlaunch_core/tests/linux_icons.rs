@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use qlaunch_core::model::AppRef;
+use qlaunch_core::model::{AppRef, IconImage};
 use qlaunch_core::platform::AppSource;
 use qlaunch_core::platform::linux::{
     LinuxSource, applications_dirs_from, data_roots_from, icon_dirs_from, resolve_icon,
@@ -507,73 +507,73 @@ fn pixmaps_are_an_icon_dir_even_when_no_data_root_is_usable() {
     assert_eq!(icon_dirs_from(&[]), paths(&["/usr/share/pixmaps"]));
 }
 
-// ---- LinuxSource::icon_png ----
+// ---- LinuxSource::icon_image ----
 
 fn source() -> LinuxSource {
     LinuxSource::from_parts(vec![fixture("source")], None, None, None, None)
 }
 
 #[test]
-fn icon_png_reads_the_exact_bytes_of_the_resolved_file() {
+fn icon_image_reads_the_exact_bytes_of_the_resolved_file() {
     let expected = fs::read(fixture("source/icons/hicolor/48x48/apps/sourceicon.png")).unwrap();
     assert!(expected.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert_eq!(
-        source().icon_png(&app("withicon.desktop"), 48).unwrap(),
-        Some(expected)
+        source().icon_image(&app("withicon.desktop"), 48).unwrap(),
+        Some(IconImage::png(expected))
     );
 }
 
 #[test]
-fn icon_png_is_none_for_an_svg_icon() {
+fn icon_image_is_none_for_an_svg_icon() {
     assert!(fixture("source/icons/hicolor/scalable/apps/vectoricon.svg").is_file());
-    assert_eq!(source().icon_png(&app("vector.desktop"), 48).unwrap(), None);
+    assert_eq!(source().icon_image(&app("vector.desktop"), 48).unwrap(), None);
 }
 
 #[test]
-fn icon_png_is_none_for_an_icon_that_cannot_be_found() {
+fn icon_image_is_none_for_an_icon_that_cannot_be_found() {
     assert_eq!(
-        source().icon_png(&app("missing.desktop"), 48).unwrap(),
+        source().icon_image(&app("missing.desktop"), 48).unwrap(),
         None
     );
 }
 
 #[test]
-fn icon_png_is_none_for_an_entry_with_no_icon_key() {
-    assert_eq!(source().icon_png(&app("noicon.desktop"), 48).unwrap(), None);
+fn icon_image_is_none_for_an_entry_with_no_icon_key() {
+    assert_eq!(source().icon_image(&app("noicon.desktop"), 48).unwrap(), None);
 }
 
 #[test]
-fn icon_png_is_none_for_an_unknown_id() {
-    assert_eq!(source().icon_png(&app("nope.desktop"), 48).unwrap(), None);
+fn icon_image_is_none_for_an_unknown_id() {
+    assert_eq!(source().icon_image(&app("nope.desktop"), 48).unwrap(), None);
 }
 
 #[test]
-fn icon_png_is_none_for_a_desktop_file_that_is_not_text() {
+fn icon_image_is_none_for_a_desktop_file_that_is_not_text() {
     assert_eq!(
-        source().icon_png(&app("garbage.desktop"), 48).unwrap(),
+        source().icon_image(&app("garbage.desktop"), 48).unwrap(),
         None
     );
 }
 
 #[test]
-fn icon_png_is_none_when_the_id_is_a_directory() {
+fn icon_image_is_none_when_the_id_is_a_directory() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("applications/dir.desktop")).unwrap();
     let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
-    assert_eq!(source.icon_png(&app("dir.desktop"), 48).unwrap(), None);
+    assert_eq!(source.icon_image(&app("dir.desktop"), 48).unwrap(), None);
 }
 
 #[test]
-fn icon_png_does_not_follow_a_hostile_icon_name_out_of_the_roots() {
+fn icon_image_does_not_follow_a_hostile_icon_name_out_of_the_roots() {
     assert!(fixture("decoy/secret.png").is_file());
     assert_eq!(
-        source().icon_png(&app("hostile.desktop"), 48).unwrap(),
+        source().icon_image(&app("hostile.desktop"), 48).unwrap(),
         None
     );
 }
 
 #[test]
-fn icon_png_does_not_follow_a_hostile_id_out_of_the_applications_dirs() {
+fn icon_image_does_not_follow_a_hostile_id_out_of_the_applications_dirs() {
     // Every desktop file below names a real, readable PNG by absolute path, so
     // only the guard on the id can stop the lookup: without it the file is
     // found, the icon resolves and its bytes come back.
@@ -590,8 +590,8 @@ fn icon_png_does_not_follow_a_hostile_id_out_of_the_applications_dirs() {
     let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
 
     assert_eq!(
-        source.icon_png(&app("legit.desktop"), 48).unwrap(),
-        Some(fs::read(&icon).unwrap()),
+        source.icon_image(&app("legit.desktop"), 48).unwrap(),
+        Some(IconImage::png(fs::read(&icon).unwrap())),
         "control: the same entry under a plain id resolves"
     );
     for id in [
@@ -601,12 +601,12 @@ fn icon_png_does_not_follow_a_hostile_id_out_of_the_applications_dirs() {
         "..",
         "",
     ] {
-        assert_eq!(source.icon_png(&app(id), 48).unwrap(), None, "id {id:?}");
+        assert_eq!(source.icon_image(&app(id), 48).unwrap(), None, "id {id:?}");
     }
 }
 
 #[test]
-fn icon_png_honours_an_absolute_icon_path() {
+fn icon_image_honours_an_absolute_icon_path() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("applications")).unwrap();
     let icon = fixture("decoy/secret.png");
@@ -620,13 +620,13 @@ fn icon_png_honours_an_absolute_icon_path() {
     .unwrap();
     let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
     assert_eq!(
-        source.icon_png(&app("abs.desktop"), 48).unwrap(),
-        Some(fs::read(icon).unwrap())
+        source.icon_image(&app("abs.desktop"), 48).unwrap(),
+        Some(IconImage::png(fs::read(icon).unwrap()))
     );
 }
 
 #[test]
-fn icon_png_is_none_for_an_absolute_icon_path_to_a_missing_file() {
+fn icon_image_is_none_for_an_absolute_icon_path_to_a_missing_file() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("applications")).unwrap();
     fs::write(
@@ -635,7 +635,7 @@ fn icon_png_is_none_for_an_absolute_icon_path_to_a_missing_file() {
     )
     .unwrap();
     let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
-    assert_eq!(source.icon_png(&app("gone.desktop"), 48).unwrap(), None);
+    assert_eq!(source.icon_image(&app("gone.desktop"), 48).unwrap(), None);
 }
 
 #[test]
@@ -650,8 +650,10 @@ fn the_first_data_root_with_the_desktop_file_decides() {
     // The user root's withicon.desktop names `useronly`, shadowing the system
     // one whose icon `sourceicon` would also resolve.
     assert_eq!(
-        both.icon_png(&app("withicon.desktop"), 48).unwrap(),
-        Some(fs::read(fixture("source-user/icons/hicolor/48x48/apps/useronly.png")).unwrap())
+        both.icon_image(&app("withicon.desktop"), 48).unwrap(),
+        Some(IconImage::png(
+            fs::read(fixture("source-user/icons/hicolor/48x48/apps/useronly.png")).unwrap()
+        ))
     );
 }
 
@@ -665,13 +667,15 @@ fn a_desktop_file_in_a_later_data_root_is_found_past_roots_that_lack_it() {
         None,
     );
     assert_eq!(
-        source.icon_png(&app("withicon.desktop"), 48).unwrap(),
-        Some(fs::read(fixture("source/icons/hicolor/48x48/apps/sourceicon.png")).unwrap())
+        source.icon_image(&app("withicon.desktop"), 48).unwrap(),
+        Some(IconImage::png(
+            fs::read(fixture("source/icons/hicolor/48x48/apps/sourceicon.png")).unwrap()
+        ))
     );
 }
 
 #[test]
-fn icon_png_uses_the_current_theme_when_given() {
+fn icon_image_uses_the_current_theme_when_given() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("applications")).unwrap();
     fs::write(
@@ -689,18 +693,18 @@ fn icon_png_uses_the_current_theme_when_given() {
     let roots = vec![dir.path().to_path_buf()];
     let themed = LinuxSource::from_parts(roots.clone(), None, None, Some("Custom".into()), None);
     assert_eq!(
-        themed.icon_png(&app("t.desktop"), 32).unwrap(),
-        Some(b"custom".to_vec())
+        themed.icon_image(&app("t.desktop"), 32).unwrap(),
+        Some(IconImage::png(b"custom".to_vec()))
     );
     let plain = LinuxSource::from_parts(roots, None, None, None, None);
     assert_eq!(
-        plain.icon_png(&app("t.desktop"), 32).unwrap(),
-        Some(b"hicolor".to_vec())
+        plain.icon_image(&app("t.desktop"), 32).unwrap(),
+        Some(IconImage::png(b"hicolor".to_vec()))
     );
 }
 
 #[test]
-fn icon_png_finds_a_pixmaps_style_icon_in_a_flat_directory_of_a_data_root() {
+fn icon_image_finds_a_pixmaps_style_icon_in_a_flat_directory_of_a_data_root() {
     // The data root's own `icons/` directory is also tried as a flat one.
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("applications")).unwrap();
@@ -713,7 +717,7 @@ fn icon_png_finds_a_pixmaps_style_icon_in_a_flat_directory_of_a_data_root() {
     fs::write(dir.path().join("icons/flaticon.png"), b"flat").unwrap();
     let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
     assert_eq!(
-        source.icon_png(&app("flat.desktop"), 48).unwrap(),
-        Some(b"flat".to_vec())
+        source.icon_image(&app("flat.desktop"), 48).unwrap(),
+        Some(IconImage::png(b"flat".to_vec()))
     );
 }

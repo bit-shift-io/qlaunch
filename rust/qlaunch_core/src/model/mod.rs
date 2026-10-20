@@ -1,4 +1,5 @@
 mod error;
+pub mod icon;
 mod ids;
 mod mutate;
 pub mod roles;
@@ -8,6 +9,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 pub use error::ModelError;
+pub use icon::{IconFormat, IconImage};
 pub use ids::Id;
 pub use roles::GroupRole;
 
@@ -90,6 +92,11 @@ pub struct AppEntry {
     pub activity: String,
     pub label: String,
     pub category: AppCategory,
+    /// When the platform last updated this app, or `0` when it does not say.
+    /// It is not persisted; it only distinguishes one version's icon from the
+    /// next in the icon cache.
+    #[serde(default)]
+    pub last_update_time: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

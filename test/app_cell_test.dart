@@ -46,7 +46,7 @@ Future<void> _pumpCell(
             size: cell,
             child: AppCell(
               item: item ?? _item(app: _app),
-              icon: icon,
+              icon: icon == null ? null : MemoryImage(icon),
               settings: settings ?? testSettings,
               onTap: onTap,
               onLongPress: onLongPress,
@@ -228,6 +228,24 @@ void main() {
       expect(find.byKey(AppCell.placeholderKey), findsOneWidget);
     });
 
+    testWidgets('full opacity draws no Opacity layer', (tester) async {
+      await _pumpCell(
+        tester,
+        icon: _png,
+        settings: settingsWith(iconAlpha: 100),
+      );
+      expect(find.byType(Opacity), findsNothing);
+    });
+
+    testWidgets('a translucent alpha still fades', (tester) async {
+      await _pumpCell(
+        tester,
+        icon: _png,
+        settings: settingsWith(iconAlpha: 50),
+      );
+      expect(find.byType(Opacity), findsOneWidget);
+    });
+
     testWidgets('icon_alpha reaches an Opacity over the icon', (tester) async {
       await _pumpCell(
         tester,
@@ -257,10 +275,8 @@ void main() {
         settings: settingsWith(iconAlpha: 255),
       );
       expect(tester.takeException(), isNull);
-      final opacity = tester.widget<Opacity>(
-        find.descendant(of: iconFinder, matching: find.byType(Opacity)),
-      );
-      expect(opacity.opacity, 1.0);
+      // 255 clamps to fully opaque, so no opacity layer is needed.
+      expect(find.byType(Opacity), findsNothing);
     });
   });
 

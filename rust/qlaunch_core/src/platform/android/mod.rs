@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::model::{AppCategory, AppEntry, AppRef};
+use crate::model::{AppCategory, AppEntry, AppRef, IconFormat, IconImage};
 use crate::platform::{AppSource, LaunchError, PlatformError};
 
 #[cfg(target_os = "android")]
@@ -12,6 +12,7 @@ pub struct AndroidActivity {
     pub activity: String,
     pub label: String,
     pub is_game: bool,
+    pub last_update_time: i64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,7 +23,7 @@ pub struct AndroidList {
 
 pub trait AndroidHost: Send + Sync {
     fn list(&self) -> Result<AndroidList, PlatformError>;
-    fn icon_png(&self, app: &AppRef, size_px: u32) -> Result<Option<Vec<u8>>, PlatformError>;
+    fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError>;
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError>;
 }
 
@@ -40,6 +41,8 @@ struct RawActivity {
     label: String,
     #[serde(rename = "isGame")]
     is_game: bool,
+    #[serde(default, rename = "lastUpdateTime")]
+    last_update_time: i64,
 }
 
 /// Parses the JSON `QLaunchBridge.listLaunchActivitiesJson` returns. Kept here,
@@ -57,8 +60,51 @@ pub fn parse_list_json(json: &str) -> Result<AndroidList, PlatformError> {
                 activity: a.activity,
                 label: a.label,
                 is_game: a.is_game,
+                last_update_time: a.last_update_time,
             })
             .collect(),
+    })
+}
+
+/// Converts Android's packed `0xAARRGGBB` pixels, as `Bitmap.getPixels` returns
+/// them, into the tightly packed RGBA bytes the bridge sends to Dart.
+pub fn argb_pixels_to_rgba(pixels: &[u32]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(pixels.len() * 4);
+    for &argb in pixels {
+        out.push(((argb >> 16) & 0xFF) as u8); // red
+        out.push(((argb >> 8) & 0xFF) as u8); // green
+        out.push((argb & 0xFF) as u8); // blue
+        out.push(((argb >> 24) & 0xFF) as u8); // alpha
+    }
+    out
+}
+
+/// Turns the `[width, height, argb...]` array `QLaunchBridge.iconRgba` returns
+/// into an [`IconImage`], or `None` when its shape is not exactly what the two
+/// leading slots claim. Pure, so it is testable off-device.
+pub fn icon_from_int_slots(slots: &[i32]) -> Option<IconImage> {
+    if slots.len() < 2 {
+        return None;
+    }
+    let (size, pixels) = slots.split_at(2);
+    let (width, height) = (size[0], size[1]);
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+    let width = width as u32;
+    let height = height as u32;
+    let count = usize::try_from(width)
+        .ok()?
+        .checked_mul(usize::try_from(height).ok()?)?;
+    if pixels.len() != count {
+        return None;
+    }
+    let pixels: Vec<u32> = pixels.iter().map(|&p| p as u32).collect();
+    Some(IconImage {
+        format: IconFormat::Rgba,
+        width,
+        height,
+        bytes: argb_pixels_to_rgba(&pixels),
     })
 }
 
@@ -90,12 +136,13 @@ impl<H: AndroidHost> AppSource for AndroidSource<H> {
                 } else {
                     AppCategory::App
                 },
+                last_update_time: a.last_update_time,
             })
             .collect())
     }
 
-    fn icon_png(&self, app: &AppRef, size_px: u32) -> Result<Option<Vec<u8>>, PlatformError> {
-        self.host.icon_png(app, size_px)
+    fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError> {
+        self.host.icon_image(app, size_px)
     }
 
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError> {

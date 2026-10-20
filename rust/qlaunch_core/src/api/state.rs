@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::model::{AppRef, Item, Model, ModelError};
+use crate::icons::IconDiskCache;
+use crate::model::{AppEntry, AppRef, Item, Model, ModelError};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
 use crate::reconcile::reconcile;
 use crate::settings::Settings;
@@ -11,6 +12,9 @@ use crate::usage::{Usage, UsageHit};
 
 use super::api::ModelSnapshot;
 use super::events::{CoreEvent, EventBus};
+
+/// How much the on-disk icon cache may hold before its oldest entries go.
+const DEFAULT_ICON_CACHE_BYTES: u64 = 32 * 1024 * 1024;
 
 /// Everything the bridge keeps between calls.
 ///
@@ -29,6 +33,12 @@ pub(crate) struct App {
     pub(crate) settings: Settings,
     /// What has been launched, and when; saved beside the model and settings.
     pub(crate) usage: Usage,
+    /// Icons already fetched, kept between runs under the config root. `None`
+    /// when there is no usable configuration directory.
+    pub(crate) icon_cache: Option<IconDiskCache>,
+    /// Each installed app's last update time, so an app update can be told
+    /// apart from a plain re-list. Not persisted.
+    pub(crate) icon_tokens: HashMap<(String, String), i64>,
     pub(crate) source: Arc<dyn AppSource>,
     /// Owns the platform watcher. Dropping it joins a thread that calls back
     /// into this module and takes the state lock, so an `App` must never be
@@ -237,6 +247,14 @@ fn list_problem(e: &PlatformError) -> String {
     )
 }
 
+/// Each listed app's update time, keyed by `(package, activity)`.
+fn tokens_of(entries: &[AppEntry]) -> HashMap<(String, String), i64> {
+    entries
+        .iter()
+        .map(|e| ((e.package.clone(), e.activity.clone()), e.last_update_time))
+        .collect()
+}
+
 /// The testable core of `init`; see `api::init_with_source`.
 ///
 /// Order, on every path: `load` (the only thing that arms the store's write
@@ -247,6 +265,12 @@ pub(crate) fn install(
     mut warnings: Vec<String>,
 ) -> Result<ModelSnapshot, String> {
     let source: Arc<dyn AppSource> = Arc::from(source);
+
+    // Keep icons beside the document so a restart starts warm. With no config
+    // root there is nowhere to keep them.
+    let icon_cache = config_root.as_ref().map(|root| {
+        IconDiskCache::new(root.join("icon-cache"), DEFAULT_ICON_CACHE_BYTES)
+    });
 
     // The lock is held from the load to the swap, so a watcher callback from
     // the app being replaced cannot save over what is loaded here.
@@ -269,8 +293,10 @@ pub(crate) fn install(
 
     // A failed listing must not reach `reconcile`: an empty list would mark
     // every item uninstalled.
+    let mut icon_tokens = HashMap::new();
     let platform_problem = match source.list_apps() {
         Ok(entries) => {
+            icon_tokens = tokens_of(&entries);
             reconcile(&mut model, &entries);
             None
         }
@@ -301,6 +327,8 @@ pub(crate) fn install(
         model,
         settings,
         usage,
+        icon_cache,
+        icon_tokens,
         source,
         _watch: watch,
         base_warnings: warnings,
@@ -427,15 +455,27 @@ pub(crate) fn refresh_apps_now() -> Result<ModelSnapshot, String> {
             }
             Ok(entries) => {
                 app.platform_problem = None;
+                let tokens = tokens_of(&entries);
+                let icons_changed = tokens != app.icon_tokens;
+                app.icon_tokens = tokens;
+
                 let mut next = app.model.clone();
                 let outcome = reconcile(&mut next, &entries);
-                let changed = !(outcome.added.is_empty()
+                let set_changed = !(outcome.added.is_empty()
                     && outcome.marked_uninstalled.is_empty()
                     && outcome.restored.is_empty());
-                if changed {
+                if set_changed {
                     let problem = persist(app.store.as_ref(), &next, &app.settings, &app.usage)?;
                     app.model = next;
                     app.save_problem = problem;
+                }
+                // An install or removal changes the set; an update keeps it but
+                // changes an app's update time. Either can change an icon, so
+                // the persisted cache is dropped and Dart is told to refetch.
+                if set_changed || icons_changed {
+                    if let Some(cache) = &app.icon_cache {
+                        cache.clear();
+                    }
                     bus.emit(&CoreEvent::AppsChanged);
                 }
             }

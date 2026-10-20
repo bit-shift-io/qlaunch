@@ -1121,6 +1121,34 @@ impl SseDecode for i64 {
     }
 }
 
+impl SseDecode for crate::model::icon::IconFormat {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::model::icon::IconFormat::Png,
+            1 => crate::model::icon::IconFormat::Rgba,
+            _ => unreachable!("Invalid variant for IconFormat: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::model::icon::IconImage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_format = <crate::model::icon::IconFormat>::sse_decode(deserializer);
+        let mut var_width = <u32>::sse_decode(deserializer);
+        let mut var_height = <u32>::sse_decode(deserializer);
+        let mut var_bytes = <Vec<u8>>::sse_decode(deserializer);
+        return crate::model::icon::IconImage {
+            format: var_format,
+            width: var_width,
+            height: var_height,
+            bytes: var_bytes,
+        };
+    }
+}
+
 impl SseDecode for crate::model::Item {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1347,6 +1375,17 @@ impl SseDecode for Option<i64> {
     }
 }
 
+impl SseDecode for Option<crate::model::icon::IconImage> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::model::icon::IconImage>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::settings::LabelColour> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1407,17 +1446,6 @@ impl SseDecode for Option<crate::settings::Typeface> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<crate::settings::Typeface>::sse_decode(deserializer));
-        } else {
-            return None;
-        }
-    }
-}
-
-impl SseDecode for Option<Vec<u8>> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        if (<bool>::sse_decode(deserializer)) {
-            return Some(<Vec<u8>>::sse_decode(deserializer));
         } else {
             return None;
         }
@@ -1798,6 +1826,47 @@ impl flutter_rust_bridge::IntoIntoDart<crate::model::roles::GroupRole>
     for crate::model::roles::GroupRole
 {
     fn into_into_dart(self) -> crate::model::roles::GroupRole {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::model::icon::IconFormat {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Png => 0.into_dart(),
+            Self::Rgba => 1.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::model::icon::IconFormat
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::model::icon::IconFormat>
+    for crate::model::icon::IconFormat
+{
+    fn into_into_dart(self) -> crate::model::icon::IconFormat {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::model::icon::IconImage {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.format.into_into_dart().into_dart(),
+            self.width.into_into_dart().into_dart(),
+            self.height.into_into_dart().into_dart(),
+            self.bytes.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::model::icon::IconImage {}
+impl flutter_rust_bridge::IntoIntoDart<crate::model::icon::IconImage>
+    for crate::model::icon::IconImage
+{
+    fn into_into_dart(self) -> crate::model::icon::IconImage {
         self
     }
 }
@@ -2250,6 +2319,32 @@ impl SseEncode for i64 {
     }
 }
 
+impl SseEncode for crate::model::icon::IconFormat {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::model::icon::IconFormat::Png => 0,
+                crate::model::icon::IconFormat::Rgba => 1,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::model::icon::IconImage {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::model::icon::IconFormat>::sse_encode(self.format, serializer);
+        <u32>::sse_encode(self.width, serializer);
+        <u32>::sse_encode(self.height, serializer);
+        <Vec<u8>>::sse_encode(self.bytes, serializer);
+    }
+}
+
 impl SseEncode for crate::model::Item {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2449,6 +2544,16 @@ impl SseEncode for Option<i64> {
     }
 }
 
+impl SseEncode for Option<crate::model::icon::IconImage> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::model::icon::IconImage>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::settings::LabelColour> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2505,16 +2610,6 @@ impl SseEncode for Option<crate::settings::Typeface> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <crate::settings::Typeface>::sse_encode(value, serializer);
-        }
-    }
-}
-
-impl SseEncode for Option<Vec<u8>> {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        <bool>::sse_encode(self.is_some(), serializer);
-        if let Some(value) = self {
-            <Vec<u8>>::sse_encode(value, serializer);
         }
     }
 }

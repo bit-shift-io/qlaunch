@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
@@ -14,7 +13,11 @@ import 'package:qlaunch/src/ui/app_cell.dart';
 /// (a home page, a search result) gets the same cells and the same icon
 /// handling. The grid geometry comes from [settings]: the column count, and the
 /// icon size, which is scaled to physical pixels for the platform.
-class AppCells extends StatefulWidget {
+///
+/// Icons come from [LauncherState], which caches the provider for the whole
+/// session, so disposing and rebuilding this widget (as the pager does) does not
+/// refetch anything.
+class AppCells extends StatelessWidget {
   const AppCells({
     super.key,
     required this.state,
@@ -40,38 +43,14 @@ class AppCells extends StatefulWidget {
   /// Called for any item. With none given, a long-press does nothing.
   final ValueChanged<Item>? onItemLongPress;
 
-  @override
-  State<AppCells> createState() => _AppCellsState();
-}
-
-typedef _IconKey = ({String package, String activity, int sizePx});
-
-class _AppCellsState extends State<AppCells> {
-  // The Future is cached rather than the bytes, so a rebuild does not ask again
-  // and two cells for one app share a single call. The physical size is part of
-  // the key, so a different pixel ratio asks again.
-  //
-  // Never invalidated: an app whose icon changes on disk keeps its old icon
-  // until the app restarts. That is accepted.
-  final Map<_IconKey, Future<Uint8List?>> _icons = {};
-
-  Future<Uint8List?> _iconFor(String package, String activity, int sizePx) {
-    return _icons.putIfAbsent((
-      package: package,
-      activity: activity,
-      sizePx: sizePx,
-    ), () => widget.state.iconFor(package, activity, sizePx));
-  }
-
   void _launch(Item item) {
     final app = item.app;
     if (app == null) return;
-    unawaited(widget.state.launchApp(app.package, app.activity));
+    unawaited(state.launchApp(app.package, app.activity));
   }
 
   @override
   Widget build(BuildContext context) {
-    final settings = widget.settings;
     final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
     final columns = math.max(
       1,
@@ -83,7 +62,6 @@ class _AppCellsState extends State<AppCells> {
     // The bridge takes physical pixels; the setting is in dp.
     final sizePx =
         (settings.iconSize * MediaQuery.devicePixelRatioOf(context)).round();
-    final items = widget.items;
 
     return GridView.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -108,21 +86,21 @@ class _AppCellsState extends State<AppCells> {
             !item.uninstalled &&
             settings.iconsVisible &&
             sizePx > 0;
-        Widget cell(Uint8List? icon) => AppCell(
+        Widget cell(ImageProvider? icon) => AppCell(
           item: item,
           icon: icon,
           settings: settings,
-          onTap: () => (widget.onItemTap ?? _launch)(item),
-          onLongPress: widget.onItemLongPress == null
+          onTap: () => (onItemTap ?? _launch)(item),
+          onLongPress: onItemLongPress == null
               ? null
-              : () => widget.onItemLongPress!(item),
+              : () => onItemLongPress!(item),
         );
         if (!wantsIcon) {
           return KeyedSubtree(key: ValueKey(item.id), child: cell(null));
         }
-        return FutureBuilder<Uint8List?>(
+        return FutureBuilder<ImageProvider?>(
           key: ValueKey(item.id),
-          future: _iconFor(app.package, app.activity, sizePx),
+          future: state.iconFor(app.package, app.activity, sizePx),
           builder: (context, snapshot) => cell(snapshot.data),
         );
       },

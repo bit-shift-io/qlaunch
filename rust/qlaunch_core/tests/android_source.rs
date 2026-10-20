@@ -1,4 +1,4 @@
-use qlaunch_core::model::{AppCategory, AppRef};
+use qlaunch_core::model::{AppCategory, AppRef, IconImage};
 use qlaunch_core::platform::android::{
     AndroidHost, AndroidList, AndroidSource, parse_list_json,
 };
@@ -13,8 +13,8 @@ impl AndroidHost for FakeHost {
     fn list(&self) -> Result<AndroidList, PlatformError> {
         Ok(self.list.clone())
     }
-    fn icon_png(&self, _app: &AppRef, _size_px: u32) -> Result<Option<Vec<u8>>, PlatformError> {
-        Ok(self.icon.clone())
+    fn icon_image(&self, _app: &AppRef, _size_px: u32) -> Result<Option<IconImage>, PlatformError> {
+        Ok(self.icon.clone().map(IconImage::png))
     }
     fn launch(&self, _app: &AppRef) -> Result<(), LaunchError> {
         Ok(())
@@ -73,6 +73,9 @@ fn icon_and_launch_delegate_to_the_host() {
         package: "org.mozilla.firefox".into(),
         activity: "org.mozilla.firefox.App".into(),
     };
-    assert_eq!(source.icon_png(&app, 64).unwrap(), Some(vec![1, 2, 3]));
+    assert_eq!(
+        source.icon_image(&app, 64).unwrap(),
+        Some(IconImage::png(vec![1, 2, 3]))
+    );
     assert!(source.launch(&app).is_ok());
 }

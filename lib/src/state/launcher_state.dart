@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
@@ -8,6 +9,7 @@ import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart' show SearchHit;
 import 'package:qlaunch/src/rust/settings.dart' show SettingsPatch;
 import 'package:qlaunch/src/rust/usage.dart' show UsageHit;
+import 'package:qlaunch/src/state/icon_cache.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
 
 /// A cache over the core's `snapshot()`. Everything it reports was computed by
@@ -16,6 +18,11 @@ class LauncherState extends ChangeNotifier {
   LauncherState(this._backend);
 
   final LauncherBackend _backend;
+
+  /// Decoded-icon providers, shared across every screen and surviving the
+  /// grid's page widgets being disposed and rebuilt.
+  late final IconCache _icons = IconCache(_backend);
+
   StreamSubscription<CoreEvent>? _sub;
   ModelSnapshot? _snapshot;
   String? _error;
@@ -99,7 +106,11 @@ class LauncherState extends ChangeNotifier {
   void _onEvent(CoreEvent event) {
     switch (event) {
       case CoreEvent_ModelChanged():
+        unawaited(_fetch(_backend.snapshot));
       case CoreEvent_AppsChanged():
+        // An app may have been installed, removed or updated, so any icon we
+        // cached for it could be stale.
+        _icons.clear();
         unawaited(_fetch(_backend.snapshot));
       case CoreEvent_Error(:final field0):
         _error = field0;
@@ -140,13 +151,13 @@ class LauncherState extends ChangeNotifier {
   /// A throw from the backend is a bug rather than a missing icon, so it is
   /// reported like any other failure, but it still yields `null` and leaves
   /// [error] alone.
-  Future<Uint8List?> iconFor(
+  Future<ImageProvider?> iconFor(
     String package,
     String activity,
     int sizePx,
   ) async {
     try {
-      return await _backend.iconFor(package, activity, sizePx);
+      return await _icons.resolve(package, activity, sizePx);
     } catch (e, st) {
       _report(e, st);
       return null;

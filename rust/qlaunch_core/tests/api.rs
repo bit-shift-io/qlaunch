@@ -9,7 +9,7 @@ use std::time::Duration;
 use flutter_rust_bridge::for_generated::futures::executor::block_on;
 use qlaunch_core::api::api::{self, ModelSnapshot};
 use qlaunch_core::api::events::{CoreEvent, EventBus};
-use qlaunch_core::model::{AppCategory, AppEntry, AppRef, GroupRole, Item, Model};
+use qlaunch_core::model::{AppCategory, AppEntry, AppRef, GroupRole, IconImage, Item, Model};
 use qlaunch_core::platform::{AppSource, FakeSource, LaunchError, PlatformError, WatchHandle};
 use qlaunch_core::settings::SettingsPatch;
 use tempfile::tempdir;
@@ -31,6 +31,7 @@ fn entry(package: &str, label: &str, category: AppCategory) -> AppEntry {
         activity: format!("{package}.desktop"),
         label: label.into(),
         category,
+        last_update_time: 0,
     }
 }
 
@@ -253,7 +254,7 @@ impl AppSource for Switchable {
     fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
         self.0.lock().unwrap().clone()
     }
-    fn icon_png(&self, _: &AppRef, _: u32) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn icon_image(&self, _: &AppRef, _: u32) -> Result<Option<IconImage>, PlatformError> {
         Ok(None)
     }
     fn launch(&self, _: &AppRef) -> Result<(), LaunchError> {
@@ -755,7 +756,7 @@ fn home_group_id_search_and_launch() {
             "org.alpha.desktop".into(),
             48
         )),
-        Some(vec![1, 2])
+        Some(IconImage::png(vec![1, 2]))
     );
     assert_eq!(
         block_on(api::icon_for(
@@ -831,7 +832,7 @@ impl AppSource for Hammering {
     fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
         Ok(fixtures())
     }
-    fn icon_png(&self, _: &AppRef, _: u32) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn icon_image(&self, _: &AppRef, _: u32) -> Result<Option<IconImage>, PlatformError> {
         Ok(None)
     }
     fn launch(&self, _: &AppRef) -> Result<(), LaunchError> {
@@ -979,4 +980,120 @@ fn a_mutation_works_while_a_watcher_keeps_refreshing() {
         }
     });
     assert_eq!(block_on(api::snapshot()).unwrap().page_ids.len(), 23);
+}
+
+/// A source whose app list and icon bytes can change between calls, so the
+/// disk cache can be observed from the API.
+struct IconSource {
+    apps: Arc<Mutex<Vec<AppEntry>>>,
+    icon: Arc<Mutex<Vec<u8>>>,
+}
+
+impl IconSource {
+    fn new(apps: Vec<AppEntry>, icon: Vec<u8>) -> Self {
+        Self {
+            apps: Arc::new(Mutex::new(apps)),
+            icon: Arc::new(Mutex::new(icon)),
+        }
+    }
+}
+
+impl AppSource for IconSource {
+    fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
+        Ok(self.apps.lock().unwrap().clone())
+    }
+    fn icon_image(&self, _: &AppRef, _: u32) -> Result<Option<IconImage>, PlatformError> {
+        Ok(Some(IconImage::png(self.icon.lock().unwrap().clone())))
+    }
+    fn launch(&self, _: &AppRef) -> Result<(), LaunchError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_package_change_drops_the_disk_icon_cache() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let source = IconSource::new(fixtures(), vec![1, 2, 3]);
+    let apps = source.apps.clone();
+    api::init_with_source(
+        Some(dir.path().to_path_buf()),
+        Box::new(source),
+        Vec::new(),
+    )
+    .unwrap();
+
+    let alpha = app_ref("org.alpha");
+    assert!(
+        block_on(api::icon_for(
+            alpha.package.clone(),
+            alpha.activity.clone(),
+            48
+        ))
+        .is_some()
+    );
+    let cache_dir = dir.path().join("icon-cache");
+    assert!(
+        std::fs::read_dir(&cache_dir).unwrap().next().is_some(),
+        "warming an icon writes a file"
+    );
+
+    // Installing an app is a package change; the icon cache must be dropped.
+    apps.lock()
+        .unwrap()
+        .push(entry("org.new", "New", AppCategory::App));
+    block_on(api::refresh_apps()).unwrap();
+
+    let remaining = std::fs::read_dir(&cache_dir)
+        .map(|entries| entries.count())
+        .unwrap_or(0);
+    assert_eq!(remaining, 0, "the icon cache is cleared on an app-set change");
+}
+
+#[test]
+fn an_app_update_refetches_the_icon() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let source = IconSource::new(fixtures(), vec![1, 2, 3]);
+    let apps = source.apps.clone();
+    let icon = source.icon.clone();
+    api::init_with_source(
+        Some(dir.path().to_path_buf()),
+        Box::new(source),
+        Vec::new(),
+    )
+    .unwrap();
+
+    let alpha = app_ref("org.alpha");
+    let first = block_on(api::icon_for(
+        alpha.package.clone(),
+        alpha.activity.clone(),
+        48,
+    ))
+    .unwrap();
+    assert_eq!(first.bytes, vec![1, 2, 3]);
+
+    // The same package/activity, updated: a new update time and new bytes.
+    {
+        let mut list = apps.lock().unwrap();
+        for entry in list.iter_mut() {
+            if entry.package == "org.alpha" {
+                entry.last_update_time = 99;
+            }
+        }
+    }
+    *icon.lock().unwrap() = vec![4, 5, 6];
+    block_on(api::refresh_apps()).unwrap();
+
+    let second = block_on(api::icon_for(
+        alpha.package.clone(),
+        alpha.activity.clone(),
+        48,
+    ))
+    .unwrap();
+    assert_eq!(
+        second.bytes,
+        vec![4, 5, 6],
+        "an updated app does not keep its old icon"
+    );
 }

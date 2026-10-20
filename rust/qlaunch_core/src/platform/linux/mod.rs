@@ -6,7 +6,7 @@ mod watch;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::model::{AppCategory, AppEntry, AppRef};
+use crate::model::{AppCategory, AppEntry, AppRef, IconImage};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
 
 pub use desktop_file::{
@@ -97,6 +97,17 @@ impl LinuxSource {
             .find(|path| fs::metadata(path).is_ok_and(|m| m.is_file()))
     }
 
+    /// The desktop file's modification time in milliseconds, used as the icon
+    /// cache token so a rewritten entry (a package update) misses the cache.
+    fn desktop_mtime_ms(&self, id: &str) -> i64 {
+        self.desktop_file(id)
+            .and_then(|path| fs::metadata(path).ok())
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis().min(i64::MAX as u128) as i64)
+            .unwrap_or(0)
+    }
+
     fn icon_path(&self, id: &str, size_px: u32) -> Option<PathBuf> {
         let bytes = fs::read(self.desktop_file(id)?).ok()?;
         let entry = parse_desktop(&String::from_utf8_lossy(&bytes), id, self.locale.as_deref());
@@ -134,11 +145,17 @@ impl AppSource for LinuxSource {
         );
         Ok(found
             .into_iter()
-            .map(|(id, entry)| AppEntry {
-                package: id,
-                activity: String::new(),
-                category: category_of(&entry),
-                label: entry.name,
+            .map(|(id, entry)| {
+                // A rewritten desktop file (a package update) changes this, so
+                // the persisted icon cache misses rather than staying stale.
+                let last_update_time = self.desktop_mtime_ms(&id);
+                AppEntry {
+                    package: id,
+                    activity: String::new(),
+                    category: category_of(&entry),
+                    label: entry.name,
+                    last_update_time,
+                }
             })
             .collect())
     }
@@ -147,11 +164,12 @@ impl AppSource for LinuxSource {
     /// for an unknown id, an entry without an icon, an icon that cannot be
     /// found or read, and an `svg` or `xpm` icon, which is not rasterised. An
     /// icon is cosmetic, so none of these is an error.
-    fn icon_png(&self, app: &AppRef, size_px: u32) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError> {
         Ok(self
             .icon_path(&app.package, size_px)
             .filter(|path| icons::is_png(path))
-            .and_then(|path| fs::read(path).ok()))
+            .and_then(|path| fs::read(path).ok())
+            .map(IconImage::png))
     }
 
     /// Starts the app's `Exec` line without a shell and without waiting for

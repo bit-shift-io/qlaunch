@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::model::{AppEntry, AppRef};
+use crate::model::{AppEntry, AppRef, IconImage};
 
 use super::{AppSource, LaunchError, PlatformError};
 
@@ -44,8 +44,8 @@ impl AppSource for FakeSource {
         Ok(self.apps.clone())
     }
 
-    fn icon_png(&self, app: &AppRef, _size_px: u32) -> Result<Option<Vec<u8>>, PlatformError> {
-        Ok(self.icons.get(app).cloned())
+    fn icon_image(&self, app: &AppRef, _size_px: u32) -> Result<Option<IconImage>, PlatformError> {
+        Ok(self.icons.get(app).cloned().map(IconImage::png))
     }
 
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError> {

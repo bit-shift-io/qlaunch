@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use flutter_rust_bridge::frb;
 
 use crate::frb_generated::StreamSink;
-use crate::model::{AppRef, Group, GroupRole, Id, Item};
+use crate::model::{AppRef, Group, GroupRole, IconImage, Id, Item};
 use crate::platform::AppSource;
 #[cfg(not(target_os = "android"))]
 use crate::platform::linux::LinuxSource;
@@ -246,14 +246,39 @@ pub async fn search_all_apps(query: String) -> Vec<SearchHit> {
     search(&candidates, &query)
 }
 
-/// The platform's PNG icon for an app, or `None` if there is none, it cannot
+/// The platform's icon for an app, or `None` if there is none, it cannot
 /// be read, or `init` has not been called.
-pub async fn icon_for(package: String, activity: String, size_px: u32) -> Option<Vec<u8>> {
-    let source = state::with_app(|app, _| Ok(app.source.clone())).ok()?;
-    source
-        .icon_png(&AppRef { package, activity }, size_px)
-        .ok()
-        .flatten()
+pub async fn icon_for(package: String, activity: String, size_px: u32) -> Option<IconImage> {
+    let target = AppRef { package, activity };
+    let (source, cache, update_time) = state::with_app(|state, _| {
+        // The update time is part of the cache key: an app that was updated
+        // since the icon was stored must not keep the old one.
+        let token = state
+            .icon_tokens
+            .get(&(target.package.clone(), target.activity.clone()))
+            .copied()
+            .unwrap_or(0);
+        Ok((state.source.clone(), state.icon_cache.clone(), token))
+    })
+    .ok()?;
+
+    // Check the persisted cache first: a restart should not re-run the
+    // platform fetch for icons the previous run already stored.
+    let generation = cache.as_ref().map(|cache| cache.generation());
+    if let Some(image) = cache
+        .as_ref()
+        .and_then(|cache| cache.get(&target, size_px, update_time))
+    {
+        return Some(image);
+    }
+
+    let image = source.icon_image(&target, size_px).ok().flatten()?;
+    if let (Some(cache), Some(generation)) = (cache.as_ref(), generation) {
+        // A clear while this fetch was in flight means the icon is suspect, so
+        // the write is dropped rather than resurrecting a stale entry.
+        cache.put_if(generation, &target, size_px, update_time, &image);
+    }
+    Some(image)
 }
 
 /// The most-launched apps, in launch-count order, up to `limit`. Apps that are

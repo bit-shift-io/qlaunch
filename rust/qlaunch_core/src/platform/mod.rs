@@ -6,7 +6,7 @@ pub mod linux;
 
 use thiserror::Error;
 
-use crate::model::{AppEntry, AppRef};
+use crate::model::{AppEntry, AppRef, IconImage};
 
 pub use fake::FakeSource;
 
@@ -32,7 +32,7 @@ pub enum LaunchError {
 
 pub trait AppSource: Send + Sync {
     fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError>;
-    fn icon_png(&self, app: &AppRef, size_px: u32) -> Result<Option<Vec<u8>>, PlatformError>;
+    fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError>;
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError>;
 
     /// Calls `on_change` after the installed apps change, once per burst of

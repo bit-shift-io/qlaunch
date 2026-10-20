@@ -593,4 +593,27 @@ void main() {
       expect(find.textContaining('the app is gone'), findsOneWidget);
     });
   });
+
+  group('icon prefetch', () {
+    testWidgets('opening a page warms every icon on it, not just the visible '
+        'cells', (tester) async {
+      setSurface(tester, const Size(400, 300));
+      // Far more items than the lazy grid builds for this small surface.
+      final items = [for (var i = 0; i < 120; i++) launchable('a$i', 'home')];
+      await load(items: items);
+      expect(fake.iconCalls, 0);
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+      expect(fake.iconCalls, 120);
+    });
+
+    testWidgets('hidden icons are not warmed', (tester) async {
+      setSurface(tester, const Size(400, 300));
+      final items = [for (var i = 0; i < 40; i++) launchable('a$i', 'home')];
+      await load(items: items, settings: settingsWith(iconsVisible: false));
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+      expect(fake.iconCalls, 0);
+    });
+  });
 }

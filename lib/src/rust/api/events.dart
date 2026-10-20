@@ -22,6 +22,10 @@ sealed class CoreEvent with _$CoreEvent {
   const factory CoreEvent.shortcutCreated({required String itemId}) =
       CoreEvent_ShortcutCreated;
   const factory CoreEvent.shortcutCancelled() = CoreEvent_ShortcutCancelled;
+
+  /// Reserved. The window shows the system wallpaper itself, so nothing needs
+  /// to re-read it today; the variant stays so the event list still matches
+  /// the spec and a future reader (a live wallpaper, say) can emit it.
   const factory CoreEvent.wallpaperChanged() = CoreEvent_WallpaperChanged;
   const factory CoreEvent.homePressed() = CoreEvent_HomePressed;
   const factory CoreEvent.backPressed() = CoreEvent_BackPressed;

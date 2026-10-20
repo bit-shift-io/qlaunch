@@ -7,6 +7,7 @@ fn entry(package: &str, label: &str, category: AppCategory) -> AppEntry {
         activity: "Main".into(),
         label: label.into(),
         category,
+        last_update_time: 0,
     }
 }
 
@@ -208,6 +209,7 @@ fn the_same_package_with_another_activity_is_a_different_app() {
                 activity: "Settings".into(),
                 label: "X Settings".into(),
                 category: AppCategory::App,
+                last_update_time: 0,
             },
         ],
     );

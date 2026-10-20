@@ -7,8 +7,8 @@ use jni::sys::{JNI_VERSION_1_6, jint};
 use jni::{JNIEnv, JavaVM};
 
 use crate::api::events::CoreEvent;
-use crate::model::AppRef;
-use crate::platform::android::{AndroidHost, AndroidList, parse_list_json};
+use crate::model::{AppRef, IconImage};
+use crate::platform::android::{AndroidHost, AndroidList, icon_from_int_slots, parse_list_json};
 use crate::platform::{LaunchError, PlatformError};
 
 pub(crate) static ANDROID_VM: OnceLock<JavaVM> = OnceLock::new();
@@ -101,7 +101,7 @@ impl AndroidHost for JniHost {
         parse_list_json(&json)
     }
 
-    fn icon_png(&self, app: &AppRef, size_px: u32) -> Result<Option<Vec<u8>>, PlatformError> {
+    fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError> {
         let size = size_px as i32;
         JniHost::with_env(|env| {
             let class = JniHost::class()?;
@@ -109,19 +109,40 @@ impl AndroidHost for JniHost {
             let act = env.new_string(&app.activity).map_err(jni_error)?;
             let result = env.call_static_method(
                 class,
-                "iconPng",
-                "(Ljava/lang/String;Ljava/lang/String;I)[B",
+                "iconRgba",
+                "(Ljava/lang/String;Ljava/lang/String;I)[I",
                 &[(&pkg).into(), (&act).into(), size.into()],
             );
             match result {
                 Ok(value) => {
-                    let object = value.l().map_err(jni_error)?;
+                    let object = match value.l() {
+                        Ok(object) => object,
+                        Err(e) => {
+                            clear_pending(env);
+                            let _ = e;
+                            return Ok(None);
+                        }
+                    };
                     if object.is_null() {
                         return Ok(None);
                     }
-                    let arr: jni::objects::JByteArray = object.into();
-                    let bytes = env.convert_byte_array(&arr).map_err(jni_error)?;
-                    Ok(Some(bytes))
+                    let arr: jni::objects::JIntArray = object.into();
+                    let len = match env.get_array_length(&arr) {
+                        Ok(len) if len >= 2 => len as usize,
+                        Ok(_) => return Ok(None),
+                        Err(e) => {
+                            clear_pending(env);
+                            let _ = e;
+                            return Ok(None);
+                        }
+                    };
+                    let mut raw = vec![0i32; len];
+                    if let Err(e) = env.get_int_array_region(&arr, 0, &mut raw) {
+                        clear_pending(env);
+                        let _ = e;
+                        return Ok(None);
+                    }
+                    Ok(icon_from_int_slots(&raw))
                 }
                 Err(e) => {
                     clear_pending(env);

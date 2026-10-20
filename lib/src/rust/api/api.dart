@@ -5,6 +5,7 @@
 
 import '../frb_generated.dart';
 import '../model.dart';
+import '../model/icon.dart';
 import '../model/roles.dart';
 import '../search.dart';
 import '../settings.dart';
@@ -97,9 +98,9 @@ Future<String?> homeGroupId() => RustLib.instance.api.crateApiApiHomeGroupId();
 Future<List<SearchHit>> searchAllApps({required String query}) =>
     RustLib.instance.api.crateApiApiSearchAllApps(query: query);
 
-/// The platform's PNG icon for an app, or `None` if there is none, it cannot
+/// The platform's icon for an app, or `None` if there is none, it cannot
 /// be read, or `init` has not been called.
-Future<Uint8List?> iconFor({
+Future<IconImage?> iconFor({
   required String package,
   required String activity,
   required int sizePx,

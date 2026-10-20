@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
+import 'package:qlaunch/src/rust/model/icon.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart';
 import 'package:qlaunch/src/rust/settings.dart';
@@ -38,7 +39,7 @@ class FakeBackend implements LauncherBackend {
 
   /// The icon returned for an app, whatever size is asked for; the size is in
   /// the recorded call (`iconFor(package,activity,sizePx)`).
-  final Map<({String package, String activity}), Uint8List> icons = {};
+  final Map<({String package, String activity}), IconImage> icons = {};
 
   int get iconCalls => calls.where((c) => c.startsWith('iconFor(')).length;
 
@@ -190,8 +191,8 @@ class FakeBackend implements LauncherBackend {
   }
 
   @override
-  Future<Uint8List?> iconFor(String package, String activity, int sizePx) =>
-      _plain<Uint8List?>(
+  Future<IconImage?> iconFor(String package, String activity, int sizePx) =>
+      _plain<IconImage?>(
         'iconFor($package,$activity,$sizePx)',
         icons[(package: package, activity: activity)],
       );

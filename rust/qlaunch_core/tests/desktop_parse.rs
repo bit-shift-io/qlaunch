@@ -478,15 +478,12 @@ fn by_package<'a>(apps: &'a [AppEntry], package: &str) -> &'a AppEntry {
 #[test]
 fn list_apps_maps_an_entry_to_an_app_entry_with_no_activity() {
     let source = LinuxSource::new_with_dirs(vec![fixture("visibility")]);
-    assert_eq!(
-        source.list_apps().unwrap(),
-        [AppEntry {
-            package: "visible.desktop".into(),
-            activity: String::new(),
-            label: "Visible".into(),
-            category: AppCategory::App,
-        }]
-    );
+    let apps = source.list_apps().unwrap();
+    assert_eq!(apps.len(), 1);
+    assert_eq!(apps[0].package, "visible.desktop");
+    assert_eq!(apps[0].activity, "");
+    assert_eq!(apps[0].label, "Visible");
+    assert_eq!(apps[0].category, AppCategory::App);
 }
 
 #[test]
@@ -552,6 +549,6 @@ fn a_source_with_no_directories_has_no_icon_and_cannot_launch_anything() {
         package: "visible.desktop".into(),
         activity: String::new(),
     };
-    assert_eq!(source.icon_png(&app, 48), Ok(None));
+    assert_eq!(source.icon_image(&app, 48), Ok(None));
     assert_eq!(source.launch(&app), Err(LaunchError::NotFound(app.clone())));
 }

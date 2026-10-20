@@ -12,6 +12,7 @@ import 'dart:ffi' as ffi;
 
 import 'frb_generated.dart';
 import 'model.dart';
+import 'model/icon.dart';
 import 'model/roles.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
@@ -56,6 +57,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
 
   @protected
+  IconImage dco_decode_box_autoadd_icon_image(dynamic raw);
+
+  @protected
   LabelColour dco_decode_box_autoadd_label_colour(dynamic raw);
 
   @protected
@@ -96,6 +100,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
+
+  @protected
+  IconFormat dco_decode_icon_format(dynamic raw);
+
+  @protected
+  IconImage dco_decode_icon_image(dynamic raw);
 
   @protected
   Item dco_decode_item(dynamic raw);
@@ -152,6 +162,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
   @protected
+  IconImage? dco_decode_opt_box_autoadd_icon_image(dynamic raw);
+
+  @protected
   LabelColour? dco_decode_opt_box_autoadd_label_colour(dynamic raw);
 
   @protected
@@ -168,9 +181,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Typeface? dco_decode_opt_box_autoadd_typeface(dynamic raw);
-
-  @protected
-  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
 
   @protected
   Orientation dco_decode_orientation(dynamic raw);
@@ -235,6 +245,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
+  IconImage sse_decode_box_autoadd_icon_image(SseDeserializer deserializer);
+
+  @protected
   LabelColour sse_decode_box_autoadd_label_colour(SseDeserializer deserializer);
 
   @protected
@@ -281,6 +294,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+
+  @protected
+  IconFormat sse_decode_icon_format(SseDeserializer deserializer);
+
+  @protected
+  IconImage sse_decode_icon_image(SseDeserializer deserializer);
 
   @protected
   Item sse_decode_item(SseDeserializer deserializer);
@@ -339,6 +358,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
+  IconImage? sse_decode_opt_box_autoadd_icon_image(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   LabelColour? sse_decode_opt_box_autoadd_label_colour(
     SseDeserializer deserializer,
   );
@@ -365,9 +389,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Typeface? sse_decode_opt_box_autoadd_typeface(SseDeserializer deserializer);
-
-  @protected
-  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
   Orientation sse_decode_orientation(SseDeserializer deserializer);
@@ -442,6 +463,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_icon_image(
+    IconImage self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_label_colour(
     LabelColour self,
     SseSerializer serializer,
@@ -500,6 +527,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_icon_format(IconFormat self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_icon_image(IconImage self, SseSerializer serializer);
 
   @protected
   void sse_encode_item(Item self, SseSerializer serializer);
@@ -571,6 +604,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_icon_image(
+    IconImage? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_label_colour(
     LabelColour? self,
     SseSerializer serializer,
@@ -603,12 +642,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_opt_box_autoadd_typeface(
     Typeface? self,
-    SseSerializer serializer,
-  );
-
-  @protected
-  void sse_encode_opt_list_prim_u_8_strict(
-    Uint8List? self,
     SseSerializer serializer,
   );
 

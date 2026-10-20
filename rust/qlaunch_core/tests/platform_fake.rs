@@ -1,4 +1,4 @@
-use qlaunch_core::model::{AppCategory, AppEntry, AppRef};
+use qlaunch_core::model::{AppCategory, AppEntry, AppRef, IconImage};
 use qlaunch_core::platform::{AppSource, FakeSource, LaunchError};
 
 fn app(package: &str, activity: &str, label: &str) -> AppEntry {
@@ -7,6 +7,7 @@ fn app(package: &str, activity: &str, label: &str) -> AppEntry {
         activity: activity.into(),
         label: label.into(),
         category: AppCategory::App,
+        last_update_time: 0,
     }
 }
 
@@ -30,18 +31,21 @@ fn list_apps_returns_given_apps_in_order() {
 }
 
 #[test]
-fn icon_png_returns_registered_icon() {
+fn icon_image_returns_registered_icon() {
     let target = app_ref("com.a", ".Main");
     let source = FakeSource::new(vec![app("com.a", ".Main", "Alpha")])
         .with_icon(target.clone(), vec![1, 2, 3]);
-    assert_eq!(source.icon_png(&target, 48).unwrap(), Some(vec![1, 2, 3]));
+    assert_eq!(
+        source.icon_image(&target, 48).unwrap(),
+        Some(IconImage::png(vec![1, 2, 3]))
+    );
 }
 
 #[test]
-fn icon_png_returns_none_without_registered_icon() {
+fn icon_image_returns_none_without_registered_icon() {
     let source = FakeSource::new(vec![app("com.a", ".Main", "Alpha")]);
     let target = app_ref("com.a", ".Main");
-    assert_eq!(source.icon_png(&target, 48).unwrap(), None);
+    assert_eq!(source.icon_image(&target, 48).unwrap(), None);
 }
 
 #[test]

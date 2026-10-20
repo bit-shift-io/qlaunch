@@ -13,6 +13,7 @@ import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
 import 'model.dart';
+import 'model/icon.dart';
 import 'model/roles.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
@@ -98,7 +99,7 @@ abstract class RustLibApi extends BaseApi {
 
   Future<String?> crateApiApiHomeGroupId();
 
-  Future<Uint8List?> crateApiApiIconFor({
+  Future<IconImage?> crateApiApiIconFor({
     required String package,
     required String activity,
     required int sizePx,
@@ -347,7 +348,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "home_group_id", argNames: []);
 
   @override
-  Future<Uint8List?> crateApiApiIconFor({
+  Future<IconImage?> crateApiApiIconFor({
     required String package,
     required String activity,
     required int sizePx,
@@ -367,7 +368,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           );
         },
         codec: SseCodec(
-          decodeSuccessData: sse_decode_opt_list_prim_u_8_strict,
+          decodeSuccessData: sse_decode_opt_box_autoadd_icon_image,
           decodeErrorData: null,
         ),
         constMeta: kCrateApiApiIconForConstMeta,
@@ -992,6 +993,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  IconImage dco_decode_box_autoadd_icon_image(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_icon_image(raw);
+  }
+
+  @protected
   LabelColour dco_decode_box_autoadd_label_colour(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_label_colour(raw);
@@ -1109,6 +1116,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PlatformInt64 dco_decode_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeI64(raw);
+  }
+
+  @protected
+  IconFormat dco_decode_icon_format(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return IconFormat.values[raw as int];
+  }
+
+  @protected
+  IconImage dco_decode_icon_image(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return IconImage(
+      format: dco_decode_icon_format(arr[0]),
+      width: dco_decode_u_32(arr[1]),
+      height: dco_decode_u_32(arr[2]),
+      bytes: dco_decode_list_prim_u_8_strict(arr[3]),
+    );
   }
 
   @protected
@@ -1244,6 +1271,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  IconImage? dco_decode_opt_box_autoadd_icon_image(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_icon_image(raw);
+  }
+
+  @protected
   LabelColour? dco_decode_opt_box_autoadd_label_colour(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_label_colour(raw);
@@ -1277,12 +1310,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Typeface? dco_decode_opt_box_autoadd_typeface(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_typeface(raw);
-  }
-
-  @protected
-  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw) {
-    // Codec=Dco (DartCObject based), see doc to use other codecs
-    return raw == null ? null : dco_decode_list_prim_u_8_strict(raw);
   }
 
   @protected
@@ -1479,6 +1506,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  IconImage sse_decode_box_autoadd_icon_image(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_icon_image(deserializer));
+  }
+
+  @protected
   LabelColour sse_decode_box_autoadd_label_colour(
     SseDeserializer deserializer,
   ) {
@@ -1611,6 +1644,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getPlatformInt64();
+  }
+
+  @protected
+  IconFormat sse_decode_icon_format(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return IconFormat.values[inner];
+  }
+
+  @protected
+  IconImage sse_decode_icon_image(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_format = sse_decode_icon_format(deserializer);
+    var var_width = sse_decode_u_32(deserializer);
+    var var_height = sse_decode_u_32(deserializer);
+    var var_bytes = sse_decode_list_prim_u_8_strict(deserializer);
+    return IconImage(
+      format: var_format,
+      width: var_width,
+      height: var_height,
+      bytes: var_bytes,
+    );
   }
 
   @protected
@@ -1826,6 +1881,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  IconImage? sse_decode_opt_box_autoadd_icon_image(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_icon_image(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   LabelColour? sse_decode_opt_box_autoadd_label_colour(
     SseDeserializer deserializer,
   ) {
@@ -1896,17 +1964,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_box_autoadd_typeface(deserializer));
-    } else {
-      return null;
-    }
-  }
-
-  @protected
-  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    if (sse_decode_bool(deserializer)) {
-      return (sse_decode_list_prim_u_8_strict(deserializer));
     } else {
       return null;
     }
@@ -2154,6 +2211,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_icon_image(
+    IconImage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_icon_image(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_label_colour(
     LabelColour self,
     SseSerializer serializer,
@@ -2282,6 +2348,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putPlatformInt64(self);
+  }
+
+  @protected
+  void sse_encode_icon_format(IconFormat self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_icon_image(IconImage self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_icon_format(self.format, serializer);
+    sse_encode_u_32(self.width, serializer);
+    sse_encode_u_32(self.height, serializer);
+    sse_encode_list_prim_u_8_strict(self.bytes, serializer);
   }
 
   @protected
@@ -2470,6 +2551,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_icon_image(
+    IconImage? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_icon_image(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_label_colour(
     LabelColour? self,
     SseSerializer serializer,
@@ -2544,19 +2638,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_box_autoadd_typeface(self, serializer);
-    }
-  }
-
-  @protected
-  void sse_encode_opt_list_prim_u_8_strict(
-    Uint8List? self,
-    SseSerializer serializer,
-  ) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-
-    sse_encode_bool(self != null, serializer);
-    if (self != null) {
-      sse_encode_list_prim_u_8_strict(self, serializer);
     }
   }
 
