@@ -526,7 +526,10 @@ fn icon_image_reads_the_exact_bytes_of_the_resolved_file() {
 #[test]
 fn icon_image_is_none_for_an_svg_icon() {
     assert!(fixture("source/icons/hicolor/scalable/apps/vectoricon.svg").is_file());
-    assert_eq!(source().icon_image(&app("vector.desktop"), 48).unwrap(), None);
+    assert_eq!(
+        source().icon_image(&app("vector.desktop"), 48).unwrap(),
+        None
+    );
 }
 
 #[test]
@@ -539,7 +542,10 @@ fn icon_image_is_none_for_an_icon_that_cannot_be_found() {
 
 #[test]
 fn icon_image_is_none_for_an_entry_with_no_icon_key() {
-    assert_eq!(source().icon_image(&app("noicon.desktop"), 48).unwrap(), None);
+    assert_eq!(
+        source().icon_image(&app("noicon.desktop"), 48).unwrap(),
+        None
+    );
 }
 
 #[test]

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
@@ -10,7 +11,7 @@ import 'package:qlaunch/src/ui/app_search.dart';
 import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
-import 'package:qlaunch/src/ui/page_pips.dart';
+import 'package:qlaunch/src/ui/launcher_menu.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
@@ -27,23 +28,31 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final GroupPagerController _controller;
   late String _currentGroupId;
   late int _seenHomeRequests;
   late int _seenBackRequests;
   String? _shownError;
 
-  /// Whether the Home-button search panel is over the launcher.
+  /// Whether search replaces the main launcher's foreground.
   bool _searching = false;
 
-  /// Whether the tab strip has more pages than it can show at once. The page
-  /// pips fade in with it, since a strip that fits already shows every page.
-  bool _tabsOverflow = false;
+  /// The pointer currently down on a cell, reported by [AppGrid]. The pager's
+  /// own listener sees the same event and uses this to ignore item taps.
+  int? _itemPointer;
+  int? _trackedPointer;
+  bool _pointerStartedOnItem = false;
+  bool _pointerMoved = false;
+  Offset? _pointerDownPosition;
+  DateTime? _pointerDownAt;
+  DateTime? _lastBlankTapAt;
+  Offset? _lastBlankTapPosition;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = GroupPagerController(pageIds: widget.state.pageIds);
     // Open on the Home group, or the first page if no group holds it (§8.2):
     // the old app always opened on its home screen, and a launcher that opens
@@ -58,24 +67,38 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Requests the icons for every app on [groupId] now, so the cells hit the
-  /// session cache when they are built.
+  /// Requests the icons for every app on [groupId] and its neighbouring pages,
+  /// so the cells hit the session cache before a swipe builds them.
   ///
   /// The grid builds lazily, so without this the off-screen icons on a page are
   /// only fetched once the user scrolls onto them, which is exactly where a
-  /// hitch is most visible.
+  /// hitch is most visible. One page either side matches the pager's practical
+  /// reach during a swipe; fetching every group would waste work on large
+  /// layouts.
   void _warmIcons(String groupId) {
     final snapshot = widget.state.snapshot;
     if (snapshot == null) return;
     final settings = snapshot.settings;
     if (!settings.iconsVisible) return;
-    final sizePx =
-        (settings.iconSize * MediaQuery.devicePixelRatioOf(context)).round();
+    final sizePx = (settings.iconSize * MediaQuery.devicePixelRatioOf(context))
+        .round();
     if (sizePx <= 0) return;
-    for (final item in widget.state.itemsIn(groupId)) {
-      final app = item.app;
-      if (app == null || item.uninstalled) continue;
-      unawaited(widget.state.iconFor(app.package, app.activity, sizePx));
+
+    final pageIds = widget.state.pageIds;
+    final index = pageIds.indexOf(groupId);
+    final groups = <String>{
+      groupId,
+      if (index >= 0 && pageIds.length > 1)
+        pageIds[(index + 1) % pageIds.length],
+      if (index >= 0 && pageIds.length > 2)
+        pageIds[(index - 1 + pageIds.length) % pageIds.length],
+    };
+    for (final group in groups) {
+      for (final item in widget.state.itemsIn(group)) {
+        final app = item.app;
+        if (app == null || item.uninstalled) continue;
+        unawaited(widget.state.iconFor(app.package, app.activity, sizePx));
+      }
     }
   }
 
@@ -99,11 +122,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return _controller.goToGroup(target);
   }
 
-  /// The strip calls this from its own layout pass, so it is posted rather than
-  /// set during build.
-  void _onTabsOverflowChanged(bool overflow) {
-    if (!mounted || overflow == _tabsOverflow) return;
-    setState(() => _tabsOverflow = overflow);
+  void _step(int direction) {
+    setState(() => _controller.step(direction));
   }
 
   /// Tapping a tab switches the pager to that group, same as a swipe would.
@@ -113,15 +133,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (!_controller.goToGroup(groupId)) return;
     setState(
-      () => _currentGroupId = _controller.currentGroupId(_controller.currentPage),
+      () =>
+          _currentGroupId = _controller.currentGroupId(_controller.currentPage),
     );
     _warmIcons(_currentGroupId);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.state.removeListener(_onStateChanged);
+    _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Returning from another app always reveals the main tab, never search.
+    // Inactive alone also covers the keyboard/system UI and must not close it.
+    if (state == AppLifecycleState.paused && _searching) _closeSearch();
   }
 
   void _onStateChanged() {
@@ -206,6 +236,60 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   );
 
+  void _openLauncherMenu() {
+    unawaited(LauncherMenu.show(context, widget.state, _currentGroupId));
+  }
+
+  /// Tracks a pointer from down to up without joining the gesture arena, so a
+  /// double tap on blank space can lock the screen without delaying taps on
+  /// the cells. [AppGrid] reports the pointer when it lands on an item.
+  void _onItemPointerDown(int pointer) => _itemPointer = pointer;
+
+  void _onPointerDown(PointerDownEvent event) {
+    _trackedPointer = event.pointer;
+    _pointerStartedOnItem = _itemPointer == event.pointer;
+    _pointerMoved = false;
+    _pointerDownPosition = event.position;
+    _pointerDownAt = DateTime.now();
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (event.pointer != _trackedPointer) return;
+    final down = _pointerDownPosition;
+    if (down != null && (event.position - down).distance > kTouchSlop) {
+      _pointerMoved = true;
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    if (event.pointer != _trackedPointer) return;
+    final onItem = _pointerStartedOnItem;
+    final moved = _pointerMoved;
+    final downAt = _pointerDownAt;
+    _trackedPointer = null;
+    _itemPointer = null;
+    _pointerDownPosition = null;
+    _pointerDownAt = null;
+    if (onItem || moved || downAt == null) return;
+    if (DateTime.now().difference(downAt) > kDoubleTapTimeout) return;
+
+    final lastAt = _lastBlankTapAt;
+    final lastPosition = _lastBlankTapPosition;
+    final isDouble =
+        lastAt != null &&
+        lastPosition != null &&
+        DateTime.now().difference(lastAt) <= kDoubleTapTimeout &&
+        (event.position - lastPosition).distance <= kDoubleTapSlop;
+    if (!isDouble) {
+      _lastBlankTapAt = DateTime.now();
+      _lastBlankTapPosition = event.position;
+      return;
+    }
+    _lastBlankTapAt = null;
+    _lastBlankTapPosition = null;
+    unawaited(widget.state.lockScreen());
+  }
+
   /// Opens the per-app popup, the destination §8.2 gives a long press on an
   /// item: rename, move to another group, or uninstall.
   void _openAppSettings(Item item) {
@@ -254,13 +338,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _warmIcons(groupId);
   }
 
-  /// The index of the group on screen, for the page pips. Falls back to the
-  /// first page if the current group is somehow not one of the pages.
-  int get _currentPage {
-    final index = _controller.pageIds.indexOf(_currentGroupId);
-    return index < 0 ? 0 : index;
-  }
-
   bool _tabsVisible(TabVisibility visibility, Orientation orientation) =>
       switch (visibility) {
         TabVisibility.always => true,
@@ -295,70 +372,66 @@ class _HomeScreenState extends State<HomeScreen> {
               // Insets are respected rather than drawn under (F5):
               // `status_bar_visible` is Android chrome, and belongs to the
               // Android host.
-              SafeArea(
-                child: Column(
-                  children: [
-                    if (showTabs)
-                      TabStrip(
-                        pageIds: _controller.pageIds,
-                        groups: widget.state.groups,
-                        currentGroupId: _currentGroupId,
-                        settings: settings,
-                        onGroupTap: _goToGroup,
-                        onOverflowChanged: _onTabsOverflowChanged,
-                      ),
-                    Expanded(
-                      // A long press on blank space opens the settings (§8.2).
-                      // Opaque so a press in a gap between cells still reaches
-                      // this, while a cell claims its own press (AppCell does),
-                      // so a press on an item never opens the settings.
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onLongPress: _openSettings,
-                        child: GroupPager(
-                          controller: _controller,
-                          onGroupChanged: _onGroupChanged,
-                          // Each page is built with the group the controller
-                          // puts at that index, so nothing here converts an
-                          // index itself.
-                          gridFor: (context, groupId) => AppGrid(
-                            state: widget.state,
-                            groupId: groupId,
-                            onItemLongPress: _openAppSettings,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Only when the tabs cannot show every page: a strip that fits
-              // already says how many there are, so pips would be noise. Fades
-              // in and out with the overflow rather than popping.
-              if (showTabs)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
+              Offstage(
+                offstage: _searching,
+                child: TickerMode(
+                  enabled: !_searching,
                   child: SafeArea(
-                    top: false,
-                    child: IgnorePointer(
-                      child: AnimatedOpacity(
-                        duration: const Duration(milliseconds: 200),
-                        opacity: _tabsOverflow ? 1 : 0,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Center(
-                            child: PagePips(
-                              count: _controller.pageIds.length,
-                              current: _currentPage,
+                    child: Column(
+                      children: [
+                        if (showTabs)
+                          TabStrip(
+                            pageIds: _controller.pageIds,
+                            groups: widget.state.groups,
+                            currentGroupId: _currentGroupId,
+                            settings: settings,
+                            controller: _controller,
+                            onGroupTap: _goToGroup,
+                            onStep: _step,
+                          ),
+                        Expanded(
+                          // A long press on blank space opens the launcher menu.
+                          // Opaque so a press in a gap between cells still reaches
+                          // this, while a cell claims its own press (AppCell does),
+                          // so a press on an item never opens the menu. The outer
+                          // listener sees every pointer but only counts taps that
+                          // did not start on a cell, which makes double tap work
+                          // without delaying an item's own tap.
+                          child: Listener(
+                            onPointerDown: _onPointerDown,
+                            onPointerMove: _onPointerMove,
+                            onPointerUp: _onPointerUp,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onLongPress: _openLauncherMenu,
+                              child: GroupPager(
+                                controller: _controller,
+                                columns:
+                                    (MediaQuery.orientationOf(context) ==
+                                                Orientation.portrait
+                                            ? settings?.gridColumnsPortrait
+                                            : settings?.gridColumnsLandscape)
+                                        ?.toInt() ??
+                                    4,
+                                onGroupChanged: _onGroupChanged,
+                                // Each page is built with the group the controller
+                                // puts at that index, so nothing here converts an
+                                // index itself.
+                                gridFor: (context, groupId) => AppGrid(
+                                  state: widget.state,
+                                  groupId: groupId,
+                                  onItemLongPress: _openAppSettings,
+                                  onItemPointerDown: _onItemPointerDown,
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
+              ),
               if (_searching)
                 Positioned.fill(
                   child: AppSearch(

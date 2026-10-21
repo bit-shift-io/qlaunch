@@ -1,0 +1,22 @@
+# Execution ledger — plan: 2026-10-21-java-parity.md
+
+- Baseline: Flutter suite passed; Rust suite passed before implementation.
+- Pre-flight: Tasks 1/2 share grid columns; Task 5 consumes Task 3/4 backend APIs; no interface conflict.
+- Execution choice: in-place, inline implementation; no branch changes or commits.
+- Task 1: motion/title implementation verified by 43 focused pager/title tests; historical canonical-navigation assertion updated for nearest-copy behavior.
+- Task 2: scaled two-line rendering regression RED → GREEN; old square-cell/single-line/padding assertions updated to approved geometry; final focused suite pending.
+- Device: Pixel 5a `18161JECB02915`, Android 14. Original Home: `com.google.android.apps.nexuslauncher/.NexusLauncherActivity`.
+- Ruling: one-column travel and linear crossfade implement the approved crossing effect; Java's disabled 1.75 multiplier would produce an invisible midpoint.
+- Commits: none.
+- Device follow-up: opening tab position now synced after first layout (empty Home group is intentional).
+- Motion follow-up: settle reduced to 150 ms; crossfade multiplier 1.5 for a snappier exit.
+- Icon follow-up: current and both neighbouring pages are prewarmed before a swipe.
+- Verification: Flutter 254 tests pass; `flutter analyze lib test` clean; Rust suite passes; profile APK installed, 0 janky frames over a cold 2 s swipe.
+- Remaining: device smoke tests for menu/lock/shortcut/display/reset, Linux build, docs/README update, restore Pixel Launcher Home.
+- Default-size follow-up: Rust defaults changed to `icon_size=54` and `label_size=18`; Rust default/factory-reset tests updated RED → GREEN; device settings applied to 54/18 and grid verified.
+- Device smoke: blank-space menu, Add Shortcut provider list, item editor, group editor, icon/font sliders, double-tap lock, and confirmed factory reset all verified on the Pixel 5a.
+- Factory reset: defaults came back as `icon_size=54`, `label_size=18`; 23 apps rediscovered; toast shown. Pre-reset data was backed up and restored afterward.
+- Linux: `flutter build linux --release` succeeds; no Wayland/X display was available for an interactive run.
+- Docs: README status and design default table updated; parity audit/design/progress linked.
+- Scroll fade follow-up: added a third `scroll_fade` mode, `tile`, which fades a whole cell uniformly and fully transparent once half of it has crossed an edge (`opacity = ((visibleFraction - 0.5) / 0.5).clamp(0, 1)`); gradient/none unchanged. Verified on the Pixel 5a; `tile` left selected.
+- Backup/Restore + Advanced page: the four destructive actions moved to a new Advanced subpage (single `Advanced` row in Settings). Backup writes `qlaunch-backup-YYYY-MM-DD-HHMMSS.json` to Downloads; Restore lists backups newest-first, confirms, validates, writes `qlaunch-backup.pre-restore.json`, then fully replaces and reconciles. Device smoke: backup wrote a dated file to `/sdcard/Download`; a second backup got a distinct timestamp; restoring an older backup removed a test group and left `files/qlaunch.json` matching the restored bytes with the pre-restore copy beside it.

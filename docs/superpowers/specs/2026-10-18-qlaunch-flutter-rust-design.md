@@ -358,12 +358,13 @@ changes, the old behaviour is noted as **was**.
 
 ### 8.1 Screens
 
-Four Flutter routes, replacing the old activities:
+Five Flutter routes, replacing the old activities:
 
 | Route | Was | Contents |
 | :--- | :--- | :--- |
 | **Home** | `MainActivity` | Drawers, group pager, grid |
 | **Settings** | `SettingsActivity` | §8.6 |
+| **Advanced** | `SettingsActivity` (Advanced section) | Restart Launcher, Backup config, Restore config, Factory Reset — split into its own page so destructive actions are not one stray tap away |
 | **Group Editor** | `GroupEditorActivity` | Add, rename, reorder, delete (ordinary groups only), and move the Apps / Games / Home roles between groups |
 | **App Settings** (dialog) | `ApplicationSettingsDialog` | Label, group, category, custom icon, uninstall |
 
@@ -523,19 +524,31 @@ as before: Display, Window, Icon, Text, General, Advanced.
 | `grid_columns_landscape` | int | 6 | 1–12 | Grid columns, landscape (**was:** conflated with "grid height") |
 | `layout` | enum | `tiles` | `tiles` \| `list` \| `centred` | Cell layout |
 | `tab_visibility` | enum | `always` | `always` \| `landscape_only` \| `portrait_only` \| `never` | Tab strip visibility |
+| `scroll_fade` | enum | `gradient` | `none` \| `gradient` \| `tile` | How scrolling cells meet the tab strip and navigation bar: `none`, a fixed edge gradient, or whole-cell fading |
 | `wallpaper_alpha` | int | 0 | 0–100 | Overlay opacity; 0 = pure wallpaper, 100 = black (**was:** an undocumented `×2.55` conversion and a code default of 30 that disagreed with the XML default of 0) |
 | `status_bar_visible` | bool | true | — | Show the OS status bar |
 | `icons_visible` | bool | true | — | Show icons |
-| `icon_size` | int (dp) | 40 | 0–100 | Icon size |
+| `icon_size` | int (dp) | 54 | 0–100 | Icon size |
 | `icon_alpha` | int | 100 | 0–100 | Icon opacity |
 | `labels_visible` | bool | true | — | Show labels |
-| `label_size` | int (sp) | 14 | 0–100 | Label size |
+| `label_size` | int (sp) | 18 | 0–100 | Label size |
 | `label_typeface` | enum | `normal` | `normal` \| `sans` \| `serif` \| `monospace` | Typeface |
 | `label_colour` | enum | `white` | `white` \| `black` \| `grey` | Colour |
 | `label_shadow` | bool | true | — | Drop shadow |
 | `orientation` | enum | `auto` | `auto` \| `landscape` \| `portrait` | Requested orientation (Android) |
 | `restart_launcher` | action | — | — | Restart the app |
+| `backup_config` | action | — | — | Write the whole document to the Downloads folder as `qlaunch-backup-YYYY-MM-DD-HHMMSS.json` |
+| `restore_config` | action | — | — | Replace the live document with a chosen Downloads backup, after confirmation |
 | `factory_reset` | action | — | — | Wipe settings and model, with confirmation |
+
+The four actions live on the **Advanced** page (§8.1), reached from a single
+`Advanced` row in Settings, so a stray tap cannot restart, restore over, or wipe
+the launcher. Backup and Restore are owned end-to-end by Rust; the platform layer
+only lists, reads and writes files in Downloads. Restore validates the candidate
+bytes before touching anything, moves the current document aside to
+`qlaunch-backup.pre-restore.json`, then reloads and reconciles (missing apps are
+marked `UNINSTALLED`, newly installed apps are added to Apps/Games) exactly as a
+normal start-up would.
 
 Dropped relative to the old app: `proximity_lock`, `pin_lock` (which was a
 "Disable Long Press" checkbox that never asked for a PIN), `toggle_status_bar`.
@@ -712,7 +725,7 @@ Deliberately not pinned down, because a competent builder should decide:
   case-insensitive substring, which is a fine floor.
 - Widget tree structure, theming, animation curves, and the visual language —
   the old app's look is a starting point, not a specification.
-- The exact shape of the About screen, and where "Restart Launcher" and
-  "Factory Reset" live.
+- The exact shape of the About screen. (Where "Restart Launcher" and
+  "Factory Reset" live is settled: the Advanced page, §8.1/§8.6.)
 - Whether Linux custom-command shortcuts ship in v1 or v1.1.
 - Whether `ModelSnapshot` should grow change-deltas later if it ever gets slow.

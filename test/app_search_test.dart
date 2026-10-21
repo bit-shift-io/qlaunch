@@ -6,6 +6,9 @@ import 'package:qlaunch/src/rust/search.dart';
 import 'package:qlaunch/src/rust/usage.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_search.dart';
+import 'package:qlaunch/src/ui/app_cells.dart';
+import 'package:qlaunch/src/ui/group_pager.dart';
+import 'package:qlaunch/src/ui/tab_strip.dart';
 
 import 'fake_backend.dart';
 import 'snapshot_builders.dart';
@@ -39,7 +42,11 @@ void main() {
     WidgetTester tester, {
     VoidCallback? onDone,
     Future<void> Function()? onOpenSettings,
+    Size size = const Size(400, 800),
   }) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = size;
+    addTearDown(tester.view.reset);
     await state.load();
     await tester.pumpWidget(
       MaterialApp(
@@ -67,10 +74,13 @@ void main() {
     await pumpSearch(tester);
     await tester.pump();
 
-    expect(fake.usageQueries, ['frequent(24)']);
+    expect(fake.usageQueries, containsAll(['frequent(12)', 'recent(12)']));
     expect(fake.searchQueries, isEmpty, reason: 'no app dump on open');
-    expect(find.byKey(AppSearch.frequentTabKey), findsOneWidget);
-    expect(find.byKey(AppSearch.recentTabKey), findsOneWidget);
+    expect(find.byType(TabStrip), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(TabStrip.tabKey(0))).data,
+      'Frequent',
+    );
     expect(find.text('Firefox'), findsOneWidget);
     expect(find.text('Files'), findsOneWidget);
   });
@@ -85,20 +95,20 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byKey(AppSearch.recentTabKey), findsOneWidget);
+    expect(find.byType(TabStrip), findsOneWidget);
     expect(fake.searchQueries, isEmpty);
-    expect(fake.usageQueries.last, 'frequent(24)');
+    expect(fake.usageQueries, contains('frequent(12)'));
   });
 
   testWidgets('the Recent tab asks the core for recent apps', (tester) async {
     fake.recentAppsResults = (limit) => [usage('Zed')];
     await pumpSearch(tester);
 
-    await tester.tap(find.byKey(AppSearch.recentTabKey));
-    await tester.pump();
-    await tester.pump();
+    await tester.tap(find.byKey(TabStrip.tabKey(1)));
+    await tester.pumpAndSettle();
 
-    expect(fake.usageQueries.last, 'recent(24)');
+    expect(fake.usageQueries, contains('recent(12)'));
+    expect(tester.widget<Text>(find.byKey(TabStrip.tabKey(0))).data, 'Recent');
     expect(find.text('Zed'), findsOneWidget);
   });
 
@@ -114,7 +124,7 @@ void main() {
     await tester.pump();
 
     expect(fake.searchQueries.last, 'fir');
-    expect(find.byKey(AppSearch.frequentTabKey), findsNothing);
+    expect(find.byType(TabStrip), findsNothing);
     expect(find.text('Firefox'), findsOneWidget);
   });
 
@@ -150,9 +160,7 @@ void main() {
     await tester.tap(find.text('Firefox'));
     await tester.pump();
 
-    expect(fake.launched, [
-      (package: 'org.mozilla.firefox', activity: 'Main'),
-    ]);
+    expect(fake.launched, [(package: 'org.mozilla.firefox', activity: 'Main')]);
     expect(closed, isTrue);
   });
 
@@ -169,7 +177,9 @@ void main() {
     expect(fake.launched, isEmpty);
   });
 
-  testWidgets('the search box and the cells take the Font size', (tester) async {
+  testWidgets('the search box and the cells take the Font size', (
+    tester,
+  ) async {
     fake.current = withSettings(
       snapshotOf(pageIds: ['apps'], groups: [makeGroup('apps')]),
       settingsWith(labelSize: 24),
@@ -199,5 +209,78 @@ void main() {
 
     expect(find.text('zzz'), findsOneWidget); // the field still holds it
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'history swipes with the shared pager and query clearing restores it',
+    (tester) async {
+      fake.frequentAppsResults = (_) => [usage('Frequent app')];
+      fake.recentAppsResults = (_) => [usage('Recent app')];
+      fake.searchAllAppsResults = (_) => [hit('Match')];
+      await pumpSearch(tester);
+
+      expect(find.byType(GroupPager), findsOneWidget);
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Recent app'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(TabStrip.tabKey(0))).data,
+        'Recent',
+      );
+
+      await tester.enterText(find.byKey(AppSearch.fieldKey), 'match');
+      await tester.pumpAndSettle();
+      expect(find.byType(GroupPager), findsNothing);
+      expect(find.text('Match'), findsOneWidget);
+
+      await tester.enterText(find.byKey(AppSearch.fieldKey), '');
+      await tester.pumpAndSettle();
+      expect(find.text('Recent app'), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(TabStrip.tabKey(0))).data,
+        'Recent',
+      );
+    },
+  );
+
+  testWidgets('history is capped at three rows and adjusts after rotation', (
+    tester,
+  ) async {
+    fake.frequentAppsResults = (_) => [
+      for (var i = 0; i < 50; i++) usage('Frequent $i'),
+    ];
+    fake.recentAppsResults = (_) => [
+      for (var i = 0; i < 50; i++) usage('Recent $i'),
+    ];
+    fake.searchAllAppsResults = (_) => [
+      for (var i = 0; i < 50; i++) hit('Match $i'),
+    ];
+    await pumpSearch(tester);
+    expect(tester.widget<AppCells>(find.byType(AppCells)).items.length, 12);
+    await tester.drag(find.byType(PageView), const Offset(-400, 0));
+    await tester.pumpAndSettle();
+    expect(tester.widget<AppCells>(find.byType(AppCells)).items.length, 12);
+
+    tester.view.physicalSize = const Size(800, 400);
+    await tester.pumpAndSettle();
+    expect(fake.usageQueries, containsAll(['frequent(18)', 'recent(18)']));
+    expect(tester.widget<AppCells>(find.byType(AppCells)).items.length, 18);
+
+    await tester.enterText(find.byKey(AppSearch.fieldKey), 'match');
+    await tester.pumpAndSettle();
+    expect(tester.widget<AppCells>(find.byType(AppCells)).items.length, 50);
+  });
+
+  testWidgets('reopening starts on Frequent', (tester) async {
+    await pumpSearch(tester);
+    await tester.drag(find.byType(PageView), const Offset(-400, 0));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Text>(find.byKey(TabStrip.tabKey(0))).data, 'Recent');
+    await tester.pumpWidget(const SizedBox());
+    await pumpSearch(tester);
+    expect(
+      tester.widget<Text>(find.byKey(TabStrip.tabKey(0))).data,
+      'Frequent',
+    );
   });
 }

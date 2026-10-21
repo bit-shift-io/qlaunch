@@ -82,7 +82,7 @@ void main() {
       expect(icon.center.dx, closeTo(label.center.dx, 0.5));
       expect(icon.size, const Size(48, 48));
       // Tiles sit at the top of the cell.
-      expect(icon.top, 0);
+      expect(icon.top, 6);
     });
 
     testWidgets('list layout puts icon left of label on one line', (
@@ -115,7 +115,7 @@ void main() {
       expect(icon.bottom, lessThanOrEqualTo(label.top));
       // Centred as a whole, both ways.
       final both = icon.expandToInclude(label);
-      expect(both.center.dy, closeTo(_cellRect.center.dy, 0.5));
+      expect(both.center.dy, closeTo(_cellRect.center.dy + 2, 0.5));
       expect(icon.center.dx, closeTo(_cellRect.center.dx, 0.5));
       expect(label.center.dx, closeTo(_cellRect.center.dx, 0.5));
     });
@@ -294,7 +294,7 @@ void main() {
         );
         expect(tester.takeException(), isNull, reason: '$layout');
         final text = tester.widget<Text>(labelFinder);
-        expect(text.maxLines, 1);
+        expect(text.maxLines, 2);
         expect(text.overflow, TextOverflow.ellipsis);
         expect(
           tester.renderObject<RenderParagraph>(labelFinder).didExceedMaxLines,

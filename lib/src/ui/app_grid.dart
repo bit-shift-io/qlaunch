@@ -16,6 +16,7 @@ class AppGrid extends StatelessWidget {
     required this.groupId,
     this.onItemTap,
     this.onItemLongPress,
+    this.onItemPointerDown,
   });
 
   final LauncherState state;
@@ -31,6 +32,10 @@ class AppGrid extends StatelessWidget {
   /// Called for any item. With none given, a long-press does nothing.
   final ValueChanged<Item>? onItemLongPress;
 
+  /// Reports the pointer that lands on a cell, so the page can tell a blank
+  /// tap from one that belongs to an item.
+  final ValueChanged<int>? onItemPointerDown;
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -44,6 +49,7 @@ class AppGrid extends StatelessWidget {
           items: state.itemsIn(groupId),
           onItemTap: onItemTap,
           onItemLongPress: onItemLongPress,
+          onItemPointerDown: onItemPointerDown,
         );
       },
     );

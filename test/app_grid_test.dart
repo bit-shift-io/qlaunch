@@ -10,6 +10,7 @@ import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
+import 'package:qlaunch/src/ui/scroll_edge_fade.dart';
 
 import 'fake_backend.dart';
 import 'snapshot_builders.dart';
@@ -26,14 +27,16 @@ Item _appItem(
   int order = 0,
   bool uninstalled = false,
   bool shortcut = false,
+  bool empty = false,
 }) => Item(
   id: id,
   groupId: group,
   label: id,
   labelOverridden: false,
-  app: shortcut
+  app: shortcut || empty
       ? null
       : AppRef(package: package ?? 'pkg.$id', activity: activity),
+  shortcut: shortcut ? const ShortcutPayload.lockScreen() : null,
   uninstalled: uninstalled,
   order: order,
 );
@@ -145,12 +148,31 @@ void main() {
       expect(columns(tester), 2);
     });
 
-    testWidgets('cells are square', (tester) async {
+    testWidgets('cells use content-sized rows', (tester) async {
       setSurface(tester, const Size(400, 800));
       await load(twelve(), settings: settingsWith(gridColumnsPortrait: 4));
       await pumpGrid(tester);
-      expect(tester.getSize(find.byType(AppCell).first), const Size(100, 100));
+      expect(tester.getSize(find.byType(AppCell).first), const Size(100, 82));
     });
+  });
+
+  group('scroll fade', () {
+    for (final mode in ScrollFadeStyle.values) {
+      testWidgets('$mode wraps the grid the way it says', (tester) async {
+        setSurface(tester, const Size(400, 800));
+        await load(twelve(), settings: settingsWith(scrollFade: mode));
+        await pumpGrid(tester);
+
+        expect(
+          find.byType(ScrollEdgeFade),
+          mode == ScrollFadeStyle.gradient ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byType(TileEdgeFade),
+          mode == ScrollFadeStyle.tile ? findsNWidgets(12) : findsNothing,
+        );
+      });
+    }
   });
 
   group('items', () {
@@ -218,16 +240,27 @@ void main() {
       expect(fake.launched, [(package: 'org.two', activity: 'B')]);
     });
 
-    testWidgets('an item with no app does nothing and does not throw', (
-      tester,
-    ) async {
+    testWidgets('a shortcut launches through the core', (tester) async {
       setSurface(tester, const Size(400, 800));
       await load([_appItem('sc', shortcut: true)]);
       await pumpGrid(tester);
       await tester.tap(find.text('sc'));
       await tester.pump();
       expect(fake.launched, isEmpty);
-      expect(fake.calls.where((c) => c.startsWith('launchApp')), isEmpty);
+      expect(fake.calls, contains('launchShortcut(sc)'));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an item with no app does nothing and does not throw', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load([_appItem('empty', empty: true)]);
+      await pumpGrid(tester);
+      await tester.tap(find.text('empty'));
+      await tester.pump();
+      expect(fake.launched, isEmpty);
+      expect(fake.calls.where((c) => c.startsWith('launch')), isEmpty);
       expect(tester.takeException(), isNull);
     });
 
@@ -328,7 +361,9 @@ void main() {
       expect(fake.iconCalls, 1); // cache survived the widget
     });
 
-    testWidgets('the backend icon bytes are what the cell draws', (tester) async {
+    testWidgets('the backend icon bytes are what the cell draws', (
+      tester,
+    ) async {
       setSurface(tester, const Size(400, 800));
       fake.icons[(package: 'pkg.a', activity: 'Main')] = IconImage(
         format: IconFormat.png,

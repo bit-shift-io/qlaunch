@@ -8,6 +8,7 @@
 
 import 'api/api.dart';
 import 'api/events.dart';
+import 'api/shortcuts.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -69,6 +70,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Orientation dco_decode_box_autoadd_orientation(dynamic raw);
+
+  @protected
+  ScrollFadeStyle dco_decode_box_autoadd_scroll_fade_style(dynamic raw);
 
   @protected
   SettingsPatch dco_decode_box_autoadd_settings_patch(dynamic raw);
@@ -140,6 +144,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<SearchHit> dco_decode_list_search_hit(dynamic raw);
 
   @protected
+  List<ShortcutProvider> dco_decode_list_shortcut_provider(dynamic raw);
+
+  @protected
   List<UsageHit> dco_decode_list_usage_hit(dynamic raw);
 
   @protected
@@ -176,6 +183,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Orientation? dco_decode_opt_box_autoadd_orientation(dynamic raw);
 
   @protected
+  ScrollFadeStyle? dco_decode_opt_box_autoadd_scroll_fade_style(dynamic raw);
+
+  @protected
   ShortcutPayload? dco_decode_opt_box_autoadd_shortcut_payload(dynamic raw);
 
   @protected
@@ -185,7 +195,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Typeface? dco_decode_opt_box_autoadd_typeface(dynamic raw);
 
   @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw);
+
+  @protected
   Orientation dco_decode_orientation(dynamic raw);
+
+  @protected
+  ScrollFadeStyle dco_decode_scroll_fade_style(dynamic raw);
 
   @protected
   SearchHit dco_decode_search_hit(dynamic raw);
@@ -198,6 +214,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ShortcutPayload dco_decode_shortcut_payload(dynamic raw);
+
+  @protected
+  ShortcutProvider dco_decode_shortcut_provider(dynamic raw);
 
   @protected
   TabVisibility dco_decode_tab_visibility(dynamic raw);
@@ -257,6 +276,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   Orientation sse_decode_box_autoadd_orientation(SseDeserializer deserializer);
+
+  @protected
+  ScrollFadeStyle sse_decode_box_autoadd_scroll_fade_style(
+    SseDeserializer deserializer,
+  );
 
   @protected
   SettingsPatch sse_decode_box_autoadd_settings_patch(
@@ -334,6 +358,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<SearchHit> sse_decode_list_search_hit(SseDeserializer deserializer);
 
   @protected
+  List<ShortcutProvider> sse_decode_list_shortcut_provider(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   List<UsageHit> sse_decode_list_usage_hit(SseDeserializer deserializer);
 
   @protected
@@ -380,6 +409,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ScrollFadeStyle? sse_decode_opt_box_autoadd_scroll_fade_style(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ShortcutPayload? sse_decode_opt_box_autoadd_shortcut_payload(
     SseDeserializer deserializer,
   );
@@ -393,7 +427,13 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Typeface? sse_decode_opt_box_autoadd_typeface(SseDeserializer deserializer);
 
   @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
   Orientation sse_decode_orientation(SseDeserializer deserializer);
+
+  @protected
+  ScrollFadeStyle sse_decode_scroll_fade_style(SseDeserializer deserializer);
 
   @protected
   SearchHit sse_decode_search_hit(SseDeserializer deserializer);
@@ -406,6 +446,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ShortcutPayload sse_decode_shortcut_payload(SseDeserializer deserializer);
+
+  @protected
+  ShortcutProvider sse_decode_shortcut_provider(SseDeserializer deserializer);
 
   @protected
   TabVisibility sse_decode_tab_visibility(SseDeserializer deserializer);
@@ -485,6 +528,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_box_autoadd_orientation(
     Orientation self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_scroll_fade_style(
+    ScrollFadeStyle self,
     SseSerializer serializer,
   );
 
@@ -573,6 +622,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_shortcut_provider(
+    List<ShortcutProvider> self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_list_usage_hit(List<UsageHit> self, SseSerializer serializer);
 
   @protected
@@ -630,6 +685,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_scroll_fade_style(
+    ScrollFadeStyle? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_shortcut_payload(
     ShortcutPayload? self,
     SseSerializer serializer,
@@ -648,7 +709,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_orientation(Orientation self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_scroll_fade_style(
+    ScrollFadeStyle self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_search_hit(SearchHit self, SseSerializer serializer);
@@ -662,6 +735,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_shortcut_payload(
     ShortcutPayload self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_shortcut_provider(
+    ShortcutProvider self,
     SseSerializer serializer,
   );
 

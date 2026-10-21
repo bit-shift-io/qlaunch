@@ -14,7 +14,9 @@ import 'events.dart';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `choose_root`, `platform_config_root`, `platform_source`
+import 'shortcuts.dart';
+
+// These functions are ignored because they are not marked as `pub`: `apply_display_settings`, `choose_root`, `platform_config_root`, `platform_source`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `emit_for_test`, `init_with_source`, `reset_for_test`, `subscribe_for_test`
 
@@ -87,8 +89,58 @@ Future<ModelSnapshot> removeItem({required String id}) =>
 Future<ModelSnapshot> sortGroup({required String id}) =>
     RustLib.instance.api.crateApiApiSortGroup(id: id);
 
+Future<ModelSnapshot> addLockShortcut({required String targetGroupId}) =>
+    RustLib.instance.api.crateApiApiAddLockShortcut(
+      targetGroupId: targetGroupId,
+    );
+
+Future<ModelSnapshot> addCommandShortcut({
+  required String targetGroupId,
+  required String label,
+  required String command,
+}) => RustLib.instance.api.crateApiApiAddCommandShortcut(
+  targetGroupId: targetGroupId,
+  label: label,
+  command: command,
+);
+
+Future<List<ShortcutProvider>> shortcutProviders() =>
+    RustLib.instance.api.crateApiApiShortcutProviders();
+
+Future<void> beginShortcut({
+  required String provider,
+  required String targetGroupId,
+}) => RustLib.instance.api.crateApiApiBeginShortcut(
+  provider: provider,
+  targetGroupId: targetGroupId,
+);
+
+Future<void> launchShortcut({required String id}) =>
+    RustLib.instance.api.crateApiApiLaunchShortcut(id: id);
+
+Future<void> lockScreen() => RustLib.instance.api.crateApiApiLockScreen();
+
+Future<Uint8List?> itemIcon({required String id}) =>
+    RustLib.instance.api.crateApiApiItemIcon(id: id);
+
 Future<ModelSnapshot> updateSettings({required SettingsPatch patch}) =>
     RustLib.instance.api.crateApiApiUpdateSettings(patch: patch);
+
+Future<ModelSnapshot> factoryReset() =>
+    RustLib.instance.api.crateApiApiFactoryReset();
+
+/// Writes the whole layout to a dated file in the platform's Downloads folder
+/// and returns the file name. See [`state::backup_config`].
+Future<String> backupConfig() => RustLib.instance.api.crateApiApiBackupConfig();
+
+/// The backup files already in Downloads, newest first.
+Future<List<String>> listBackups() =>
+    RustLib.instance.api.crateApiApiListBackups();
+
+/// Replaces everything with the named backup, then reconciles it with the apps
+/// installed here. See [`state::restore_config`].
+Future<ModelSnapshot> restoreConfig({required String fileName}) =>
+    RustLib.instance.api.crateApiApiRestoreConfig(fileName: fileName);
 
 /// `None` before `init`, or when no group holds the Home role.
 Future<String?> homeGroupId() => RustLib.instance.api.crateApiApiHomeGroupId();

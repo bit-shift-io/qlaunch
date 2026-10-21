@@ -132,7 +132,12 @@ fn a_command_shortcut_and_an_app_item_round_trip_with_settings() {
 fn a_truncated_document_is_quarantined_and_defaults_rebuilt() {
     let dir = tempdir().unwrap();
     let s = Store::new(dir.path().to_path_buf());
-    s.save(&Model::new_default(), &Settings::default(), &Usage::default()).unwrap();
+    s.save(
+        &Model::new_default(),
+        &Settings::default(),
+        &Usage::default(),
+    )
+    .unwrap();
     let mut bytes = std::fs::read(s.document_path()).unwrap();
     bytes.truncate(bytes.len() / 2);
     std::fs::write(s.document_path(), &bytes).unwrap();
@@ -241,7 +246,12 @@ fn a_missing_required_key_is_quarantined() {
     for key in ["schema", "root_group_id", "groups", "items"] {
         let dir = tempdir().unwrap();
         let s = store_in(&dir);
-        s.save(&Model::new_default(), &Settings::default(), &Usage::default()).unwrap();
+        s.save(
+            &Model::new_default(),
+            &Settings::default(),
+            &Usage::default(),
+        )
+        .unwrap();
         let mut doc = read_json(&s);
         doc.as_object_mut().unwrap().remove(key);
         std::fs::write(s.document_path(), serde_json::to_vec(&doc).unwrap()).unwrap();
@@ -593,7 +603,8 @@ fn save_refuses_a_model_that_load_would_reject() {
     let dir = tempdir().unwrap();
     let s = store_in(&dir);
     let good = Model::new_default();
-    s.save(&good, &Settings::default(), &Usage::default()).unwrap();
+    s.save(&good, &Settings::default(), &Usage::default())
+        .unwrap();
     let before = std::fs::read(s.document_path()).unwrap();
 
     let mut bad = good.clone();
@@ -614,7 +625,9 @@ fn save_writes_nothing_at_all_for_an_invalid_model() {
     bad.items.push(app_item("a", &apps, "A", "dup", 0));
     bad.items.push(app_item("b", &apps, "B", "dup", 1));
 
-    let err = s.save(&bad, &Settings::default(), &Usage::default()).unwrap_err();
+    let err = s
+        .save(&bad, &Settings::default(), &Usage::default())
+        .unwrap_err();
     assert!(matches!(err, StoreError::Invalid(_)), "{err:?}");
     assert!(!s.document_path().exists());
     assert!(!dir.path().join("icons").exists());
@@ -631,7 +644,9 @@ fn an_unreadable_document_warns_and_then_refuses_every_save_and_leaves_it_alone(
     loaded.model.validate().unwrap();
     assert!(!loaded.warnings.is_empty());
 
-    let err = s.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap_err();
+    let err = s
+        .save(&loaded.model, &loaded.settings, &Usage::default())
+        .unwrap_err();
     assert!(matches!(err, StoreError::WritesBlocked), "{err:?}");
     assert!(matches!(s.quarantine(), Err(StoreError::WritesBlocked)));
 
@@ -1274,5 +1289,54 @@ fn a_document_without_usage_loads_with_defaults_and_is_not_repaired() {
         loaded.warnings.is_empty(),
         "a missing usage field is not damage: {:?}",
         loaded.warnings
+    );
+}
+
+#[test]
+fn a_document_round_trips_through_bytes() {
+    let model = Model::new_default();
+    let settings = Settings {
+        icon_size: 99,
+        ..Settings::default()
+    };
+    let mut usage = Usage::default();
+    usage.record(
+        &AppRef {
+            package: "p".into(),
+            activity: "Main".into(),
+        },
+        7,
+    );
+
+    let bytes = Store::document_bytes(&model, &settings, &usage).unwrap();
+    let loaded = Store::parse_document(&bytes).unwrap();
+
+    assert_eq!(loaded.model, model);
+    assert_eq!(loaded.settings, settings);
+    assert_eq!(loaded.usage, usage);
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+}
+
+#[test]
+fn parse_document_refuses_junk_and_a_newer_schema() {
+    assert!(matches!(
+        Store::parse_document(b"not json"),
+        Err(StoreError::Parse(_))
+    ));
+    let newer = json!({ "schema": SCHEMA_VERSION + 1 });
+    assert!(matches!(
+        Store::parse_document(&serde_json::to_vec(&newer).unwrap()),
+        Err(StoreError::UnsupportedSchema(n)) if n == SCHEMA_VERSION + 1
+    ));
+}
+
+#[test]
+fn a_pre_restore_copy_is_written_beside_the_document() {
+    let dir = tempdir().unwrap();
+    let s = store_in(&dir);
+    s.write_pre_restore(b"old bytes").unwrap();
+    assert_eq!(
+        std::fs::read(dir.path().join("qlaunch-backup.pre-restore.json")).unwrap(),
+        b"old bytes"
     );
 }

@@ -19,6 +19,14 @@ pub enum TabVisibility {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum ScrollFadeStyle {
+    None,
+    Gradient,
+    Tile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Typeface {
     Normal,
     Sans,
@@ -49,6 +57,7 @@ pub struct Settings {
     pub grid_columns_landscape: i64,
     pub layout: LayoutStyle,
     pub tab_visibility: TabVisibility,
+    pub scroll_fade: ScrollFadeStyle,
     pub wallpaper_alpha: i64,
     pub status_bar_visible: bool,
     pub icons_visible: bool,
@@ -68,6 +77,7 @@ pub struct SettingsPatch {
     pub grid_columns_landscape: Option<i64>,
     pub layout: Option<LayoutStyle>,
     pub tab_visibility: Option<TabVisibility>,
+    pub scroll_fade: Option<ScrollFadeStyle>,
     pub wallpaper_alpha: Option<i64>,
     pub status_bar_visible: Option<bool>,
     pub icons_visible: Option<bool>,
@@ -88,13 +98,14 @@ impl Default for Settings {
             grid_columns_landscape: 6,
             layout: LayoutStyle::Tiles,
             tab_visibility: TabVisibility::Always,
+            scroll_fade: ScrollFadeStyle::Gradient,
             wallpaper_alpha: 0,
             status_bar_visible: true,
             icons_visible: true,
-            icon_size: 40,
+            icon_size: 54,
             icon_alpha: 100,
             labels_visible: true,
-            label_size: 14,
+            label_size: 18,
             label_typeface: Typeface::Normal,
             label_colour: LabelColour::White,
             label_shadow: true,
@@ -128,6 +139,7 @@ impl Settings {
             grid_columns_landscape,
             layout,
             tab_visibility,
+            scroll_fade,
             wallpaper_alpha,
             status_bar_visible,
             icons_visible,

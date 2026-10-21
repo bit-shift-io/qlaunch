@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
@@ -6,18 +7,12 @@ import 'package:qlaunch/src/rust/search.dart';
 import 'package:qlaunch/src/rust/usage.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cells.dart';
+import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/label_style.dart';
+import 'package:qlaunch/src/ui/tab_strip.dart';
 
-/// Which list the panel shows before the user types.
-enum _Tab { frequent, recent }
-
-/// The search screen the Home button replaces the launcher with.
-///
-/// It asks the core for nothing until it needs to: before the user types it
-/// shows a Frequent or Recent list, and only a real query goes to the app
-/// search. The core ranks everything; this widget draws the order it is given
-/// and does no matching of its own. Tapping a result launches the app and
-/// closes; the close button closes without launching.
+/// Search replaces the main foreground, sharing its wallpaper and settings.
+/// Empty queries show paged usage history; real queries use the core's ranking.
 class AppSearch extends StatefulWidget {
   const AppSearch({
     super.key,
@@ -27,23 +22,13 @@ class AppSearch extends StatefulWidget {
   });
 
   final LauncherState state;
-
-  /// Called when the user picks a result or closes without picking one.
   final VoidCallback onDone;
-
-  /// Opens the launcher settings, from the gear. Awaited so focus can return to
-  /// the field when the settings screen is popped.
   final Future<void> Function() onOpenSettings;
 
   static const fieldKey = ValueKey('appSearch.field');
   static const closeKey = ValueKey('appSearch.close');
   static const gearKey = ValueKey('appSearch.gear');
-  static const frequentTabKey = ValueKey('appSearch.tab.frequent');
-  static const recentTabKey = ValueKey('appSearch.tab.recent');
   static const resultsKey = ValueKey('appSearch.results');
-
-  /// How many apps each usage list asks for: about a page's worth.
-  static const usageLimit = 24;
 
   @override
   State<AppSearch> createState() => _AppSearchState();
@@ -51,13 +36,23 @@ class AppSearch extends StatefulWidget {
 
 class _AppSearchState extends State<AppSearch>
     with SingleTickerProviderStateMixin {
+  // These are presentation pages, not groups in the persistent launcher model.
+  static const _pageIds = ['frequent', 'recent'];
+  static const _groups = [
+    Group(id: 'frequent', label: 'Frequent', order: 0, hidden: false),
+    Group(id: 'recent', label: 'Recent', order: 1, hidden: false),
+  ];
+
   final _focus = FocusNode();
+  final _pager = GroupPagerController(pageIds: _pageIds);
   late final AnimationController _slide;
   late final Animation<Offset> _offset;
-
   String _query = '';
-  _Tab _tab = _Tab.frequent;
-  Future<List<Item>>? _items;
+  String _historyPage = 'frequent';
+  int _columns = 0;
+  late Future<List<Item>> _frequent;
+  late Future<List<Item>> _recent;
+  Future<List<Item>>? _results;
 
   @override
   void initState() {
@@ -71,39 +66,58 @@ class _AppSearchState extends State<AppSearch>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _slide, curve: Curves.easeOut));
     _slide.forward();
-    _items = _itemsFor(_query);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadHistory();
+  }
+
+  @override
+  void didUpdateWidget(AppSearch oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _loadHistory();
+  }
+
+  void _loadHistory() {
+    final settings = widget.state.snapshot?.settings;
+    final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
+    final columns = math.max(
+      1,
+      (portrait
+                  ? settings?.gridColumnsPortrait
+                  : settings?.gridColumnsLandscape)
+              ?.toInt() ??
+          4,
+    );
+    if (columns == _columns) return;
+    _columns = columns;
+    final limit = columns * 3;
+    _frequent = widget.state
+        .frequentApps(limit)
+        .then((hits) => _fromUsage(hits.take(limit)));
+    _recent = widget.state
+        .recentApps(limit)
+        .then((hits) => _fromUsage(hits.take(limit)));
   }
 
   @override
   void dispose() {
     _focus.dispose();
+    _pager.dispose();
     _slide.dispose();
     super.dispose();
-  }
-
-  /// What the panel shows for [query]. An empty (or whitespace-only) query is
-  /// the selected usage list; anything else is the core's search.
-  Future<List<Item>> _itemsFor(String query) {
-    final trimmed = query.trim();
-    if (trimmed.isEmpty) {
-      final future = _tab == _Tab.frequent
-          ? widget.state.frequentApps(AppSearch.usageLimit)
-          : widget.state.recentApps(AppSearch.usageLimit);
-      return future.then(_fromUsage);
-    }
-    return widget.state.searchAllApps(trimmed).then(_fromHits);
   }
 
   List<Item> _fromHits(List<SearchHit> hits) => [
     for (var i = 0; i < hits.length; i++) _item(hits[i].app, hits[i].label, i),
   ];
 
-  List<Item> _fromUsage(List<UsageHit> hits) => [
-    for (var i = 0; i < hits.length; i++) _item(hits[i].app, hits[i].label, i),
+  List<Item> _fromUsage(Iterable<UsageHit> hits) => [
+    for (final (i, hit) in hits.indexed) _item(hit.app, hit.label, i),
   ];
 
-  /// A result as something [AppCells] can draw. The id and group are never
-  /// looked at; only the label, app and order matter to the cell.
   Item _item(AppRef app, String label, int order) => Item(
     id: '${app.package}/${app.activity}',
     groupId: '',
@@ -117,16 +131,16 @@ class _AppSearchState extends State<AppSearch>
   void _setQuery(String query) {
     setState(() {
       _query = query;
-      _items = _itemsFor(query);
+      _results = query.trim().isEmpty
+          ? null
+          : widget.state.searchAllApps(query.trim()).then(_fromHits);
     });
   }
 
-  void _selectTab(_Tab tab) {
-    if (_tab == tab) return;
-    setState(() {
-      _tab = tab;
-      _items = _itemsFor(_query);
-    });
+  void _step(int direction) => setState(() => _pager.step(direction));
+
+  void _selectPage(String page) {
+    if (_pager.goToGroup(page)) setState(() {});
   }
 
   void _launch(Item item) {
@@ -138,172 +152,105 @@ class _AppSearchState extends State<AppSearch>
 
   Future<void> _openSettings() async {
     await widget.onOpenSettings();
-    // The settings screen took focus; give it back to the field so the user can
-    // keep typing where they left off.
     if (mounted) _focus.requestFocus();
   }
 
-  bool get _showTabs => _query.trim().isEmpty;
+  bool get _showHistory => _query.trim().isEmpty;
+
+  Widget _grid(Future<List<Item>>? items, {Key? key}) =>
+      FutureBuilder<List<Item>>(
+        key: key,
+        future: items,
+        builder: (context, snapshot) {
+          final settings = widget.state.snapshot?.settings;
+          if (settings == null) return const SizedBox.shrink();
+          return AppCells(
+            state: widget.state,
+            settings: settings,
+            items: snapshot.data ?? const [],
+            onItemTap: _launch,
+          );
+        },
+      );
 
   @override
   Widget build(BuildContext context) {
-    // The panel replaces the launcher, but it is drawn over it in the same
-    // Stack. Its own surfaces (the box, the tabs, the grid) do not cover every
-    // pixel, and a DecoratedBox does not claim a hit test, so without this an
-    // opaque tap on the backdrop beside the tabs would reach the grid behind
-    // and launch an app. This absorbs every pointer the panel does not itself
-    // use; the field, buttons and cells are deeper and still win their taps.
+    final settings = widget.state.snapshot?.settings;
+    if (settings == null) return const SizedBox.shrink();
+    final text = labelTextStyle(settings);
+    // No scrim: HomeScreen hides the main foreground and keeps the configured
+    // BackgroundLayer beneath this view, including Android's system wallpaper.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {},
       child: LauncherFontScope(
-        settings: widget.state.snapshot?.settings,
-        // Read the text styles below the scope, or they would be the un-scaled
-        // ones from above it.
-        child: Builder(
-          builder: (context) {
-            final text = Theme.of(context).textTheme.bodyLarge;
-            final settings = widget.state.snapshot?.settings;
-            return DecoratedBox(
-              // Opaque enough to make the grid behind it clearly inactive, but not a
-              // solid fill: the wallpaper still reads through.
-              decoration: const BoxDecoration(color: Color(0xE6000000)),
-              child: SafeArea(
-                child: Column(
+        settings: settings,
+        child: SafeArea(
+          child: Column(
+            children: [
+              SlideTransition(
+                position: _offset,
+                child: Row(
                   children: [
-                    SlideTransition(
-                      position: _offset,
-                      child: Row(
-                        children: [
-                          IconButton(
-                            key: AppSearch.gearKey,
-                            icon: const Icon(
-                              Icons.settings,
-                              color: Colors.white,
-                            ),
-                            onPressed: _openSettings,
-                          ),
-                          Expanded(
-                            child: TextField(
-                              key: AppSearch.fieldKey,
-                              focusNode: _focus,
-                              autofocus: true,
-                              onChanged: _setQuery,
-                              textInputAction: TextInputAction.search,
-                              // The scoped theme carries the user's Font size and
-                              // typeface; only the colour is the panel's own.
-                              style: text?.copyWith(color: Colors.white),
-                              decoration: InputDecoration(
-                                hintText: 'Search apps',
-                                hintStyle: text?.copyWith(
-                                  color: Colors.white70,
-                                ),
-                                border: InputBorder.none,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            key: AppSearch.closeKey,
-                            icon: const Icon(Icons.close, color: Colors.white),
-                            onPressed: widget.onDone,
-                          ),
-                        ],
-                      ),
+                    IconButton(
+                      key: AppSearch.gearKey,
+                      icon: Icon(Icons.settings, color: text.color),
+                      onPressed: _openSettings,
                     ),
-                    if (_showTabs)
-                      _TabBar(tab: _tab, style: text, onSelect: _selectTab),
                     Expanded(
-                      // A transparent Material so the result cells paint their ink
-                      // splashes: the dark panel behind is a DecoratedBox, which
-                      // would otherwise hide them.
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: FutureBuilder<List<Item>>(
-                          future: _items,
-                          builder: (context, snapshot) {
-                            if (settings == null) {
-                              return const SizedBox.shrink();
-                            }
-                            return AppCells(
-                              key: AppSearch.resultsKey,
-                              state: widget.state,
-                              settings: settings,
-                              items: snapshot.data ?? const <Item>[],
-                              onItemTap: _launch,
-                            );
-                          },
+                      child: TextField(
+                        key: AppSearch.fieldKey,
+                        focusNode: _focus,
+                        autofocus: true,
+                        onChanged: _setQuery,
+                        textInputAction: TextInputAction.search,
+                        style: text,
+                        decoration: InputDecoration(
+                          hintText: 'Search apps',
+                          hintStyle: text.copyWith(
+                            color: text.color?.withValues(alpha: 0.7),
+                          ),
+                          border: InputBorder.none,
                         ),
                       ),
+                    ),
+                    IconButton(
+                      key: AppSearch.closeKey,
+                      icon: Icon(Icons.close, color: text.color),
+                      onPressed: widget.onDone,
                     ),
                   ],
                 ),
               ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-/// The two tabs shown before typing. A plain two-item strip, not the home
-/// [TabStrip]: there are no pages to navigate, just a choice of list.
-class _TabBar extends StatelessWidget {
-  const _TabBar({
-    required this.tab,
-    required this.style,
-    required this.onSelect,
-  });
-
-  final _Tab tab;
-  final TextStyle? style;
-  final ValueChanged<_Tab> onSelect;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _tab(_Tab.frequent, 'Frequent', AppSearch.frequentTabKey),
-        const SizedBox(width: 24),
-        _tab(_Tab.recent, 'Recent', AppSearch.recentTabKey),
-      ],
-    );
-  }
-
-  Widget _tab(_Tab value, String label, Key key) {
-    final current = tab == value;
-    final colour = style?.color ?? Colors.white;
-    return GestureDetector(
-      key: key,
-      behavior: HitTestBehavior.opaque,
-      onTap: () => onSelect(value),
-      child: IntrinsicWidth(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              label,
-              maxLines: 1,
-              textAlign: TextAlign.center,
-              style: style?.copyWith(
-                color: current ? colour : colour.withValues(alpha: 0.6),
-                fontWeight: current ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-            const SizedBox(height: 2),
-            if (current)
-              Container(
-                height: 2,
-                decoration: BoxDecoration(
-                  color: colour,
-                  borderRadius: BorderRadius.circular(1),
+              if (_showHistory)
+                TabStrip(
+                  pageIds: _pageIds,
+                  groups: _groups,
+                  currentGroupId: _historyPage,
+                  settings: settings,
+                  controller: _pager,
+                  onStep: _step,
+                  onGroupTap: _selectPage,
                 ),
-              )
-            else
-              const SizedBox(height: 2),
-          ],
+              Expanded(
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: _showHistory
+                      ? GroupPager(
+                          controller: _pager,
+                          columns: _columns,
+                          onGroupChanged: (page) =>
+                              setState(() => _historyPage = page),
+                          gridFor: (context, page) => _grid(
+                            page == 'frequent' ? _frequent : _recent,
+                            key: ValueKey(page),
+                          ),
+                        )
+                      : _grid(_results, key: AppSearch.resultsKey),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

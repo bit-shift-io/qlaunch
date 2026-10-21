@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
+import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart' show SearchHit;
@@ -218,6 +219,94 @@ class LauncherState extends ChangeNotifier {
   /// [error], never as a throw.
   Future<void> updateSettings(SettingsPatch patch) =>
       _fetch(() => _backend.updateSettings(patch));
+
+  Future<void> factoryReset() => _fetch(_backend.factoryReset);
+
+  /// Writes the layout to a dated backup in Downloads and returns its file
+  /// name, or `null` when the write failed (reported through [error]).
+  Future<String?> backupConfig() async {
+    try {
+      return await _backend.backupConfig();
+    } catch (e, st) {
+      _fail(e, st);
+      return null;
+    }
+  }
+
+  /// The backups already in Downloads, newest first. A failure yields none; the
+  /// error is reported.
+  Future<List<String>> listBackups() async {
+    try {
+      return await _backend.listBackups();
+    } catch (e, st) {
+      _report(e, st);
+      return const [];
+    }
+  }
+
+  /// Replaces everything with the named backup. A failure arrives as [error],
+  /// never as a throw, and changes nothing.
+  Future<void> restoreConfig(String fileName) =>
+      _fetch(() => _backend.restoreConfig(fileName));
+
+  Future<void> addLockShortcut(String targetGroupId) =>
+      _fetch(() => _backend.addLockShortcut(targetGroupId));
+
+  Future<void> addCommandShortcut(
+    String targetGroupId,
+    String label,
+    String command,
+  ) => _fetch(() => _backend.addCommandShortcut(targetGroupId, label, command));
+
+  /// The installed shortcut providers. A failure yields none: the dialog can
+  /// still offer the built-in Lock Screen action, and the error is reported.
+  Future<List<ShortcutProvider>> shortcutProviders() async {
+    try {
+      return await _backend.shortcutProviders();
+    } catch (e, st) {
+      _report(e, st);
+      return const [];
+    }
+  }
+
+  /// Opens a provider's create screen. The created item arrives later through
+  /// the core's model-change event, not as the result of this call.
+  Future<void> beginShortcut(String provider, String targetGroupId) async {
+    try {
+      await _backend.beginShortcut(provider, targetGroupId);
+    } catch (e, st) {
+      _fail(e, st);
+    }
+  }
+
+  Future<void> launchShortcut(String id) async {
+    try {
+      await _backend.launchShortcut(id);
+    } catch (e, st) {
+      _fail(e, st);
+    }
+  }
+
+  Future<void> lockScreen() async {
+    try {
+      await _backend.lockScreen();
+    } catch (e, st) {
+      _fail(e, st);
+    }
+  }
+
+  /// A shortcut's stored icon bytes, or `null` when it has none.
+  Future<ImageProvider?> itemIcon(String id) async {
+    try {
+      final bytes = await _backend.itemIcon(id);
+      return bytes == null ? null : MemoryImage(Uint8List.fromList(bytes));
+    } catch (e, st) {
+      _report(e, st);
+      return null;
+    }
+  }
+
+  Future<void> removeItem(String id) => _fetch(() => _backend.removeItem(id));
 
   Future<void> renameItem(String id, String label) =>
       _fetch(() => _backend.renameItem(id, label));

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
+import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/rust/model/icon.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart';
@@ -140,6 +141,58 @@ class FakeBackend implements LauncherBackend {
   Future<ModelSnapshot> sortGroup(String id) => _snapshotFor('sortGroup($id)');
 
   @override
+  Future<ModelSnapshot> factoryReset() => _snapshotFor('factoryReset');
+
+  /// The file name a successful backup answers with.
+  String backupName = 'qlaunch-backup-2026-10-21-140530.json';
+
+  /// The backups [listBackups] answers with.
+  List<String> backups = const [];
+
+  @override
+  Future<String> backupConfig() => _plain('backupConfig', backupName);
+
+  @override
+  Future<List<String>> listBackups() => _plain('listBackups', backups);
+
+  @override
+  Future<ModelSnapshot> restoreConfig(String fileName) =>
+      _snapshotFor('restoreConfig($fileName)');
+
+  @override
+  Future<ModelSnapshot> addLockShortcut(String targetGroupId) =>
+      _snapshotFor('addLockShortcut($targetGroupId)');
+
+  @override
+  Future<ModelSnapshot> addCommandShortcut(
+    String targetGroupId,
+    String label,
+    String command,
+  ) => _snapshotFor('addCommandShortcut($targetGroupId,$label,$command)');
+
+  List<ShortcutProvider> shortcutProviderResults = const [];
+
+  @override
+  Future<List<ShortcutProvider>> shortcutProviders() =>
+      _plain('shortcutProviders', shortcutProviderResults);
+
+  @override
+  Future<void> beginShortcut(String provider, String targetGroupId) =>
+      _plain('beginShortcut($provider,$targetGroupId)', null);
+
+  @override
+  Future<void> launchShortcut(String id) => _plain('launchShortcut($id)', null);
+
+  @override
+  Future<void> lockScreen() => _plain('lockScreen', null);
+
+  @override
+  Future<List<int>?> itemIcon(String id) =>
+      _plain('itemIcon($id)', itemIcons[id]);
+
+  final Map<String, List<int>> itemIcons = {};
+
+  @override
   Future<ModelSnapshot> updateSettings(SettingsPatch patch) {
     settingsPatches.add(patch);
     return _snapshotFor('updateSettings');
@@ -226,6 +279,7 @@ Settings settingsWith({
   int? gridColumnsLandscape,
   LayoutStyle? layout,
   TabVisibility? tabVisibility,
+  ScrollFadeStyle? scrollFade,
   int? wallpaperAlpha,
   bool? statusBarVisible,
   int? iconSize,
@@ -243,6 +297,7 @@ Settings settingsWith({
       gridColumnsLandscape ?? testSettings.gridColumnsLandscape,
   layout: layout ?? testSettings.layout,
   tabVisibility: tabVisibility ?? testSettings.tabVisibility,
+  scrollFade: scrollFade ?? testSettings.scrollFade,
   wallpaperAlpha: wallpaperAlpha ?? testSettings.wallpaperAlpha,
   statusBarVisible: statusBarVisible ?? testSettings.statusBarVisible,
   iconsVisible: iconsVisible ?? testSettings.iconsVisible,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/main.dart';
+import 'package:qlaunch/src/ui/launcher_menu.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 
 import 'fake_backend.dart';
@@ -36,6 +37,8 @@ void main() {
 
     final grid = tester.getRect(find.byType(GridView));
     await tester.longPressAt(Offset(grid.left + 30, grid.bottom - 30));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(LauncherMenu.settingsKey));
     await tester.pumpAndSettle();
 
     expect(find.byType(SettingsScreen), findsOneWidget);

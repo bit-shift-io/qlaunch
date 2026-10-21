@@ -142,7 +142,7 @@ void main() {
 
       expect(c.goToGroup('games'), isTrue);
       expect(c.currentGroupId(c.currentPage), 'games');
-      expect(c.currentPage, c.virtualIndexFor('games'));
+      expect(c.currentPage, c.initialPage - 1);
     });
 
     test('goToGroup leaves the pager alone when the group is not shown', () {
@@ -224,6 +224,16 @@ void main() {
       expect(find.text('group:apps'), findsOneWidget);
       expect(find.text('group:home'), findsNothing);
       expect(find.text('group:games'), findsNothing);
+    });
+
+    testWidgets('reports the target position on the first layout', (
+      tester,
+    ) async {
+      final c = GroupPagerController(pageIds: ['apps', 'home', 'games']);
+      c.goToGroup('home');
+      await tester.pumpWidget(host(c));
+      expect(find.text('group:home'), findsOneWidget);
+      expect(c.position.value, c.currentPage.toDouble());
     });
 
     testWidgets('dragging forward shows the next group, then the one after', (

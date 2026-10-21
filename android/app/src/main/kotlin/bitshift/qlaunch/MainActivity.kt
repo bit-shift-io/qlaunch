@@ -1,6 +1,8 @@
 package bitshift.qlaunch
 
 import android.content.Context
+import android.content.ComponentName
+import android.app.Activity
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
@@ -8,6 +10,37 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs
 
 class MainActivity : FlutterActivity() {
+    private var shortcutGroup: String? = null
+    private var wasStopped = false
+
+    @Suppress("DEPRECATION")
+    fun beginShortcut(provider: String, group: String) {
+        check(shortcutGroup == null) { "A shortcut request is already open" }
+        val component = ComponentName.unflattenFromString(provider) ?: error("Invalid shortcut provider")
+        shortcutGroup = group
+        try {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_SHORTCUT).setComponent(component), 1001)
+        } catch (error: Exception) {
+            shortcutGroup = null
+            throw error
+        }
+    }
+
+    @Deprecated("Activity result bridge")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 1001) return
+        val group = shortcutGroup ?: return
+        shortcutGroup = null
+        if (resultCode != Activity.RESULT_OK) { onShortcutResult(group, "", ""); return }
+        try {
+            onShortcutResult(group, LauncherActions.resultJson(data ?: error("Empty shortcut result")), "")
+        } catch (error: Exception) {
+            onShortcutResult(group, "", error.message ?: "Could not create shortcut")
+        }
+    }
+
+    private external fun onShortcutResult(group: String, json: String, error: String)
     /// A launcher shows the system wallpaper behind its own UI (§7.7). Android
     /// 14+ refuses to hand an app the wallpaper bytes without a media
     /// permission, so the wallpaper is shown the way every launcher does it:
@@ -24,7 +57,11 @@ class MainActivity : FlutterActivity() {
         // bridge class. See §7.3.
         System.loadLibrary("qlaunch_core")
         super.onCreate(savedInstanceState)
+        // Extend the wallpaper/background behind transparent system bars.
+        // Flutter's SafeArea still keeps controls clear of their insets.
+        window.setDecorFitsSystemWindows(false)
         QLaunchBridge.install(applicationContext)
+        LauncherActions.attach(this)
 
         // Android 8+ (API 26) will not deliver these implicit broadcasts to a
         // manifest-declared receiver, so they are registered here at runtime
@@ -44,15 +81,36 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        LauncherActions.detach(this)
         unregisterReceiver(packageReceiver)
         super.onDestroy()
     }
 
-    /// When QLaunch is the home app, pressing Home delivers a new MAIN/HOME
-    /// intent to this running, `singleTask` activity.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) LauncherActions.reapplyDisplaySettings(this)
+    }
+
+    override fun onStop() {
+        wasStopped = true
+        super.onStop()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        wasStopped = false
+    }
+
+    /// A Home intent that brings us back from another app only reveals the
+    /// remembered tab. Android also pauses a foreground activity before
+    /// onNewIntent, so onPause cannot distinguish that from a repeated Home;
+    /// onStop can. Returning via Back resets this state in onResume as well.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        onHomePressed()
+        if (intent.action == Intent.ACTION_MAIN &&
+            intent.hasCategory(Intent.CATEGORY_HOME) && !wasStopped) {
+            onHomePressed()
+        }
     }
 
     /// Back does nothing on the launcher: the old app swallowed it too. The

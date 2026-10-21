@@ -56,10 +56,11 @@ extension ShortcutPayloadPatterns on ShortcutPayload {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ShortcutPayload_Android value)?  android,TResult Function( ShortcutPayload_Command value)?  command,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( ShortcutPayload_LockScreen value)?  lockScreen,TResult Function( ShortcutPayload_Android value)?  android,TResult Function( ShortcutPayload_Command value)?  command,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
-case ShortcutPayload_Android() when android != null:
+case ShortcutPayload_LockScreen() when lockScreen != null:
+return lockScreen(_that);case ShortcutPayload_Android() when android != null:
 return android(_that);case ShortcutPayload_Command() when command != null:
 return command(_that);case _:
   return orElse();
@@ -79,10 +80,11 @@ return command(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ShortcutPayload_Android value)  android,required TResult Function( ShortcutPayload_Command value)  command,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( ShortcutPayload_LockScreen value)  lockScreen,required TResult Function( ShortcutPayload_Android value)  android,required TResult Function( ShortcutPayload_Command value)  command,}){
 final _that = this;
 switch (_that) {
-case ShortcutPayload_Android():
+case ShortcutPayload_LockScreen():
+return lockScreen(_that);case ShortcutPayload_Android():
 return android(_that);case ShortcutPayload_Command():
 return command(_that);}
 }
@@ -98,10 +100,11 @@ return command(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ShortcutPayload_Android value)?  android,TResult? Function( ShortcutPayload_Command value)?  command,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( ShortcutPayload_LockScreen value)?  lockScreen,TResult? Function( ShortcutPayload_Android value)?  android,TResult? Function( ShortcutPayload_Command value)?  command,}){
 final _that = this;
 switch (_that) {
-case ShortcutPayload_Android() when android != null:
+case ShortcutPayload_LockScreen() when lockScreen != null:
+return lockScreen(_that);case ShortcutPayload_Android() when android != null:
 return android(_that);case ShortcutPayload_Command() when command != null:
 return command(_that);case _:
   return null;
@@ -120,9 +123,10 @@ return command(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( String? action,  String? data,  String? mimeType,  List<String> categories,  String? package,  String? component,  int flags,  List<Extra> extras)?  android,TResult Function( String command)?  command,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function()?  lockScreen,TResult Function( String? action,  String? data,  String? mimeType,  List<String> categories,  String? package,  String? component,  int flags,  List<Extra> extras)?  android,TResult Function( String command)?  command,required TResult orElse(),}) {final _that = this;
 switch (_that) {
-case ShortcutPayload_Android() when android != null:
+case ShortcutPayload_LockScreen() when lockScreen != null:
+return lockScreen();case ShortcutPayload_Android() when android != null:
 return android(_that.action,_that.data,_that.mimeType,_that.categories,_that.package,_that.component,_that.flags,_that.extras);case ShortcutPayload_Command() when command != null:
 return command(_that.command);case _:
   return orElse();
@@ -142,9 +146,10 @@ return command(_that.command);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( String? action,  String? data,  String? mimeType,  List<String> categories,  String? package,  String? component,  int flags,  List<Extra> extras)  android,required TResult Function( String command)  command,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function()  lockScreen,required TResult Function( String? action,  String? data,  String? mimeType,  List<String> categories,  String? package,  String? component,  int flags,  List<Extra> extras)  android,required TResult Function( String command)  command,}) {final _that = this;
 switch (_that) {
-case ShortcutPayload_Android():
+case ShortcutPayload_LockScreen():
+return lockScreen();case ShortcutPayload_Android():
 return android(_that.action,_that.data,_that.mimeType,_that.categories,_that.package,_that.component,_that.flags,_that.extras);case ShortcutPayload_Command():
 return command(_that.command);}
 }
@@ -160,9 +165,10 @@ return command(_that.command);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( String? action,  String? data,  String? mimeType,  List<String> categories,  String? package,  String? component,  int flags,  List<Extra> extras)?  android,TResult? Function( String command)?  command,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function()?  lockScreen,TResult? Function( String? action,  String? data,  String? mimeType,  List<String> categories,  String? package,  String? component,  int flags,  List<Extra> extras)?  android,TResult? Function( String command)?  command,}) {final _that = this;
 switch (_that) {
-case ShortcutPayload_Android() when android != null:
+case ShortcutPayload_LockScreen() when lockScreen != null:
+return lockScreen();case ShortcutPayload_Android() when android != null:
 return android(_that.action,_that.data,_that.mimeType,_that.categories,_that.package,_that.component,_that.flags,_that.extras);case ShortcutPayload_Command() when command != null:
 return command(_that.command);case _:
   return null;
@@ -171,6 +177,38 @@ return command(_that.command);case _:
 }
 
 }
+
+/// @nodoc
+
+
+class ShortcutPayload_LockScreen extends ShortcutPayload {
+  const ShortcutPayload_LockScreen(): super._();
+  
+
+
+
+
+
+
+@override
+bool operator ==(Object other) {
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is ShortcutPayload_LockScreen);
+}
+
+
+@override
+int get hashCode => runtimeType.hashCode;
+
+@override
+String toString() {
+    return 'ShortcutPayload.lockScreen()';
+}
+
+
+}
+
+
+
 
 /// @nodoc
 

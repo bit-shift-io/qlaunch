@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 use crate::model::{AppCategory, AppEntry, AppRef, IconFormat, IconImage};
+use crate::platform::backup::{is_backup_name, sort_backup_names};
 use crate::platform::{AppSource, LaunchError, PlatformError};
 
 #[cfg(target_os = "android")]
@@ -25,6 +26,30 @@ pub trait AndroidHost: Send + Sync {
     fn list(&self) -> Result<AndroidList, PlatformError>;
     fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError>;
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError>;
+
+    /// Writes a config backup into the shared Downloads collection. Android
+    /// needs a `ContentResolver` for this, so it can never be a plain file path.
+    fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
+        let _ = (name, bytes);
+        Err(PlatformError::Unsupported(
+            "config backups are not supported on this host".into(),
+        ))
+    }
+
+    /// The backup names this app owns in the shared Downloads collection.
+    fn list_backups(&self) -> Result<Vec<String>, PlatformError> {
+        Err(PlatformError::Unsupported(
+            "config backups are not supported on this host".into(),
+        ))
+    }
+
+    /// The bytes of a backup this app owns in the shared Downloads collection.
+    fn read_backup(&self, name: &str) -> Result<Vec<u8>, PlatformError> {
+        let _ = name;
+        Err(PlatformError::Unsupported(
+            "config backups are not supported on this host".into(),
+        ))
+    }
 }
 
 #[derive(Deserialize)]
@@ -64,6 +89,15 @@ pub fn parse_list_json(json: &str) -> Result<AndroidList, PlatformError> {
             })
             .collect(),
     })
+}
+
+/// Parses the JSON array of backup file names `QLaunchBridge.listBackups`
+/// returns. Invalid names are dropped rather than reported, exactly as a
+/// listing from the filesystem would be filtered.
+pub fn parse_backup_names_json(json: &str) -> Result<Vec<String>, PlatformError> {
+    let names: Vec<String> = serde_json::from_str(json)
+        .map_err(|e| PlatformError::Io(format!("bad backup list JSON: {e}")))?;
+    Ok(sort_backup_names(names))
 }
 
 /// Converts Android's packed `0xAARRGGBB` pixels, as `Bitmap.getPixels` returns
@@ -147,5 +181,27 @@ impl<H: AndroidHost> AppSource for AndroidSource<H> {
 
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError> {
         self.host.launch(app)
+    }
+
+    fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
+        if !is_backup_name(name) {
+            return Err(PlatformError::Unsupported(format!(
+                "{name:?} is not a backup file name"
+            )));
+        }
+        self.host.write_backup(name, bytes)
+    }
+
+    fn list_backups(&self) -> Result<Vec<String>, PlatformError> {
+        self.host.list_backups()
+    }
+
+    fn read_backup(&self, name: &str) -> Result<Vec<u8>, PlatformError> {
+        if !is_backup_name(name) {
+            return Err(PlatformError::Unsupported(format!(
+                "{name:?} is not a backup file name"
+            )));
+        }
+        self.host.read_backup(name)
     }
 }

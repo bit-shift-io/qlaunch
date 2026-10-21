@@ -8,7 +8,9 @@ use crate::model::Id;
 pub enum CoreEvent {
     ModelChanged,
     AppsChanged,
-    ShortcutCreated { item_id: Id },
+    ShortcutCreated {
+        item_id: Id,
+    },
     ShortcutCancelled,
     /// Reserved. The window shows the system wallpaper itself, so nothing needs
     /// to re-read it today; the variant stays so the event list still matches

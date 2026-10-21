@@ -5,6 +5,13 @@
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarDividerColor">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          A launcher draws the system wallpaper behind its UI. Android 14+ will
@@ -16,5 +23,12 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowShowWallpaper">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarDividerColor">@android:color/transparent</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

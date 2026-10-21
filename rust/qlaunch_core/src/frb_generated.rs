@@ -28,7 +28,7 @@
 // Section: imports
 
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
+use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1008772151;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1653083907;
 
 // Section: executor
 
@@ -47,6 +47,49 @@ flutter_rust_bridge::frb_generated_default_handler!();
 
 // Section: wire_funcs
 
+fn wire__crate__api__api__add_command_shortcut_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "add_command_shortcut",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_target_group_id = <String>::sse_decode(&mut deserializer);
+            let api_label = <String>::sse_decode(&mut deserializer);
+            let api_command = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::add_command_shortcut(
+                            api_target_group_id,
+                            api_label,
+                            api_command,
+                        )
+                        .await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__api__add_group_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -75,6 +118,117 @@ fn wire__crate__api__api__add_group_impl(
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok = crate::api::api::add_group(api_label).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__add_lock_shortcut_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "add_lock_shortcut",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_target_group_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::api::add_lock_shortcut(api_target_group_id).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__backup_config_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "backup_config",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::backup_config().await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__begin_shortcut_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "begin_shortcut",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_provider = <String>::sse_decode(&mut deserializer);
+            let api_target_group_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::api::begin_shortcut(api_provider, api_target_group_id)
+                                .await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -186,6 +340,41 @@ fn wire__crate__api__api__events_impl(
                     let output_ok = crate::api::api::events(api_sink)?;
                     std::result::Result::Ok(output_ok)
                 })())
+            }
+        },
+    )
+}
+fn wire__crate__api__api__factory_reset_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "factory_reset",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::factory_reset().await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
             }
         },
     )
@@ -338,6 +527,42 @@ fn wire__crate__api__api__init_impl(
         },
     )
 }
+fn wire__crate__api__api__item_icon_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "item_icon",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, ()>(
+                    (move || async move {
+                        let output_ok = Ok::<_, ()>(crate::api::api::item_icon(api_id).await)?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__api__launch_app_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -368,6 +593,112 @@ fn wire__crate__api__api__launch_app_impl(
                     (move || async move {
                         let output_ok =
                             crate::api::api::launch_app(api_package, api_activity).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__launch_shortcut_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "launch_shortcut",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::launch_shortcut(api_id).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__list_backups_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "list_backups",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::list_backups().await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__lock_screen_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "lock_screen",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::lock_screen().await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -633,6 +964,42 @@ fn wire__crate__api__api__rename_item_impl(
         },
     )
 }
+fn wire__crate__api__api__restore_config_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "restore_config",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_file_name = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::restore_config(api_file_name).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
 fn wire__crate__api__api__search_all_apps_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -774,6 +1141,41 @@ fn wire__crate__api__api__set_item_icon_impl(
                 transform_result_sse::<_, String>(
                     (move || async move {
                         let output_ok = crate::api::api::set_item_icon(api_id, api_png).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__shortcut_providers_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "shortcut_providers",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::shortcut_providers().await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -1273,6 +1675,20 @@ impl SseDecode for Vec<crate::search::SearchHit> {
     }
 }
 
+impl SseDecode for Vec<crate::api::shortcuts::ShortcutProvider> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::shortcuts::ShortcutProvider>::sse_decode(
+                deserializer,
+            ));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<crate::usage::UsageHit> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1419,6 +1835,17 @@ impl SseDecode for Option<crate::settings::Orientation> {
     }
 }
 
+impl SseDecode for Option<crate::settings::ScrollFadeStyle> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::settings::ScrollFadeStyle>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for Option<crate::model::ShortcutPayload> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1452,6 +1879,17 @@ impl SseDecode for Option<crate::settings::Typeface> {
     }
 }
 
+impl SseDecode for Option<Vec<u8>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<Vec<u8>>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
 impl SseDecode for crate::settings::Orientation {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1461,6 +1899,19 @@ impl SseDecode for crate::settings::Orientation {
             1 => crate::settings::Orientation::Landscape,
             2 => crate::settings::Orientation::Portrait,
             _ => unreachable!("Invalid variant for Orientation: {}", inner),
+        };
+    }
+}
+
+impl SseDecode for crate::settings::ScrollFadeStyle {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::settings::ScrollFadeStyle::None,
+            1 => crate::settings::ScrollFadeStyle::Gradient,
+            2 => crate::settings::ScrollFadeStyle::Tile,
+            _ => unreachable!("Invalid variant for ScrollFadeStyle: {}", inner),
         };
     }
 }
@@ -1486,6 +1937,7 @@ impl SseDecode for crate::settings::Settings {
         let mut var_gridColumnsLandscape = <i64>::sse_decode(deserializer);
         let mut var_layout = <crate::settings::LayoutStyle>::sse_decode(deserializer);
         let mut var_tabVisibility = <crate::settings::TabVisibility>::sse_decode(deserializer);
+        let mut var_scrollFade = <crate::settings::ScrollFadeStyle>::sse_decode(deserializer);
         let mut var_wallpaperAlpha = <i64>::sse_decode(deserializer);
         let mut var_statusBarVisible = <bool>::sse_decode(deserializer);
         let mut var_iconsVisible = <bool>::sse_decode(deserializer);
@@ -1502,6 +1954,7 @@ impl SseDecode for crate::settings::Settings {
             grid_columns_landscape: var_gridColumnsLandscape,
             layout: var_layout,
             tab_visibility: var_tabVisibility,
+            scroll_fade: var_scrollFade,
             wallpaper_alpha: var_wallpaperAlpha,
             status_bar_visible: var_statusBarVisible,
             icons_visible: var_iconsVisible,
@@ -1525,6 +1978,8 @@ impl SseDecode for crate::settings::SettingsPatch {
         let mut var_layout = <Option<crate::settings::LayoutStyle>>::sse_decode(deserializer);
         let mut var_tabVisibility =
             <Option<crate::settings::TabVisibility>>::sse_decode(deserializer);
+        let mut var_scrollFade =
+            <Option<crate::settings::ScrollFadeStyle>>::sse_decode(deserializer);
         let mut var_wallpaperAlpha = <Option<i64>>::sse_decode(deserializer);
         let mut var_statusBarVisible = <Option<bool>>::sse_decode(deserializer);
         let mut var_iconsVisible = <Option<bool>>::sse_decode(deserializer);
@@ -1541,6 +1996,7 @@ impl SseDecode for crate::settings::SettingsPatch {
             grid_columns_landscape: var_gridColumnsLandscape,
             layout: var_layout,
             tab_visibility: var_tabVisibility,
+            scroll_fade: var_scrollFade,
             wallpaper_alpha: var_wallpaperAlpha,
             status_bar_visible: var_statusBarVisible,
             icons_visible: var_iconsVisible,
@@ -1562,6 +2018,9 @@ impl SseDecode for crate::model::ShortcutPayload {
         let mut tag_ = <i32>::sse_decode(deserializer);
         match tag_ {
             0 => {
+                return crate::model::ShortcutPayload::LockScreen;
+            }
+            1 => {
                 let mut var_action = <Option<String>>::sse_decode(deserializer);
                 let mut var_data = <Option<String>>::sse_decode(deserializer);
                 let mut var_mimeType = <Option<String>>::sse_decode(deserializer);
@@ -1581,7 +2040,7 @@ impl SseDecode for crate::model::ShortcutPayload {
                     extras: var_extras,
                 };
             }
-            1 => {
+            2 => {
                 let mut var_command = <String>::sse_decode(deserializer);
                 return crate::model::ShortcutPayload::Command {
                     command: var_command,
@@ -1591,6 +2050,18 @@ impl SseDecode for crate::model::ShortcutPayload {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseDecode for crate::api::shortcuts::ShortcutProvider {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_id = <String>::sse_decode(deserializer);
+        let mut var_label = <String>::sse_decode(deserializer);
+        return crate::api::shortcuts::ShortcutProvider {
+            id: var_id,
+            label: var_label,
+        };
     }
 }
 
@@ -1662,31 +2133,42 @@ fn pde_ffi_dispatcher_primary_impl(
 ) {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        1 => wire__crate__api__api__add_group_impl(port, ptr, rust_vec_len, data_len),
-        2 => wire__crate__api__api__choose_wallpaper_impl(port, ptr, rust_vec_len, data_len),
-        3 => wire__crate__api__api__delete_group_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__api__events_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__api__frequent_apps_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__api__home_group_id_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__api__icon_for_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__api__init_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__api__launch_app_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__api__move_group_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__api__move_item_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__api__recent_apps_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__api__refresh_apps_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__api__remove_item_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__api__rename_group_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__api__rename_item_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__api__search_all_apps_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__api__set_group_hidden_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__api__set_group_role_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__api__set_item_icon_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__api__snapshot_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__api__sort_group_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__api__uninstall_app_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__api__update_settings_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__api__version_impl(port, ptr, rust_vec_len, data_len),
+        1 => wire__crate__api__api__add_command_shortcut_impl(port, ptr, rust_vec_len, data_len),
+        2 => wire__crate__api__api__add_group_impl(port, ptr, rust_vec_len, data_len),
+        3 => wire__crate__api__api__add_lock_shortcut_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__api__backup_config_impl(port, ptr, rust_vec_len, data_len),
+        5 => wire__crate__api__api__begin_shortcut_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__api__choose_wallpaper_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__api__delete_group_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__api__events_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__api__factory_reset_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__api__frequent_apps_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__api__home_group_id_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__api__icon_for_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__api__init_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__api__item_icon_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__api__launch_app_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__api__launch_shortcut_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__api__list_backups_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__api__lock_screen_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__api__move_group_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__api__move_item_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__api__recent_apps_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__api__refresh_apps_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__api__remove_item_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__api__rename_group_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__api__rename_item_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__api__restore_config_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__api__search_all_apps_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__api__set_group_hidden_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__api__set_group_role_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__api__set_item_icon_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__api__shortcut_providers_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__api__snapshot_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__api__sort_group_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__api__uninstall_app_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__api__update_settings_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__api__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1994,6 +2476,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::settings::Orientation>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::settings::ScrollFadeStyle {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::None => 0.into_dart(),
+            Self::Gradient => 1.into_dart(),
+            Self::Tile => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::settings::ScrollFadeStyle
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::settings::ScrollFadeStyle>
+    for crate::settings::ScrollFadeStyle
+{
+    fn into_into_dart(self) -> crate::settings::ScrollFadeStyle {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::search::SearchHit {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -2018,6 +2522,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::Settings {
             self.grid_columns_landscape.into_into_dart().into_dart(),
             self.layout.into_into_dart().into_dart(),
             self.tab_visibility.into_into_dart().into_dart(),
+            self.scroll_fade.into_into_dart().into_dart(),
             self.wallpaper_alpha.into_into_dart().into_dart(),
             self.status_bar_visible.into_into_dart().into_dart(),
             self.icons_visible.into_into_dart().into_dart(),
@@ -2047,6 +2552,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::SettingsPatch {
             self.grid_columns_landscape.into_into_dart().into_dart(),
             self.layout.into_into_dart().into_dart(),
             self.tab_visibility.into_into_dart().into_dart(),
+            self.scroll_fade.into_into_dart().into_dart(),
             self.wallpaper_alpha.into_into_dart().into_dart(),
             self.status_bar_visible.into_into_dart().into_dart(),
             self.icons_visible.into_into_dart().into_dart(),
@@ -2077,6 +2583,7 @@ impl flutter_rust_bridge::IntoIntoDart<crate::settings::SettingsPatch>
 impl flutter_rust_bridge::IntoDart for crate::model::ShortcutPayload {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
+            crate::model::ShortcutPayload::LockScreen => [0.into_dart()].into_dart(),
             crate::model::ShortcutPayload::Android {
                 action,
                 data,
@@ -2087,7 +2594,7 @@ impl flutter_rust_bridge::IntoDart for crate::model::ShortcutPayload {
                 flags,
                 extras,
             } => [
-                0.into_dart(),
+                1.into_dart(),
                 action.into_into_dart().into_dart(),
                 data.into_into_dart().into_dart(),
                 mime_type.into_into_dart().into_dart(),
@@ -2099,7 +2606,7 @@ impl flutter_rust_bridge::IntoDart for crate::model::ShortcutPayload {
             ]
             .into_dart(),
             crate::model::ShortcutPayload::Command { command } => {
-                [1.into_dart(), command.into_into_dart().into_dart()].into_dart()
+                [2.into_dart(), command.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -2112,6 +2619,27 @@ impl flutter_rust_bridge::IntoIntoDart<crate::model::ShortcutPayload>
     for crate::model::ShortcutPayload
 {
     fn into_into_dart(self) -> crate::model::ShortcutPayload {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::shortcuts::ShortcutProvider {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.id.into_into_dart().into_dart(),
+            self.label.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::shortcuts::ShortcutProvider
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::shortcuts::ShortcutProvider>
+    for crate::api::shortcuts::ShortcutProvider
+{
+    fn into_into_dart(self) -> crate::api::shortcuts::ShortcutProvider {
         self
     }
 }
@@ -2454,6 +2982,16 @@ impl SseEncode for Vec<crate::search::SearchHit> {
     }
 }
 
+impl SseEncode for Vec<crate::api::shortcuts::ShortcutProvider> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::shortcuts::ShortcutProvider>::sse_encode(item, serializer);
+        }
+    }
+}
+
 impl SseEncode for Vec<crate::usage::UsageHit> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2584,6 +3122,16 @@ impl SseEncode for Option<crate::settings::Orientation> {
     }
 }
 
+impl SseEncode for Option<crate::settings::ScrollFadeStyle> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::settings::ScrollFadeStyle>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for Option<crate::model::ShortcutPayload> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2614,6 +3162,16 @@ impl SseEncode for Option<crate::settings::Typeface> {
     }
 }
 
+impl SseEncode for Option<Vec<u8>> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <Vec<u8>>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for crate::settings::Orientation {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2622,6 +3180,23 @@ impl SseEncode for crate::settings::Orientation {
                 crate::settings::Orientation::Auto => 0,
                 crate::settings::Orientation::Landscape => 1,
                 crate::settings::Orientation::Portrait => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::settings::ScrollFadeStyle {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::settings::ScrollFadeStyle::None => 0,
+                crate::settings::ScrollFadeStyle::Gradient => 1,
+                crate::settings::ScrollFadeStyle::Tile => 2,
                 _ => {
                     unimplemented!("");
                 }
@@ -2647,6 +3222,7 @@ impl SseEncode for crate::settings::Settings {
         <i64>::sse_encode(self.grid_columns_landscape, serializer);
         <crate::settings::LayoutStyle>::sse_encode(self.layout, serializer);
         <crate::settings::TabVisibility>::sse_encode(self.tab_visibility, serializer);
+        <crate::settings::ScrollFadeStyle>::sse_encode(self.scroll_fade, serializer);
         <i64>::sse_encode(self.wallpaper_alpha, serializer);
         <bool>::sse_encode(self.status_bar_visible, serializer);
         <bool>::sse_encode(self.icons_visible, serializer);
@@ -2668,6 +3244,7 @@ impl SseEncode for crate::settings::SettingsPatch {
         <Option<i64>>::sse_encode(self.grid_columns_landscape, serializer);
         <Option<crate::settings::LayoutStyle>>::sse_encode(self.layout, serializer);
         <Option<crate::settings::TabVisibility>>::sse_encode(self.tab_visibility, serializer);
+        <Option<crate::settings::ScrollFadeStyle>>::sse_encode(self.scroll_fade, serializer);
         <Option<i64>>::sse_encode(self.wallpaper_alpha, serializer);
         <Option<bool>>::sse_encode(self.status_bar_visible, serializer);
         <Option<bool>>::sse_encode(self.icons_visible, serializer);
@@ -2686,6 +3263,9 @@ impl SseEncode for crate::model::ShortcutPayload {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         match self {
+            crate::model::ShortcutPayload::LockScreen => {
+                <i32>::sse_encode(0, serializer);
+            }
             crate::model::ShortcutPayload::Android {
                 action,
                 data,
@@ -2696,7 +3276,7 @@ impl SseEncode for crate::model::ShortcutPayload {
                 flags,
                 extras,
             } => {
-                <i32>::sse_encode(0, serializer);
+                <i32>::sse_encode(1, serializer);
                 <Option<String>>::sse_encode(action, serializer);
                 <Option<String>>::sse_encode(data, serializer);
                 <Option<String>>::sse_encode(mime_type, serializer);
@@ -2707,13 +3287,21 @@ impl SseEncode for crate::model::ShortcutPayload {
                 <Vec<crate::model::Extra>>::sse_encode(extras, serializer);
             }
             crate::model::ShortcutPayload::Command { command } => {
-                <i32>::sse_encode(1, serializer);
+                <i32>::sse_encode(2, serializer);
                 <String>::sse_encode(command, serializer);
             }
             _ => {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseEncode for crate::api::shortcuts::ShortcutProvider {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.id, serializer);
+        <String>::sse_encode(self.label, serializer);
     }
 }
 
@@ -2791,7 +3379,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
+    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -2815,7 +3403,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
+    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate

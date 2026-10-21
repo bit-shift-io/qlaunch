@@ -5,6 +5,12 @@
 Status: awaiting approval. A reviewer reads this before you do; any questions it
 raises come back to you in one round.
 
+2026-10-21 update: search is implemented. The approved follow-up in
+`../plans/2026-10-21-search-screen.md` supersedes this document's overlay,
+history-strip and Home-return behavior: search hides the main foreground while
+sharing its wallpaper, Frequent/Recent use the main pager and title strip with
+at most three rows each, and Home from another app first restores the last tab.
+
 This extends `2026-10-18-qlaunch-flutter-rust-design.md` (still the authority for
 everything it covers). It changes §8.2's search panel and adds a small piece of
 core state.

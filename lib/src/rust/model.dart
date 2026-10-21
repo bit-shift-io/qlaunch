@@ -150,6 +150,7 @@ class Item {
 sealed class ShortcutPayload with _$ShortcutPayload {
   const ShortcutPayload._();
 
+  const factory ShortcutPayload.lockScreen() = ShortcutPayload_LockScreen;
   const factory ShortcutPayload.android({
     String? action,
     String? data,

@@ -6,6 +6,7 @@
     <!-- Required on API 30+: without this, queryIntentActivities(MAIN+LAUNCHER)
          returns an empty list and the launcher looks empty. -->
     <queries>
+        <intent><action android:name="android.intent.action.CREATE_SHORTCUT"/></intent>
         <intent>
             <action android:name="android.intent.action.MAIN"/>
             <category android:name="android.intent.category.LAUNCHER"/>
@@ -17,6 +18,11 @@
         android:icon="@mipmap/ic_launcher"
         android:stateNotNeeded="true"
         android:clearTaskOnLaunch="true">
+        <receiver android:name=".LockDeviceAdminReceiver" android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN" android:label="QLaunch screen lock">
+            <meta-data android:name="android.app.device_admin" android:resource="@xml/device_admin"/>
+            <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED"/></intent-filter>
+        </receiver>
         <activity
             android:name=".MainActivity"
             android:exported="true"

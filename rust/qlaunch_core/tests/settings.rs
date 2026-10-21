@@ -1,5 +1,6 @@
 use qlaunch_core::settings::{
-    LabelColour, LayoutStyle, Orientation, Settings, SettingsPatch, TabVisibility, Typeface,
+    LabelColour, LayoutStyle, Orientation, ScrollFadeStyle, Settings, SettingsPatch, TabVisibility,
+    Typeface,
 };
 
 #[test]
@@ -9,13 +10,14 @@ fn defaults_match_the_spec() {
     assert_eq!(s.grid_columns_landscape, 6);
     assert_eq!(s.layout, LayoutStyle::Tiles);
     assert_eq!(s.tab_visibility, TabVisibility::Always);
+    assert_eq!(s.scroll_fade, ScrollFadeStyle::Gradient);
     assert_eq!(s.wallpaper_alpha, 0);
     assert!(s.status_bar_visible);
     assert!(s.icons_visible);
-    assert_eq!(s.icon_size, 40);
+    assert_eq!(s.icon_size, 54);
     assert_eq!(s.icon_alpha, 100);
     assert!(s.labels_visible);
-    assert_eq!(s.label_size, 14);
+    assert_eq!(s.label_size, 18);
     assert_eq!(s.label_typeface, Typeface::Normal);
     assert_eq!(s.label_colour, LabelColour::White);
     assert!(s.label_shadow);
@@ -100,18 +102,21 @@ fn apply_overwrites_only_the_some_fields_and_does_not_clamp() {
     let mut s = Settings::default();
     s.apply(&SettingsPatch {
         layout: Some(LayoutStyle::List),
+        scroll_fade: Some(ScrollFadeStyle::Tile),
         label_shadow: Some(false),
         icon_size: Some(999),
         ..Default::default()
     });
     assert_eq!(s.layout, LayoutStyle::List);
+    assert_eq!(s.scroll_fade, ScrollFadeStyle::Tile);
     assert!(!s.label_shadow);
     assert_eq!(s.icon_size, 999);
     assert_eq!(
         Settings {
             layout: LayoutStyle::Tiles,
+            scroll_fade: ScrollFadeStyle::Gradient,
             label_shadow: true,
-            icon_size: 40,
+            icon_size: 54,
             ..s.clone()
         },
         Settings::default()
@@ -123,6 +128,7 @@ fn serde_uses_the_documented_lowercase_strings() {
     let s = Settings {
         layout: LayoutStyle::Centred,
         tab_visibility: TabVisibility::LandscapeOnly,
+        scroll_fade: ScrollFadeStyle::Tile,
         label_typeface: Typeface::Monospace,
         label_colour: LabelColour::Grey,
         orientation: Orientation::Auto,
@@ -131,6 +137,7 @@ fn serde_uses_the_documented_lowercase_strings() {
     let v = serde_json::to_value(&s).unwrap();
     assert_eq!(v["layout"], "centred");
     assert_eq!(v["tab_visibility"], "landscape_only");
+    assert_eq!(v["scroll_fade"], "tile");
     assert_eq!(v["label_typeface"], "monospace");
     assert_eq!(v["label_colour"], "grey");
     assert_eq!(v["orientation"], "auto");
@@ -141,16 +148,30 @@ fn serde_uses_the_documented_lowercase_strings() {
 
     for (value, text) in [
         (serde_json::to_value(LayoutStyle::List).unwrap(), "list"),
-        (serde_json::to_value(TabVisibility::Always).unwrap(), "always"),
-        (serde_json::to_value(TabVisibility::PortraitOnly).unwrap(), "portrait_only"),
+        (
+            serde_json::to_value(TabVisibility::Always).unwrap(),
+            "always",
+        ),
         (serde_json::to_value(TabVisibility::Never).unwrap(), "never"),
+        (serde_json::to_value(ScrollFadeStyle::None).unwrap(), "none"),
+        (
+            serde_json::to_value(ScrollFadeStyle::Gradient).unwrap(),
+            "gradient",
+        ),
+        (serde_json::to_value(ScrollFadeStyle::Tile).unwrap(), "tile"),
         (serde_json::to_value(Typeface::Normal).unwrap(), "normal"),
         (serde_json::to_value(Typeface::Sans).unwrap(), "sans"),
         (serde_json::to_value(Typeface::Serif).unwrap(), "serif"),
         (serde_json::to_value(LabelColour::White).unwrap(), "white"),
         (serde_json::to_value(LabelColour::Black).unwrap(), "black"),
-        (serde_json::to_value(Orientation::Landscape).unwrap(), "landscape"),
-        (serde_json::to_value(Orientation::Portrait).unwrap(), "portrait"),
+        (
+            serde_json::to_value(Orientation::Landscape).unwrap(),
+            "landscape",
+        ),
+        (
+            serde_json::to_value(Orientation::Portrait).unwrap(),
+            "portrait",
+        ),
     ] {
         assert_eq!(value, text);
     }
@@ -176,6 +197,7 @@ fn field_names_serialise_verbatim() {
             "labels_visible",
             "layout",
             "orientation",
+            "scroll_fade",
             "status_bar_visible",
             "tab_visibility",
             "wallpaper_alpha",

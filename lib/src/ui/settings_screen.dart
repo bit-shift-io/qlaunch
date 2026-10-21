@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart' hide Orientation;
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/advanced_screen.dart';
 import 'package:qlaunch/src/ui/group_editor_screen.dart';
 import 'package:qlaunch/src/ui/label_style.dart';
 
@@ -30,9 +31,8 @@ class SettingsScreen extends StatefulWidget {
   static Key choiceKey(SettingField field, Object value) =>
       ValueKey('setting.${field.name}.$value');
 
-  static const restartKey = ValueKey('setting.restart');
-  static const factoryResetKey = ValueKey('setting.factoryReset');
   static const groupsKey = ValueKey('setting.groups');
+  static const advancedKey = ValueKey('setting.advanced');
   static const chooseWallpaperKey = ValueKey('setting.chooseWallpaper');
 
   @override
@@ -46,6 +46,7 @@ enum SettingField {
   gridColumnsLandscape,
   layout,
   tabVisibility,
+  scrollFade,
   wallpaperAlpha,
   statusBarVisible,
   iconsVisible,
@@ -127,6 +128,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     settings.tabVisibility,
                     _tabVisibilityName,
                     (v) => SettingsPatch(tabVisibility: v),
+                  ),
+                  _choice(
+                    SettingField.scrollFade,
+                    'Scroll fade',
+                    ScrollFadeStyle.values,
+                    settings.scrollFade,
+                    _scrollFadeName,
+                    (v) => SettingsPatch(scrollFade: v),
                   ),
 
                   _header('Window'),
@@ -242,20 +251,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   _header('Advanced'),
                   ListTile(
-                    key: SettingsScreen.restartKey,
-                    title: const Text('Restart Launcher'),
+                    key: SettingsScreen.advancedKey,
+                    title: const Text('Advanced'),
                     subtitle: const Text(
-                      'Re-reads the saved layout and the installed applications.',
+                      'Restart, backup, restore and factory reset.',
                     ),
-                    onTap: () => unawaited(widget.state.load()),
-                  ),
-                  ListTile(
-                    key: SettingsScreen.factoryResetKey,
-                    title: const Text('Factory Reset'),
-                    subtitle: const Text(
-                      'Wipes every group, item and setting, after confirmation.',
+                    onTap: () => unawaited(
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (context) =>
+                              AdvancedScreen(state: widget.state),
+                        ),
+                      ),
                     ),
-                    onTap: _factoryReset,
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -369,6 +377,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     TabVisibility.never => 'Never',
   };
 
+  String _scrollFadeName(ScrollFadeStyle value) => switch (value) {
+    ScrollFadeStyle.none => 'None',
+    ScrollFadeStyle.gradient => 'Gradient',
+    ScrollFadeStyle.tile => 'Tile',
+  };
+
   String _typefaceName(Typeface value) => switch (value) {
     Typeface.normal => 'Normal',
     Typeface.sans => 'Sans',
@@ -387,37 +401,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Orientation.landscape => 'Landscape',
     Orientation.portrait => 'Portrait',
   };
-
-  Future<void> _factoryReset() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Factory Reset'),
-        content: const Text(
-          'This wipes every group, item and setting. It cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Reset'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    // There is nothing to call: the bridge has no `factory_reset`, and the
-    // spec's own §8.9 surface does not list one.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Factory reset is not available yet: the core command for it is '
-          'still to be added. Nothing was changed.',
-        ),
-      ),
-    );
-  }
 }

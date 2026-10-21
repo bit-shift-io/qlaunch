@@ -12,7 +12,7 @@ import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
-import 'package:qlaunch/src/ui/page_pips.dart';
+import 'package:qlaunch/src/ui/launcher_menu.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
@@ -120,62 +120,6 @@ void main() {
     }
   });
 
-  group('page pips', () {
-    AnimatedOpacity pipsFade(WidgetTester tester) => tester.widget<AnimatedOpacity>(
-      find.ancestor(
-        of: find.byType(PagePips),
-        matching: find.byType(AnimatedOpacity),
-      ),
-    );
-
-    testWidgets('fade in when the tabs cannot all fit', (tester) async {
-      setSurface(tester, const Size(300, 600));
-      await load(pageIds: [for (var i = 0; i < 8; i++) 'group$i']);
-      await pumpHome(tester);
-      await tester.pumpAndSettle();
-
-      expect(find.byType(PagePips), findsOneWidget);
-      expect(pipsFade(tester).opacity, 1);
-    });
-
-    testWidgets('stay hidden when every tab fits', (tester) async {
-      setSurface(tester, const Size(400, 800));
-      await load(pageIds: const ['home', 'apps']);
-      await pumpHome(tester);
-      await tester.pumpAndSettle();
-
-      // Still in the tree, only transparent, so it can fade rather than pop.
-      expect(find.byType(PagePips), findsOneWidget);
-      expect(pipsFade(tester).opacity, 0);
-    });
-
-    testWidgets('fade out again when the window widens enough', (tester) async {
-      setSurface(tester, const Size(300, 600));
-      await load(pageIds: [for (var i = 0; i < 8; i++) 'group$i']);
-      await pumpHome(tester);
-      await tester.pumpAndSettle();
-      expect(pipsFade(tester).opacity, 1);
-
-      // Same portrait orientation, just wider, so only the strip's own
-      // re-check can bring the pips back down.
-      tester.view.physicalSize = const Size(1200, 600);
-      await tester.pumpAndSettle();
-
-      expect(pipsFade(tester).opacity, 0);
-    });
-
-    testWidgets('draw one dot per page', (tester) async {
-      setSurface(tester, const Size(300, 600));
-      await load(pageIds: [for (var i = 0; i < 8; i++) 'group$i']);
-      await pumpHome(tester);
-      await tester.pumpAndSettle();
-
-      for (var i = 0; i < 8; i++) {
-        expect(find.byKey(PagePips.dotKey(i)), findsOneWidget);
-      }
-    });
-  });
-
   group('pages', () {
     testWidgets('no pages at all is an empty grid under the strip', (
       tester,
@@ -189,24 +133,22 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the strip highlights the group the pager shows', (
-      tester,
-    ) async {
+    testWidgets('the strip centres the group the pager shows', (tester) async {
       setSurface(tester, const Size(600, 800));
       await load();
       await pumpHome(tester);
 
-      final indicator = find.byKey(TabStrip.indicatorKey);
-      double indicatorDx() => tester.getCenter(indicator).dx;
-      double labelDx(String label) => tester.getCenter(find.text(label)).dx;
+      final current = find.byKey(TabStrip.tabKey(0));
+      double currentDx() => tester.getCenter(current).dx;
 
-      expect(indicator, findsOneWidget);
-      expect((indicatorDx() - labelDx('home')).abs(), lessThan(4));
+      expect((currentDx() - 300).abs(), lessThan(4));
+      expect(tester.widget<Text>(current).data, 'home');
 
       await tester.drag(find.byType(PageView), const Offset(-600, 0));
       await tester.pumpAndSettle();
 
-      expect((indicatorDx() - labelDx('apps')).abs(), lessThan(4));
+      expect((currentDx() - 300).abs(), lessThan(4));
+      expect(tester.widget<Text>(current).data, 'apps');
       expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'apps');
     });
 
@@ -317,9 +259,8 @@ void main() {
       expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
       expect(
         pagerPage(tester),
-        GroupPagerController(pageIds: ['apps', 'home', 'games']).virtualIndexFor(
-          'home',
-        ),
+        GroupPagerController(pageIds: ['apps', 'home', 'games'])
+            .virtualIndexFor('home'),
       );
     });
 
@@ -382,6 +323,61 @@ void main() {
   });
 
   group('the search, opened by the Home button', () {
+    testWidgets('search hides the main foreground and keeps its background', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(
+        homeGroupId: 'home',
+        settings: settingsWith(wallpaperAlpha: 35),
+      );
+      await pumpHome(tester);
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AppSearch), findsOneWidget);
+      expect(find.byType(AppGrid), findsNothing);
+      expect(find.text('item-home'), findsNothing);
+      expect(find.byType(BackgroundLayer), findsOneWidget);
+      expect(
+        tester
+            .widget<ColoredBox>(find.byKey(BackgroundLayer.overlayKey))
+            .color
+            .a,
+        closeTo(0.35, 1e-9),
+      );
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+    });
+
+    testWidgets('leaving the app closes search before returning', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(homeGroupId: 'home');
+      await pumpHome(tester);
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+      expect(find.byType(AppSearch), findsOneWidget);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(find.byType(AppSearch), findsNothing);
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+      expect(find.byType(AppSearch), findsOneWidget);
+    });
+
     testWidgets('the Home button on the home group opens the search', (
       tester,
     ) async {
@@ -494,7 +490,7 @@ void main() {
   });
 
   group('a long press on blank space', () {
-    testWidgets('opens the settings screen', (tester) async {
+    testWidgets('opens the launcher menu', (tester) async {
       setSurface(tester, const Size(400, 800));
       await load();
       await pumpHome(tester);
@@ -504,10 +500,29 @@ void main() {
       await tester.longPressAt(Offset(grid.left + 30, grid.bottom - 30));
       await tester.pumpAndSettle();
 
+      expect(find.byKey(LauncherMenu.settingsKey), findsOneWidget);
+      expect(find.byKey(LauncherMenu.addShortcutKey), findsOneWidget);
+      expect(find.byKey(LauncherMenu.editGroupsKey), findsOneWidget);
+      expect(find.byKey(LauncherMenu.wallpaperKey), findsOneWidget);
+    });
+
+    testWidgets('its settings action opens the settings screen', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load();
+      await pumpHome(tester);
+
+      final grid = tester.getRect(find.byType(GridView));
+      await tester.longPressAt(Offset(grid.left + 30, grid.bottom - 30));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(LauncherMenu.settingsKey));
+      await tester.pumpAndSettle();
+
       expect(find.byType(SettingsScreen), findsOneWidget);
     });
 
-    testWidgets('on an item does not open the settings screen', (tester) async {
+    testWidgets('on an item does not open the menu', (tester) async {
       setSurface(tester, const Size(400, 800));
       await load();
       await pumpHome(tester);
@@ -515,8 +530,43 @@ void main() {
       await tester.longPress(find.text('item-home'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(SettingsScreen), findsNothing);
+      expect(find.byKey(LauncherMenu.settingsKey), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('a double tap on blank space', () {
+    testWidgets('asks the core to lock the screen', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load();
+      await pumpHome(tester);
+
+      final grid = tester.getRect(find.byType(GridView));
+      final blank = Offset(grid.left + 30, grid.bottom - 30);
+      await tester.tapAt(blank);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(blank);
+      await tester.pumpAndSettle();
+
+      expect(fake.calls, contains('lockScreen'));
+    });
+
+    testWidgets('on an item launches it and does not lock', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load();
+      await pumpHome(tester);
+
+      final item = tester.getCenter(find.text('item-home'));
+      await tester.tapAt(item);
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tapAt(item);
+      await tester.pump();
+
+      expect(fake.calls, isNot(contains('lockScreen')));
+      expect(
+        fake.calls.where((call) => call.startsWith('launchApp(')),
+        isNotEmpty,
+      );
     });
   });
 
@@ -605,6 +655,20 @@ void main() {
       await pumpHome(tester);
       await tester.pumpAndSettle();
       expect(fake.iconCalls, 120);
+    });
+
+    testWidgets('opening a page warms its neighbouring pages too', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 300));
+      final items = [
+        for (final group in ['home', 'apps', 'games'])
+          for (var i = 0; i < 10; i++) launchable('$group-$i', group),
+      ];
+      await load(pageIds: ['home', 'apps', 'games'], items: items);
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+      expect(fake.iconCalls, 30);
     });
 
     testWidgets('hidden icons are not warmed', (tester) async {

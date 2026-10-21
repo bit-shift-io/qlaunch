@@ -1,13 +1,15 @@
 mod desktop_file;
 mod icons;
-mod launch;
+pub(crate) mod launch;
 mod watch;
 
 use std::fs;
 use std::path::PathBuf;
 
 use crate::model::{AppCategory, AppEntry, AppRef, IconImage};
+use crate::platform::backup::{is_backup_name, sort_backup_names};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
+use crate::store::atomic;
 
 pub use desktop_file::{
     DesktopEntry, applications_dirs_from, data_roots, data_roots_from, dirs_to_scan,
@@ -26,6 +28,9 @@ pub struct LinuxSource {
     locale: Option<String>,
     theme: Option<String>,
     terminal_emulator: Option<String>,
+    /// Where config backups are written and read. `None` when the desktop has
+    /// no Downloads folder (no home directory), which makes backups unsupported.
+    downloads: Option<PathBuf>,
 }
 
 impl LinuxSource {
@@ -68,7 +73,15 @@ impl LinuxSource {
             locale,
             theme,
             terminal_emulator,
+            downloads: dirs::download_dir(),
         }
+    }
+
+    /// Replaces the Downloads folder backups go to. For tests, so they never
+    /// touch the person's real downloads.
+    pub fn with_downloads(mut self, downloads: Option<PathBuf>) -> Self {
+        self.downloads = downloads;
+        self
     }
 
     /// A source over exactly `dirs`, ignoring the environment: no desktop
@@ -82,7 +95,14 @@ impl LinuxSource {
             locale: None,
             theme: None,
             terminal_emulator: None,
+            downloads: dirs::download_dir(),
         }
+    }
+
+    fn downloads_dir(&self) -> Result<PathBuf, PlatformError> {
+        self.downloads.clone().ok_or_else(|| {
+            PlatformError::Unsupported("there is no Downloads folder to save a backup in".into())
+        })
     }
 
     /// The first `<applications dir>/<id>` that is a file, which is how the
@@ -199,5 +219,41 @@ impl AppSource for LinuxSource {
     /// own; if it panics, no further notifications are sent.
     fn watch(&self, on_change: Box<dyn Fn() + Send + Sync>) -> Result<WatchHandle, PlatformError> {
         watch::watch(&self.dirs, on_change)
+    }
+
+    fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
+        if !is_backup_name(name) {
+            return Err(PlatformError::Unsupported(format!(
+                "{name:?} is not a backup file name"
+            )));
+        }
+        let dir = self.downloads_dir()?;
+        fs::create_dir_all(&dir).map_err(|e| PlatformError::Io(e.to_string()))?;
+        atomic::write_atomic(&dir.join(name), bytes).map_err(|e| PlatformError::Io(e.to_string()))
+    }
+
+    fn list_backups(&self) -> Result<Vec<String>, PlatformError> {
+        let Some(dir) = &self.downloads else {
+            return Ok(Vec::new());
+        };
+        let entries = match fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(PlatformError::Io(e.to_string())),
+        };
+        let names = entries
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
+            .map(|entry| entry.file_name().to_string_lossy().into_owned());
+        Ok(sort_backup_names(names))
+    }
+
+    fn read_backup(&self, name: &str) -> Result<Vec<u8>, PlatformError> {
+        if !is_backup_name(name) {
+            return Err(PlatformError::Unsupported(format!(
+                "{name:?} is not a backup file name"
+            )));
+        }
+        fs::read(self.downloads_dir()?.join(name)).map_err(|e| PlatformError::Io(e.to_string()))
     }
 }

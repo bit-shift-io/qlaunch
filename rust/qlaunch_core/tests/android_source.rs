@@ -1,6 +1,6 @@
 use qlaunch_core::model::{AppCategory, AppRef, IconImage};
 use qlaunch_core::platform::android::{
-    AndroidHost, AndroidList, AndroidSource, parse_list_json,
+    AndroidHost, AndroidList, AndroidSource, parse_backup_names_json, parse_list_json,
 };
 use qlaunch_core::platform::{AppSource, LaunchError, PlatformError};
 
@@ -78,4 +78,27 @@ fn icon_and_launch_delegate_to_the_host() {
         Some(IconImage::png(vec![1, 2, 3]))
     );
     assert!(source.launch(&app).is_ok());
+}
+
+#[test]
+fn a_backup_listing_is_filtered_and_newest_first() {
+    let json = r#"[
+        "qlaunch-backup-2026-10-20-090000.json",
+        "holiday.jpg",
+        "qlaunch-backup-2026-10-21-140530.json"
+    ]"#;
+    assert_eq!(
+        parse_backup_names_json(json).unwrap(),
+        [
+            "qlaunch-backup-2026-10-21-140530.json",
+            "qlaunch-backup-2026-10-20-090000.json",
+        ]
+    );
+}
+
+#[test]
+fn a_bad_backup_name_is_refused_before_the_host_sees_it() {
+    let source = AndroidSource::new(host());
+    assert!(source.read_backup("../../etc/passwd").is_err());
+    assert!(source.write_backup("not-a-backup.json", b"x").is_err());
 }

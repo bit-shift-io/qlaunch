@@ -17,6 +17,7 @@ class AppSettingsDialog extends StatefulWidget {
   static const saveKey = ValueKey('appSettings.save');
   static const cancelKey = ValueKey('appSettings.cancel');
   static const uninstallKey = ValueKey('appSettings.uninstall');
+  static const removeKey = ValueKey('appSettings.remove');
   static const groupKey = ValueKey('appSettings.group');
 
   static Key groupOptionKey(String groupId) =>
@@ -67,6 +68,11 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
     final app = widget.item.app;
     if (app == null) return;
     await widget.state.uninstallApp(app.package);
+    if (mounted) _close();
+  }
+
+  Future<void> _remove() async {
+    await widget.state.removeItem(widget.item.id);
     if (mounted) _close();
   }
 
@@ -131,6 +137,12 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
               key: AppSettingsDialog.uninstallKey,
               onPressed: _uninstall,
               child: const Text('Uninstall'),
+            ),
+          if (item.shortcut != null)
+            TextButton(
+              key: AppSettingsDialog.removeKey,
+              onPressed: _remove,
+              child: const Text('Remove'),
             ),
           TextButton(
             key: AppSettingsDialog.cancelKey,

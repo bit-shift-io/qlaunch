@@ -82,7 +82,7 @@ pub fn terminal_emulator() -> Option<String> {
 /// The child is handed to a thread that waits for it and ignores how it ended:
 /// dropping a `Child` does not reap it, so without this every application the
 /// launcher ever started would stay a zombie until the launcher exits.
-pub(super) fn spawn(argv: &[String]) -> Result<(), LaunchError> {
+pub(crate) fn spawn(argv: &[String]) -> Result<(), LaunchError> {
     let (program, args) = argv
         .split_first()
         .ok_or_else(|| LaunchError::Failed("there is no program to run".into()))?;

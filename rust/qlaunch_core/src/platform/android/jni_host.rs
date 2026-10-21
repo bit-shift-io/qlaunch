@@ -8,7 +8,9 @@ use jni::{JNIEnv, JavaVM};
 
 use crate::api::events::CoreEvent;
 use crate::model::{AppRef, IconImage};
-use crate::platform::android::{AndroidHost, AndroidList, icon_from_int_slots, parse_list_json};
+use crate::platform::android::{
+    AndroidHost, AndroidList, icon_from_int_slots, parse_backup_names_json, parse_list_json,
+};
 use crate::platform::{LaunchError, PlatformError};
 
 pub(crate) static ANDROID_VM: OnceLock<JavaVM> = OnceLock::new();
@@ -20,6 +22,68 @@ const BRIDGE: &str = "bitshift/qlaunch/QLaunchBridge";
 pub struct JniHost;
 
 impl JniHost {
+    pub fn call_void(method: &str, strings: &[String]) -> Result<(), String> {
+        Self::with_env(|env| {
+            let values = strings
+                .iter()
+                .map(|s| env.new_string(s).map_err(jni_error))
+                .collect::<Result<Vec<_>, _>>()?;
+            let args: Vec<jni::objects::JValue> = values.iter().map(|s| s.into()).collect();
+            let signature = format!("({})V", "Ljava/lang/String;".repeat(strings.len()));
+            match env.call_static_method(Self::class()?, method, &signature, &args) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn call_string(method: &str) -> Result<String, String> {
+        Self::with_env(|env| {
+            let result =
+                env.call_static_method(Self::class()?, method, "()Ljava/lang/String;", &[]);
+            match result {
+                Ok(value) => {
+                    let string: jni::objects::JString = value.l().map_err(jni_error)?.into();
+                    let out: String = env.get_string(&string).map_err(jni_error)?.into();
+                    Ok(out)
+                }
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })
+        .map_err(|e| e.to_string())
+    }
+
+    pub fn call_string_arg(method: &str, arg: &str) -> Result<String, String> {
+        Self::with_env(|env| {
+            let value = env.new_string(arg).map_err(jni_error)?;
+            let result = env.call_static_method(
+                Self::class()?,
+                method,
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                &[(&value).into()],
+            );
+            match result {
+                Ok(value) => {
+                    let string: jni::objects::JString = value.l().map_err(jni_error)?.into();
+                    let out: String = env.get_string(&string).map_err(jni_error)?.into();
+                    Ok(out)
+                }
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })
+        .map_err(|e| e.to_string())
+    }
+
     pub fn new() -> Self {
         JniHost
     }
@@ -174,6 +238,21 @@ impl AndroidHost for JniHost {
         })
         .map_err(platform_to_launch)
     }
+
+    fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
+        let body = String::from_utf8_lossy(bytes).into_owned();
+        JniHost::call_void("writeBackup", &[name.to_string(), body]).map_err(PlatformError::Io)
+    }
+
+    fn list_backups(&self) -> Result<Vec<String>, PlatformError> {
+        let json = JniHost::call_string("listBackups").map_err(PlatformError::Io)?;
+        parse_backup_names_json(&json)
+    }
+
+    fn read_backup(&self, name: &str) -> Result<Vec<u8>, PlatformError> {
+        let body = JniHost::call_string_arg("readBackup", name).map_err(PlatformError::Io)?;
+        Ok(body.into_bytes())
+    }
 }
 
 impl JniHost {
@@ -269,6 +348,29 @@ pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onBackPressedEvent(
     crate::api::state::emit(CoreEvent::BackPressed);
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onShortcutResult(
+    mut env: JNIEnv,
+    _this: jni::objects::JObject,
+    group: jni::objects::JString,
+    json: jni::objects::JString,
+    error: jni::objects::JString,
+) {
+    let mut read = |s: &jni::objects::JString| -> String {
+        env.get_string(s).map(Into::into).unwrap_or_default()
+    };
+    let group = read(&group);
+    let json = read(&json);
+    let error = read(&error);
+    if !error.is_empty() {
+        crate::api::state::emit(CoreEvent::Error(error));
+    } else if json.is_empty() {
+        crate::api::state::emit(CoreEvent::ShortcutCancelled);
+    } else if let Err(error) = crate::api::shortcuts::accept_result(&group, &json) {
+        crate::api::state::emit(CoreEvent::Error(error));
+    }
+}
+
 /// The OS telling us an app was installed, removed or changed, from
 /// `PackageChangeReceiver`. Refresh now; the core emits `AppsChanged` and Dart
 /// refetches its snapshot. A failure (the core not yet started, say) is ignored:
@@ -280,5 +382,3 @@ pub extern "system" fn Java_bitshift_qlaunch_PackageChangeReceiver_onPackagesCha
 ) {
     let _ = crate::api::state::refresh_apps_now();
 }
-
-

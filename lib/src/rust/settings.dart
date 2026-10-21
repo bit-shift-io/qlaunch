@@ -13,11 +13,14 @@ enum LayoutStyle { tiles, list, centred }
 
 enum Orientation { auto, landscape, portrait }
 
+enum ScrollFadeStyle { none, gradient, tile }
+
 class Settings {
   final PlatformInt64 gridColumnsPortrait;
   final PlatformInt64 gridColumnsLandscape;
   final LayoutStyle layout;
   final TabVisibility tabVisibility;
+  final ScrollFadeStyle scrollFade;
   final PlatformInt64 wallpaperAlpha;
   final bool statusBarVisible;
   final bool iconsVisible;
@@ -35,6 +38,7 @@ class Settings {
     required this.gridColumnsLandscape,
     required this.layout,
     required this.tabVisibility,
+    required this.scrollFade,
     required this.wallpaperAlpha,
     required this.statusBarVisible,
     required this.iconsVisible,
@@ -54,6 +58,7 @@ class Settings {
       gridColumnsLandscape.hashCode ^
       layout.hashCode ^
       tabVisibility.hashCode ^
+      scrollFade.hashCode ^
       wallpaperAlpha.hashCode ^
       statusBarVisible.hashCode ^
       iconsVisible.hashCode ^
@@ -75,6 +80,7 @@ class Settings {
           gridColumnsLandscape == other.gridColumnsLandscape &&
           layout == other.layout &&
           tabVisibility == other.tabVisibility &&
+          scrollFade == other.scrollFade &&
           wallpaperAlpha == other.wallpaperAlpha &&
           statusBarVisible == other.statusBarVisible &&
           iconsVisible == other.iconsVisible &&
@@ -93,6 +99,7 @@ class SettingsPatch {
   final PlatformInt64? gridColumnsLandscape;
   final LayoutStyle? layout;
   final TabVisibility? tabVisibility;
+  final ScrollFadeStyle? scrollFade;
   final PlatformInt64? wallpaperAlpha;
   final bool? statusBarVisible;
   final bool? iconsVisible;
@@ -110,6 +117,7 @@ class SettingsPatch {
     this.gridColumnsLandscape,
     this.layout,
     this.tabVisibility,
+    this.scrollFade,
     this.wallpaperAlpha,
     this.statusBarVisible,
     this.iconsVisible,
@@ -129,6 +137,7 @@ class SettingsPatch {
       gridColumnsLandscape.hashCode ^
       layout.hashCode ^
       tabVisibility.hashCode ^
+      scrollFade.hashCode ^
       wallpaperAlpha.hashCode ^
       statusBarVisible.hashCode ^
       iconsVisible.hashCode ^
@@ -150,6 +159,7 @@ class SettingsPatch {
           gridColumnsLandscape == other.gridColumnsLandscape &&
           layout == other.layout &&
           tabVisibility == other.tabVisibility &&
+          scrollFade == other.scrollFade &&
           wallpaperAlpha == other.wallpaperAlpha &&
           statusBarVisible == other.statusBarVisible &&
           iconsVisible == other.iconsVisible &&

@@ -8,6 +8,7 @@ const testSettings = Settings(
   gridColumnsLandscape: 6,
   layout: LayoutStyle.tiles,
   tabVisibility: TabVisibility.always,
+  scrollFade: ScrollFadeStyle.gradient,
   wallpaperAlpha: 0,
   statusBarVisible: true,
   iconsVisible: true,
@@ -21,14 +22,19 @@ const testSettings = Settings(
   orientation: Orientation.auto,
 );
 
-Group makeGroup(String id, {GroupRole? role, int order = 0, bool hidden = false}) =>
-    Group(id: id, label: id, role: role, order: order, hidden: hidden);
+Group makeGroup(
+  String id, {
+  GroupRole? role,
+  int order = 0,
+  bool hidden = false,
+}) => Group(id: id, label: id, role: role, order: order, hidden: hidden);
 
 Item makeItem(
   String id,
   String groupId, {
   int order = 0,
   AppRef? app,
+  ShortcutPayload? shortcut,
   bool uninstalled = false,
 }) => Item(
   id: id,
@@ -36,6 +42,7 @@ Item makeItem(
   label: id,
   labelOverridden: false,
   app: app,
+  shortcut: shortcut,
   uninstalled: uninstalled,
   order: order,
 );

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qlaunch/src/rust/frb_generated.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
@@ -8,6 +9,8 @@ import 'package:qlaunch/src/ui/home_screen.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 
 Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await RustLib.init();
   runApp(const QLaunchApp());
 }
@@ -48,6 +51,21 @@ class _QLaunchAppState extends State<QLaunchApp> {
       // theme; the settings screen and its dialogs follow it.
       theme: ThemeData.dark(useMaterial3: true),
       themeMode: ThemeMode.dark,
+      // Match the Android theme at runtime; an AppBar may override its own
+      // region, but returning to the launcher restores transparent bars.
+      builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+          systemStatusBarContrastEnforced: false,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+          systemNavigationBarIconBrightness: Brightness.light,
+          systemNavigationBarContrastEnforced: false,
+        ),
+        child: child ?? const SizedBox.shrink(),
+      ),
       // §8.1's routes are declared here: the settings screen is pushed by name
       // so the left drawer (Plan 3) can reach it without holding the state.
       // Nothing pushes it yet — the drawer is deferred (F3).

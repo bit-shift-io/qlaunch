@@ -133,9 +133,8 @@ impl IconDiskCache {
         if total <= self.cap_bytes {
             return;
         }
-        let oldest_first = |a: &(SystemTime, u64, PathBuf), b: &(SystemTime, u64, PathBuf)| {
-            a.0.cmp(&b.0)
-        };
+        let oldest_first =
+            |a: &(SystemTime, u64, PathBuf), b: &(SystemTime, u64, PathBuf)| a.0.cmp(&b.0);
         files.sort_by(oldest_first);
         for (_, len, path) in files {
             if total <= self.cap_bytes {

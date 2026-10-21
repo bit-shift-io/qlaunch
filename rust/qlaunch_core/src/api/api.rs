@@ -5,10 +5,10 @@ use flutter_rust_bridge::frb;
 use crate::frb_generated::StreamSink;
 use crate::model::{AppRef, Group, GroupRole, IconImage, Id, Item};
 use crate::platform::AppSource;
-#[cfg(not(target_os = "android"))]
-use crate::platform::linux::LinuxSource;
 #[cfg(target_os = "android")]
 use crate::platform::android::{AndroidSource, jni_host::JniHost};
+#[cfg(not(target_os = "android"))]
+use crate::platform::linux::LinuxSource;
 use crate::search::{SearchCandidate, search};
 use crate::settings::{Settings, SettingsPatch};
 #[cfg(not(target_os = "android"))]
@@ -73,7 +73,8 @@ pub async fn init(config_root_override: Option<String>) -> Result<ModelSnapshot,
         config_root_override.map(PathBuf::from),
         platform_config_root(),
     );
-    state::install(root, platform_source(), warnings)
+    let snapshot = state::install(root, platform_source(), warnings)?;
+    Ok(apply_display_settings(snapshot))
 }
 
 /// Chooses the configuration directory and the warnings `init` starts with: the
@@ -211,11 +212,123 @@ pub async fn sort_group(id: Id) -> Result<ModelSnapshot, String> {
     state::mutate_model(|m| m.sort_group(&id))
 }
 
+pub async fn add_lock_shortcut(target_group_id: String) -> Result<ModelSnapshot, String> {
+    super::shortcuts::add(
+        &target_group_id,
+        "Lock Screen",
+        crate::model::ShortcutPayload::LockScreen,
+        None,
+    )
+}
+
+pub async fn add_command_shortcut(
+    target_group_id: String,
+    label: String,
+    command: String,
+) -> Result<ModelSnapshot, String> {
+    super::shortcuts::add(
+        &target_group_id,
+        &label,
+        crate::model::ShortcutPayload::Command { command },
+        None,
+    )
+}
+
+pub async fn shortcut_providers() -> Result<Vec<super::shortcuts::ShortcutProvider>, String> {
+    #[cfg(target_os = "android")]
+    {
+        serde_json::from_str(&JniHost::call_string("shortcutProvidersJson")?)
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Ok(vec![super::shortcuts::ShortcutProvider {
+            id: "command".into(),
+            label: "Command".into(),
+        }])
+    }
+}
+
+pub async fn begin_shortcut(provider: String, target_group_id: String) -> Result<(), String> {
+    super::shortcuts::check_group(&target_group_id)?;
+    #[cfg(target_os = "android")]
+    {
+        JniHost::call_void("beginShortcut", &[provider, target_group_id])
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = provider;
+        Err("Use the command shortcut form on Linux".into())
+    }
+}
+
+pub async fn launch_shortcut(id: String) -> Result<(), String> {
+    let payload = state::with_app(|app, _| {
+        app.model
+            .item(&id)
+            .and_then(|i| i.shortcut.clone())
+            .ok_or("Shortcut no longer exists".into())
+    })?;
+    super::shortcuts::launch(&payload)
+}
+
+pub async fn lock_screen() -> Result<(), String> {
+    super::shortcuts::lock()
+}
+
+pub async fn item_icon(id: String) -> Option<Vec<u8>> {
+    state::with_app(|app, _| {
+        let path = app
+            .model
+            .item(&id)
+            .and_then(|i| i.icon_override.as_ref())
+            .and_then(|name| app.store.as_ref()?.icon_path(name).ok());
+        Ok(path.and_then(|path| std::fs::read(path).ok()))
+    })
+    .ok()
+    .flatten()
+}
+
 pub async fn update_settings(patch: SettingsPatch) -> Result<ModelSnapshot, String> {
-    state::mutate_settings(|s| {
+    let snapshot = state::mutate_settings(|s| {
         s.apply(&patch);
         s.clamp();
-    })
+    })?;
+    Ok(apply_display_settings(snapshot))
+}
+
+pub async fn factory_reset() -> Result<ModelSnapshot, String> {
+    Ok(apply_display_settings(state::factory_reset()?))
+}
+
+/// Writes the whole layout to a dated file in the platform's Downloads folder
+/// and returns the file name. See [`state::backup_config`].
+pub async fn backup_config() -> Result<String, String> {
+    state::backup_config()
+}
+
+/// The backup files already in Downloads, newest first.
+pub async fn list_backups() -> Result<Vec<String>, String> {
+    state::list_backups()
+}
+
+/// Replaces everything with the named backup, then reconciles it with the apps
+/// installed here. See [`state::restore_config`].
+pub async fn restore_config(file_name: String) -> Result<ModelSnapshot, String> {
+    Ok(apply_display_settings(state::restore_config(file_name)?))
+}
+
+fn apply_display_settings(snapshot: ModelSnapshot) -> ModelSnapshot {
+    #[cfg(target_os = "android")]
+    if let Err(error) = JniHost::call_void(
+        "applyDisplaySettings",
+        &[serde_json::to_string(&snapshot.settings).unwrap_or_default()],
+    ) {
+        state::emit(CoreEvent::Error(format!(
+            "Could not apply display settings: {error}"
+        )));
+    }
+    snapshot
 }
 
 /// `None` before `init`, or when no group holds the Home role.
@@ -350,8 +463,7 @@ mod tests {
 
     #[test]
     fn choose_root_prefers_the_override() {
-        let (root, warnings) =
-            choose_root(Some(PathBuf::from("/tmp/x")), Err("no home".into()));
+        let (root, warnings) = choose_root(Some(PathBuf::from("/tmp/x")), Err("no home".into()));
         assert_eq!(root, Some(PathBuf::from("/tmp/x")));
         assert!(warnings.is_empty());
     }

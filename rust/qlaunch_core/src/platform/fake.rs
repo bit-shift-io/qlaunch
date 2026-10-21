@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use crate::model::{AppEntry, AppRef, IconImage};
 
+use super::backup::{is_backup_name, sort_backup_names};
 use super::{AppSource, LaunchError, PlatformError};
 
 pub struct FakeSource {
@@ -10,6 +11,8 @@ pub struct FakeSource {
     icons: HashMap<AppRef, Vec<u8>>,
     launched: Mutex<Vec<AppRef>>,
     fail_launch: bool,
+    /// Backups the fake Downloads folder holds, keyed by backup file name.
+    backups: Mutex<HashMap<String, Vec<u8>>>,
 }
 
 impl FakeSource {
@@ -19,7 +22,30 @@ impl FakeSource {
             icons: HashMap::new(),
             launched: Mutex::new(Vec::new()),
             fail_launch: false,
+            backups: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Puts `bytes` in the fake Downloads folder under `name`, for a test that
+    /// wants to restore a backup it did not create itself.
+    pub fn with_backup(self, name: &str, bytes: Vec<u8>) -> Self {
+        self.backups
+            .lock()
+            .expect("backup map poisoned")
+            .insert(name.to_string(), bytes);
+        self
+    }
+
+    /// The backup names the fake Downloads folder holds, newest first.
+    pub fn backups(&self) -> Vec<String> {
+        let names: Vec<String> = self
+            .backups
+            .lock()
+            .expect("backup map poisoned")
+            .keys()
+            .cloned()
+            .collect();
+        sort_backup_names(names)
     }
 
     pub fn with_icon(mut self, app: AppRef, png: Vec<u8>) -> Self {
@@ -64,5 +90,36 @@ impl AppSource for FakeSource {
             .expect("launch log poisoned")
             .push(app.clone());
         Ok(())
+    }
+
+    fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
+        if !is_backup_name(name) {
+            return Err(PlatformError::Unsupported(format!(
+                "{name:?} is not a backup file name"
+            )));
+        }
+        self.backups
+            .lock()
+            .expect("backup map poisoned")
+            .insert(name.to_string(), bytes.to_vec());
+        Ok(())
+    }
+
+    fn list_backups(&self) -> Result<Vec<String>, PlatformError> {
+        Ok(self.backups())
+    }
+
+    fn read_backup(&self, name: &str) -> Result<Vec<u8>, PlatformError> {
+        if !is_backup_name(name) {
+            return Err(PlatformError::Unsupported(format!(
+                "{name:?} is not a backup file name"
+            )));
+        }
+        self.backups
+            .lock()
+            .expect("backup map poisoned")
+            .get(name)
+            .cloned()
+            .ok_or(PlatformError::NotFound)
     }
 }

@@ -1,10 +1,13 @@
 package bitshift.qlaunch
 
 import android.content.ComponentName
+import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
+import android.provider.MediaStore
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
@@ -16,6 +19,12 @@ import kotlin.math.roundToInt
 /// class only answers questions and performs OS actions. Methods are `@JvmStatic`
 /// so Rust finds them as static methods on `bitshift/qlaunch/QLaunchBridge`.
 object QLaunchBridge {
+    @JvmStatic fun lockScreen() = LauncherActions.lockScreen()
+    @JvmStatic fun shortcutProvidersJson(): String = LauncherActions.providersJson()
+    @JvmStatic fun beginShortcut(provider: String, group: String) =
+        LauncherActions.onMain { it.beginShortcut(provider, group) }
+    @JvmStatic fun launchShortcut(json: String) = LauncherActions.launchShortcut(json)
+    @JvmStatic fun applyDisplaySettings(json: String) = LauncherActions.applyDisplaySettings(json)
     private var appContext: Context? = null
 
     @JvmStatic
@@ -30,6 +39,81 @@ object QLaunchBridge {
     /// The app's private files directory, where Rust keeps `qlaunch.json`.
     @JvmStatic
     fun filesDirPath(): String = getAppContext().filesDir.absolutePath
+
+    private fun downloadsCollection(): Uri =
+        MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+
+    /// Writes a config backup into the shared Downloads collection, visible in
+    /// Files and any other app. MediaStore needs no storage permission for the
+    /// app's own files. The name is validated by Rust before it gets here.
+    @JvmStatic
+    fun writeBackup(fileName: String, body: String) {
+        val resolver = getAppContext().contentResolver
+        val collection = downloadsCollection()
+        resolver.delete(
+            collection,
+            "${MediaStore.Downloads.DISPLAY_NAME} = ?",
+            arrayOf(fileName),
+        )
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, "application/json")
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(collection, values) ?: error("Could not create $fileName")
+        try {
+            resolver.openOutputStream(uri)?.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                ?: error("Could not write $fileName")
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        } catch (error: Exception) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
+    }
+
+    /// The names of this app's config backups in Downloads, as a JSON array.
+    /// Rust filters the names to the exact backup shape and sorts them.
+    @JvmStatic
+    fun listBackups(): String {
+        val resolver = getAppContext().contentResolver
+        val names = JSONArray()
+        resolver.query(
+            downloadsCollection(),
+            arrayOf(MediaStore.Downloads.DISPLAY_NAME),
+            "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?",
+            arrayOf("qlaunch-backup-%"),
+            null,
+        )?.use { cursor ->
+            val index = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
+            while (cursor.moveToNext()) names.put(cursor.getString(index))
+        }
+        return names.toString()
+    }
+
+    /// Reads one config backup back as text. Throws if it is not there.
+    @JvmStatic
+    fun readBackup(fileName: String): String {
+        val resolver = getAppContext().contentResolver
+        val collection = downloadsCollection()
+        resolver.query(
+            collection,
+            arrayOf(MediaStore.Downloads._ID),
+            "${MediaStore.Downloads.DISPLAY_NAME} = ?",
+            arrayOf(fileName),
+            null,
+        )?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Downloads._ID))
+                val uri = ContentUris.withAppendedId(collection, id)
+                resolver.openInputStream(uri)?.use { stream ->
+                    return stream.readBytes().toString(Charsets.UTF_8)
+                }
+            }
+        }
+        error("No backup named $fileName")
+    }
 
     /// Every launcher activity, as the JSON shape Rust's `parse_list_json` reads.
     /// `selfPackage` lets Rust drop our own package and is the package-name
@@ -139,7 +223,7 @@ object QLaunchBridge {
     /// Scaling here (rather than returning the intrinsic bitmap) is what keeps
     /// the pixels crossing the bridge proportional to the size the grid actually
     /// draws. The widget centres the result with `BoxFit.contain`.
-    private fun drawableToBitmap(drawable: Drawable, sizePx: Int): Bitmap {
+    internal fun drawableToBitmap(drawable: Drawable, sizePx: Int): Bitmap {
         // Cap the request so a bogus size cannot overflow the pixel count or
         // allocate an enormous bitmap.
         val target = sizePx.coerceIn(1, 1024)

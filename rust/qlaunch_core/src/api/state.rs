@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::icons::IconDiskCache;
 use crate::model::{AppEntry, AppRef, Item, Model, ModelError};
+use crate::platform::backup::{backup_name, is_backup_name};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
 use crate::reconcile::reconcile;
 use crate::settings::Settings;
@@ -229,7 +230,11 @@ pub(crate) fn usage_hits(limit: u32, frequent: bool) -> Vec<UsageHit> {
                     .map(|a| ((a.package.clone(), a.activity.clone()), i.label.clone()))
             })
             .collect();
-        let label_of = |a: &AppRef| labels.get(&(a.package.clone(), a.activity.clone())).cloned();
+        let label_of = |a: &AppRef| {
+            labels
+                .get(&(a.package.clone(), a.activity.clone()))
+                .cloned()
+        };
         let limit = limit as usize;
         Ok(if frequent {
             state.usage.frequent(limit, label_of)
@@ -268,9 +273,9 @@ pub(crate) fn install(
 
     // Keep icons beside the document so a restart starts warm. With no config
     // root there is nowhere to keep them.
-    let icon_cache = config_root.as_ref().map(|root| {
-        IconDiskCache::new(root.join("icon-cache"), DEFAULT_ICON_CACHE_BYTES)
-    });
+    let icon_cache = config_root
+        .as_ref()
+        .map(|root| IconDiskCache::new(root.join("icon-cache"), DEFAULT_ICON_CACHE_BYTES));
 
     // The lock is held from the load to the swap, so a watcher callback from
     // the app being replaced cannot save over what is loaded here.
@@ -387,6 +392,119 @@ pub(crate) fn with_app<T>(
 
 pub(crate) fn snapshot_now() -> Result<ModelSnapshot, String> {
     with_app(|app, _| Ok(snapshot_of(app)))
+}
+
+pub(crate) fn factory_reset() -> Result<ModelSnapshot, String> {
+    with_app(|app, bus| {
+        let entries = app.source.list_apps().map_err(|e| platform_error(&e))?;
+        let mut model = Model::new_default();
+        reconcile(&mut model, &entries);
+        let settings = Settings::default();
+        let usage = Usage::default();
+        let store = app
+            .store
+            .as_ref()
+            .ok_or("No configuration directory; reset cannot be saved")?;
+        store
+            .save(&model, &settings, &usage)
+            .map_err(|e| store_error(&e))?;
+        // Only discard referenced launcher-owned files after the replacement is durable.
+        for item in &app.model.items {
+            if let Some(path) = item
+                .icon_override
+                .as_ref()
+                .and_then(|name| store.icon_path(name).ok())
+            {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+        if let Some(cache) = &app.icon_cache {
+            cache.clear();
+        }
+        app.model = model;
+        app.settings = settings;
+        app.usage = usage;
+        app.icon_tokens = tokens_of(&entries);
+        app.save_problem = None;
+        app.platform_problem = None;
+        app.base_warnings.clear();
+        bus.emit(&CoreEvent::AppsChanged);
+        Ok(snapshot_of(app))
+    })
+}
+
+/// Writes the whole document to a dated file in the platform's Downloads
+/// folder and returns the file name. The current document is what is saved,
+/// so a failed save is not silently left out.
+pub(crate) fn backup_config() -> Result<String, String> {
+    with_app(|app, _| {
+        app.store.as_ref().ok_or_else(|| {
+            "NoStore: there is no configuration directory to read a backup from".to_string()
+        })?;
+        let bytes = Store::document_bytes(&app.model, &app.settings, &app.usage)
+            .map_err(|e| store_error(&e))?;
+        let name = backup_name(now_ms());
+        app.source
+            .write_backup(&name, &bytes)
+            .map_err(|e| platform_error(&e))?;
+        Ok(name)
+    })
+}
+
+/// The backup files in the platform's Downloads folder, newest first.
+pub(crate) fn list_backups() -> Result<Vec<String>, String> {
+    with_app(|app, _| app.source.list_backups().map_err(|e| platform_error(&e)))
+}
+
+/// Replaces the model, settings and usage with the contents of the backup
+/// `file_name`, then reconciles the imported layout with the apps installed
+/// here. The current document is kept beside it as `qlaunch-backup.pre-restore.json`.
+///
+/// Nothing is written until the backup has been read and parsed, so a corrupt
+/// or unknown file leaves the launcher exactly as it was.
+pub(crate) fn restore_config(file_name: String) -> Result<ModelSnapshot, String> {
+    with_app(|app, bus| {
+        if !is_backup_name(&file_name) {
+            return Err(format!(
+                "InvalidBackup: {file_name:?} is not a backup file name"
+            ));
+        }
+        let store = app.store.as_ref().ok_or_else(|| {
+            "NoStore: there is no configuration directory to restore into".to_string()
+        })?;
+        let bytes = app
+            .source
+            .read_backup(&file_name)
+            .map_err(|e| platform_error(&e))?;
+        let loaded = Store::parse_document(&bytes).map_err(|e| store_error(&e))?;
+
+        // Kept only after the backup parses, so a bad file cannot cost the
+        // current setup. A missing current document is normal on a fresh root.
+        if let Ok(current) = std::fs::read(store.document_path()) {
+            store
+                .write_pre_restore(&current)
+                .map_err(|e| store_error(&e))?;
+        }
+
+        let entries = app.source.list_apps().map_err(|e| platform_error(&e))?;
+        let mut model = loaded.model;
+        reconcile(&mut model, &entries);
+        store
+            .save(&model, &loaded.settings, &loaded.usage)
+            .map_err(|e| store_error(&e))?;
+
+        app.model = model;
+        app.settings = loaded.settings;
+        app.usage = loaded.usage;
+        app.icon_tokens = tokens_of(&entries);
+        app.save_problem = None;
+        app.platform_problem = None;
+        if let Some(cache) = &app.icon_cache {
+            cache.clear();
+        }
+        bus.emit(&CoreEvent::AppsChanged);
+        Ok(snapshot_of(app))
+    })
 }
 
 /// Applies `change` to a copy of the model and keeps it only if it worked and

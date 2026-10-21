@@ -1,5 +1,6 @@
-mod fake;
 pub mod android;
+pub mod backup;
+mod fake;
 // linux is desktop-only; its dependencies and APIs are not built for Android.
 #[cfg(not(target_os = "android"))]
 pub mod linux;
@@ -8,6 +9,7 @@ use thiserror::Error;
 
 use crate::model::{AppEntry, AppRef, IconImage};
 
+pub use backup::{backup_name, is_backup_name, sort_backup_names};
 pub use fake::FakeSource;
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -42,6 +44,33 @@ pub trait AppSource: Send + Sync {
         let _ = on_change;
         Err(PlatformError::Unsupported(
             "watching is not supported on this platform".into(),
+        ))
+    }
+
+    /// Writes `bytes` as the backup `name` in the platform's Downloads folder.
+    ///
+    /// `name` always comes from [`backup::backup_name`]; an implementation must
+    /// reject anything that is not a backup name rather than trust it as a path.
+    fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
+        let _ = (name, bytes);
+        Err(PlatformError::Unsupported(
+            "config backups are not supported on this platform".into(),
+        ))
+    }
+
+    /// The backup names in the platform's Downloads folder, newest first.
+    fn list_backups(&self) -> Result<Vec<String>, PlatformError> {
+        Err(PlatformError::Unsupported(
+            "config backups are not supported on this platform".into(),
+        ))
+    }
+
+    /// The bytes of the backup `name` from the platform's Downloads folder.
+    /// `name` is checked as in [`AppSource::write_backup`].
+    fn read_backup(&self, name: &str) -> Result<Vec<u8>, PlatformError> {
+        let _ = name;
+        Err(PlatformError::Unsupported(
+            "config backups are not supported on this platform".into(),
         ))
     }
 }

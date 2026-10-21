@@ -84,6 +84,114 @@ fn has_warning(snap: &ModelSnapshot, needle: &str) -> bool {
 }
 
 #[test]
+fn shortcuts_persist_and_reject_invalid_destinations_or_blank_commands() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let home = group_id(&snap, GroupRole::Home);
+    let snap = block_on(api::add_lock_shortcut(home.clone())).unwrap();
+    let item = snap
+        .items
+        .iter()
+        .find(|i| i.label == "Lock Screen")
+        .unwrap();
+    assert_eq!(item.group_id, home);
+    assert!(item.app.is_none());
+    assert!(
+        serde_json::to_string(&item.shortcut)
+            .unwrap()
+            .contains("lock_screen")
+    );
+    assert!(block_on(api::add_lock_shortcut("gone".into())).is_err());
+    assert!(
+        block_on(api::add_command_shortcut(
+            home.clone(),
+            " ".into(),
+            "true".into()
+        ))
+        .is_err()
+    );
+    assert!(
+        block_on(api::add_command_shortcut(
+            home.clone(),
+            "Test".into(),
+            " ".into()
+        ))
+        .is_err()
+    );
+    let snap = block_on(api::add_command_shortcut(
+        home,
+        "Editor".into(),
+        "gedit --new-window".into(),
+    ))
+    .unwrap();
+    let restored = init_fake(dir.path());
+    assert_eq!(snap.items, restored.items);
+}
+
+#[test]
+fn shortcut_result_validates_typed_extras_and_preserves_data_and_mime_type() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let home = group_id(&snap, GroupRole::Home);
+    let json = r#"{"label":"Open","payload":{"type":"android","action":"android.intent.action.VIEW","data":"content://example/item","mime_type":"text/plain","package":null,"component":null,"flags":0,"categories":[],"extras":[{"key":"n","kind":"int","value":"42"}]},"icon":null}"#;
+    qlaunch_core::api::shortcuts::accept_result(&home, json).unwrap();
+    let snap = block_on(api::snapshot()).unwrap();
+    let item = snap.items.iter().find(|i| i.label == "Open").unwrap();
+    let encoded = serde_json::to_string(&item.shortcut).unwrap();
+    assert!(encoded.contains("content://example/item"));
+    assert!(encoded.contains("text/plain"));
+    assert!(
+        qlaunch_core::api::shortcuts::accept_result(&home, &json.replace("42", "not an integer"))
+            .is_err()
+    );
+    assert!(qlaunch_core::api::shortcuts::accept_result("gone", json).is_err());
+    assert_eq!(
+        block_on(api::snapshot()).unwrap().items.len(),
+        snap.items.len()
+    );
+}
+
+#[test]
+fn factory_reset_restores_defaults_and_rediscovers_apps() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    block_on(api::add_lock_shortcut(group_id(&snap, GroupRole::Home))).unwrap();
+    block_on(api::add_group("Custom".into())).unwrap();
+    block_on(api::update_settings(SettingsPatch {
+        icon_size: Some(90),
+        ..Default::default()
+    }))
+    .unwrap();
+    block_on(api::launch_app(
+        "org.alpha".into(),
+        "org.alpha.desktop".into(),
+    ))
+    .unwrap();
+    let reset = block_on(api::factory_reset()).unwrap();
+    assert_eq!(reset.settings.icon_size, 54);
+    assert_eq!(reset.page_ids.len(), 3);
+    assert_eq!(reset.items.len(), 3);
+    assert!(reset.items.iter().all(|i| i.app.is_some()));
+    assert!(block_on(api::frequent_apps(10)).is_empty());
+    assert_eq!(init_fake(dir.path()), reset);
+}
+
+#[test]
+fn factory_reset_save_failure_preserves_the_old_layout() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    let before = block_on(api::add_group("Keep me".into())).unwrap();
+    fs::remove_file(dir.path().join("qlaunch.json")).unwrap();
+    fs::create_dir(dir.path().join("qlaunch.json")).unwrap();
+    assert!(block_on(api::factory_reset()).is_err());
+    assert_eq!(block_on(api::snapshot()).unwrap(), before);
+}
+
+#[test]
 fn init_creates_the_config_root_and_the_first_run_model() {
     let _guard = serial();
     let dir = tempdir().unwrap();
@@ -925,7 +1033,11 @@ fn usage_survives_a_reinit() {
     let _guard = serial();
     let dir = tempdir().unwrap();
     init_fake(dir.path());
-    block_on(api::launch_app("org.beta".into(), "org.beta.desktop".into())).unwrap();
+    block_on(api::launch_app(
+        "org.beta".into(),
+        "org.beta.desktop".into(),
+    ))
+    .unwrap();
 
     // Start again over the same directory: the usage is read back.
     init_fake(dir.path());
@@ -937,7 +1049,11 @@ fn usage_queries_skip_apps_that_are_not_in_the_model() {
     let _guard = serial();
     let dir = tempdir().unwrap();
     init_fake(dir.path());
-    block_on(api::launch_app("org.alpha".into(), "org.alpha.desktop".into())).unwrap();
+    block_on(api::launch_app(
+        "org.alpha".into(),
+        "org.alpha.desktop".into(),
+    ))
+    .unwrap();
 
     // Remove the item; its usage entry stays on disk but must not be shown.
     let snap = block_on(api::snapshot()).unwrap();
@@ -1016,12 +1132,7 @@ fn a_package_change_drops_the_disk_icon_cache() {
     let dir = tempdir().unwrap();
     let source = IconSource::new(fixtures(), vec![1, 2, 3]);
     let apps = source.apps.clone();
-    api::init_with_source(
-        Some(dir.path().to_path_buf()),
-        Box::new(source),
-        Vec::new(),
-    )
-    .unwrap();
+    api::init_with_source(Some(dir.path().to_path_buf()), Box::new(source), Vec::new()).unwrap();
 
     let alpha = app_ref("org.alpha");
     assert!(
@@ -1047,7 +1158,10 @@ fn a_package_change_drops_the_disk_icon_cache() {
     let remaining = std::fs::read_dir(&cache_dir)
         .map(|entries| entries.count())
         .unwrap_or(0);
-    assert_eq!(remaining, 0, "the icon cache is cleared on an app-set change");
+    assert_eq!(
+        remaining, 0,
+        "the icon cache is cleared on an app-set change"
+    );
 }
 
 #[test]
@@ -1057,12 +1171,7 @@ fn an_app_update_refetches_the_icon() {
     let source = IconSource::new(fixtures(), vec![1, 2, 3]);
     let apps = source.apps.clone();
     let icon = source.icon.clone();
-    api::init_with_source(
-        Some(dir.path().to_path_buf()),
-        Box::new(source),
-        Vec::new(),
-    )
-    .unwrap();
+    api::init_with_source(Some(dir.path().to_path_buf()), Box::new(source), Vec::new()).unwrap();
 
     let alpha = app_ref("org.alpha");
     let first = block_on(api::icon_for(
@@ -1096,4 +1205,54 @@ fn an_app_update_refetches_the_icon() {
         vec![4, 5, 6],
         "an updated app does not keep its old icon"
     );
+}
+
+#[test]
+fn a_backup_is_listed_and_restores_the_whole_document() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    let snap = block_on(api::add_group("Holiday".into())).unwrap();
+    let holiday = snap
+        .groups
+        .iter()
+        .find(|g| g.label == "Holiday")
+        .unwrap()
+        .id
+        .clone();
+
+    let name = block_on(api::backup_config()).unwrap();
+    assert!(name.starts_with("qlaunch-backup-"), "{name}");
+    assert!(name.ends_with(".json"), "{name}");
+    assert!(block_on(api::list_backups()).unwrap().contains(&name));
+
+    block_on(api::delete_group(holiday)).unwrap();
+    assert!(
+        !block_on(api::snapshot())
+            .unwrap()
+            .groups
+            .iter()
+            .any(|g| g.label == "Holiday")
+    );
+
+    let restored = block_on(api::restore_config(name.clone())).unwrap();
+    assert!(restored.groups.iter().any(|g| g.label == "Holiday"));
+    assert!(dir.path().join("qlaunch-backup.pre-restore.json").is_file());
+}
+
+#[test]
+fn restoring_rejects_a_bad_name_or_a_corrupt_backup_and_changes_nothing() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let good = "qlaunch-backup-2026-01-02-030405.json";
+    let before = api::init_with_source(
+        Some(dir.path().to_path_buf()),
+        Box::new(FakeSource::new(fixtures()).with_backup(good, b"not json".to_vec())),
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert!(block_on(api::restore_config("../../etc/passwd".into())).is_err());
+    assert!(block_on(api::restore_config(good.into())).is_err());
+    assert_eq!(block_on(api::snapshot()).unwrap().groups, before.groups);
 }

@@ -1,6 +1,7 @@
 import 'package:qlaunch/src/rust/api/api.dart' as rust;
 import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
+import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/rust/model/icon.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/search.dart';
@@ -24,6 +25,21 @@ abstract class LauncherBackend {
   Future<ModelSnapshot> setItemIcon(String id, List<int> png);
   Future<ModelSnapshot> removeItem(String id);
   Future<ModelSnapshot> sortGroup(String id);
+  Future<ModelSnapshot> factoryReset();
+  Future<String> backupConfig();
+  Future<List<String>> listBackups();
+  Future<ModelSnapshot> restoreConfig(String fileName);
+  Future<ModelSnapshot> addLockShortcut(String targetGroupId);
+  Future<ModelSnapshot> addCommandShortcut(
+    String targetGroupId,
+    String label,
+    String command,
+  );
+  Future<List<ShortcutProvider>> shortcutProviders();
+  Future<void> beginShortcut(String provider, String targetGroupId);
+  Future<void> launchShortcut(String id);
+  Future<void> lockScreen();
+  Future<List<int>?> itemIcon(String id);
   Future<ModelSnapshot> updateSettings(SettingsPatch patch);
   Future<String?> homeGroupId();
   Future<List<SearchHit>> searchAllApps(String query);
@@ -89,6 +105,51 @@ class RustBackend implements LauncherBackend {
 
   @override
   Future<ModelSnapshot> sortGroup(String id) => rust.sortGroup(id: id);
+
+  @override
+  Future<ModelSnapshot> factoryReset() => rust.factoryReset();
+
+  @override
+  Future<String> backupConfig() => rust.backupConfig();
+
+  @override
+  Future<List<String>> listBackups() => rust.listBackups();
+
+  @override
+  Future<ModelSnapshot> restoreConfig(String fileName) =>
+      rust.restoreConfig(fileName: fileName);
+
+  @override
+  Future<ModelSnapshot> addLockShortcut(String targetGroupId) =>
+      rust.addLockShortcut(targetGroupId: targetGroupId);
+
+  @override
+  Future<ModelSnapshot> addCommandShortcut(
+    String targetGroupId,
+    String label,
+    String command,
+  ) => rust.addCommandShortcut(
+    targetGroupId: targetGroupId,
+    label: label,
+    command: command,
+  );
+
+  @override
+  Future<List<ShortcutProvider>> shortcutProviders() =>
+      rust.shortcutProviders();
+
+  @override
+  Future<void> beginShortcut(String provider, String targetGroupId) =>
+      rust.beginShortcut(provider: provider, targetGroupId: targetGroupId);
+
+  @override
+  Future<void> launchShortcut(String id) => rust.launchShortcut(id: id);
+
+  @override
+  Future<void> lockScreen() => rust.lockScreen();
+
+  @override
+  Future<List<int>?> itemIcon(String id) => rust.itemIcon(id: id);
 
   @override
   Future<ModelSnapshot> updateSettings(SettingsPatch patch) =>

@@ -114,11 +114,7 @@ fn over_the_cap_evicts_oldest_first() {
     sleep(Duration::from_millis(10));
     cache.put(&app("c"), 48, 0, &rgba(2, 2, 9));
 
-    assert_eq!(
-        cache.get(&app("a"), 48, 0),
-        None,
-        "oldest was evicted"
-    );
+    assert_eq!(cache.get(&app("a"), 48, 0), None, "oldest was evicted");
     assert!(cache.get(&app("b"), 48, 0).is_some());
     assert!(cache.get(&app("c"), 48, 0).is_some());
 }

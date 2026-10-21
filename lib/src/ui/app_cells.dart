@@ -6,6 +6,8 @@ import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
+import 'package:qlaunch/src/ui/grid_geometry.dart';
+import 'package:qlaunch/src/ui/scroll_edge_fade.dart';
 
 /// A list of items drawn as the launcher's grid of [AppCell]s.
 ///
@@ -25,6 +27,7 @@ class AppCells extends StatelessWidget {
     required this.items,
     this.onItemTap,
     this.onItemLongPress,
+    this.onItemPointerDown,
   });
 
   final LauncherState state;
@@ -43,10 +46,19 @@ class AppCells extends StatelessWidget {
   /// Called for any item. With none given, a long-press does nothing.
   final ValueChanged<Item>? onItemLongPress;
 
+  /// Reports the pointer that lands on a cell, before an ancestor listener
+  /// sees the same down event.
+  final ValueChanged<int>? onItemPointerDown;
+
   void _launch(Item item) {
     final app = item.app;
-    if (app == null) return;
-    unawaited(state.launchApp(app.package, app.activity));
+    if (app != null && !item.uninstalled) {
+      unawaited(state.launchApp(app.package, app.activity));
+      return;
+    }
+    if (item.shortcut != null) {
+      unawaited(state.launchShortcut(item.id));
+    }
   }
 
   @override
@@ -54,55 +66,75 @@ class AppCells extends StatelessWidget {
     final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
     final columns = math.max(
       1,
-      (portrait
-              ? settings.gridColumnsPortrait
-              : settings.gridColumnsLandscape)
+      (portrait ? settings.gridColumnsPortrait : settings.gridColumnsLandscape)
           .toInt(),
     );
     // The bridge takes physical pixels; the setting is in dp.
-    final sizePx =
-        (settings.iconSize * MediaQuery.devicePixelRatioOf(context)).round();
+    final sizePx = (settings.iconSize * MediaQuery.devicePixelRatioOf(context))
+        .round();
 
-    return GridView.builder(
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: columns,
-        // Square cells in every layout. A builder choice: the spec gives
-        // no ratio, and a cell this shape holds an icon with its label
-        // below or beside it.
-        childAspectRatio: 1,
-      ),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[i];
-        final app = item.app;
-        // Only an installed app has an icon to fetch. A shortcut has no
-        // app, and an uninstalled app no longer has an icon; both draw the
-        // placeholder. A hidden or zero-sized icon is not worth a request.
-        // TODO(plan-3): `Item.iconOverride` names a PNG under the config
-        // root, but there is no bridge function to read its bytes yet, so
-        // the platform icon is still shown for such an item.
-        final wantsIcon =
-            app != null &&
-            !item.uninstalled &&
-            settings.iconsVisible &&
-            sizePx > 0;
-        Widget cell(ImageProvider? icon) => AppCell(
-          item: item,
-          icon: icon,
-          settings: settings,
-          onTap: () => (onItemTap ?? _launch)(item),
-          onLongPress: onItemLongPress == null
-              ? null
-              : () => onItemLongPress!(item),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final rowExtent = gridRowExtent(
+          context,
+          settings,
+          constraints.maxWidth / columns,
         );
-        if (!wantsIcon) {
-          return KeyedSubtree(key: ValueKey(item.id), child: cell(null));
-        }
-        return FutureBuilder<ImageProvider?>(
-          key: ValueKey(item.id),
-          future: state.iconFor(app.package, app.activity, sizePx),
-          builder: (context, snapshot) => cell(snapshot.data),
+        final tileFade = settings.scrollFade == ScrollFadeStyle.tile;
+        final grid = GridView.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisExtent: rowExtent,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, i) {
+            final item = items[i];
+            final app = item.app;
+            // Only an installed app has a platform icon, and only a shortcut with
+            // a stored icon has bytes to read. Everything else draws the
+            // placeholder. A hidden or zero-sized icon is not worth a request.
+            Future<ImageProvider?>? icon;
+            if (settings.iconsVisible && sizePx > 0) {
+              if (app != null && !item.uninstalled) {
+                icon = state.iconFor(app.package, app.activity, sizePx);
+              } else if (item.iconOverride != null) {
+                icon = state.itemIcon(item.id);
+              }
+            }
+            Widget cell(ImageProvider? icon) => AppCell(
+              item: item,
+              icon: icon,
+              settings: settings,
+              onTap: () => (onItemTap ?? _launch)(item),
+              onLongPress: onItemLongPress == null
+                  ? null
+                  : () => onItemLongPress!(item),
+              onPointerDown: onItemPointerDown,
+            );
+            final Widget tile;
+            if (icon == null) {
+              tile = KeyedSubtree(key: ValueKey(item.id), child: cell(null));
+            } else {
+              tile = FutureBuilder<ImageProvider?>(
+                key: ValueKey(item.id),
+                future: icon,
+                builder: (context, snapshot) => cell(snapshot.data),
+              );
+            }
+            if (!tileFade) return tile;
+            return TileEdgeFade(
+              key: ValueKey(item.id),
+              index: i,
+              columns: columns,
+              rowExtent: rowExtent,
+              viewportHeight: constraints.maxHeight,
+              child: tile,
+            );
+          },
         );
+        return settings.scrollFade == ScrollFadeStyle.gradient
+            ? ScrollEdgeFade(child: grid)
+            : grid;
       },
     );
   }

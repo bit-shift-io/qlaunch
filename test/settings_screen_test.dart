@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/advanced_screen.dart';
 import 'package:qlaunch/src/ui/group_editor_screen.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 
@@ -41,8 +42,8 @@ void main() {
   group('controls', () {
     testWidgets('every setting in the table has one', (tester) async {
       await pumpSettings(tester);
-      // §8.6's table: 15 settings plus the two actions below them.
-      expect(SettingField.values, hasLength(15));
+      // §8.6's table: 16 settings. The actions live behind the Advanced row.
+      expect(SettingField.values, hasLength(16));
       for (final field in SettingField.values) {
         expect(
           find.byKey(SettingsScreen.controlKey(field)),
@@ -50,8 +51,7 @@ void main() {
           reason: 'no control for $field',
         );
       }
-      expect(find.byKey(SettingsScreen.restartKey), findsOneWidget);
-      expect(find.byKey(SettingsScreen.factoryResetKey), findsOneWidget);
+      expect(find.byKey(SettingsScreen.advancedKey), findsOneWidget);
     });
 
     testWidgets('the text size row is called "Font size"', (tester) async {
@@ -73,11 +73,7 @@ void main() {
         matching: find.text('Groups'),
       );
       expect(
-        tester
-            .renderObject<RenderParagraph>(title)
-            .text
-            .style
-            ?.fontSize,
+        tester.renderObject<RenderParagraph>(title).text.style?.fontSize,
         testSettings.labelSize.toDouble(),
       );
     });
@@ -133,6 +129,24 @@ void main() {
       ]);
     });
 
+    testWidgets('changing the scroll fade sends only that setting', (
+      tester,
+    ) async {
+      await pumpSettings(tester);
+      await tapControl(
+        tester,
+        find.byKey(
+          SettingsScreen.choiceKey(
+            SettingField.scrollFade,
+            ScrollFadeStyle.tile,
+          ),
+        ),
+      );
+      expect(fake.settingsPatches, [
+        const SettingsPatch(scrollFade: ScrollFadeStyle.tile),
+      ]);
+    });
+
     testWidgets('a value is shown as the snapshot returns it, not as set', (
       tester,
     ) async {
@@ -176,7 +190,7 @@ void main() {
       tester.view.physicalSize = const Size(360, 640);
       addTearDown(tester.view.reset);
       await pumpSettings(tester);
-      await tester.ensureVisible(find.byKey(SettingsScreen.factoryResetKey));
+      await tester.ensureVisible(find.byKey(SettingsScreen.advancedKey));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     });
@@ -201,48 +215,11 @@ void main() {
     expect(find.byType(GroupEditorScreen), findsOneWidget);
   });
 
-  group('actions', () {
-    testWidgets('Restart Launcher reads the model again', (tester) async {
-      await pumpSettings(tester);
-      final before = fake.calls.where((c) => c == 'init').length;
-      await tapControl(tester, find.byKey(SettingsScreen.restartKey));
-      expect(fake.calls.where((c) => c == 'init').length, before + 1);
-    });
+  testWidgets('the Advanced row opens the advanced screen', (tester) async {
+    await pumpSettings(tester);
 
-    testWidgets('Factory Reset asks first, and calls nothing', (tester) async {
-      await pumpSettings(tester);
-      final calls = List.of(fake.calls);
-      final control = find.byKey(SettingsScreen.factoryResetKey);
-      await tester.ensureVisible(control);
-      await tester.pump();
-      await tester.tap(control);
-      await tester.pumpAndSettle();
+    await tapControl(tester, find.byKey(SettingsScreen.advancedKey));
 
-      expect(find.textContaining('cannot be undone'), findsOneWidget);
-      expect(fake.calls, calls);
-
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('cannot be undone'), findsNothing);
-      expect(fake.calls, calls);
-    });
-
-    testWidgets('confirming says the core command is still missing', (
-      tester,
-    ) async {
-      await pumpSettings(tester);
-      final calls = List.of(fake.calls);
-      final control = find.byKey(SettingsScreen.factoryResetKey);
-      await tester.ensureVisible(control);
-      await tester.pump();
-      await tester.tap(control);
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.text('Reset'));
-      await tester.pumpAndSettle();
-
-      expect(find.textContaining('not available yet'), findsOneWidget);
-      expect(fake.calls, calls);
-    });
+    expect(find.byType(AdvancedScreen), findsOneWidget);
   });
 }

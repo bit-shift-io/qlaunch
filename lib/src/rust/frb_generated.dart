@@ -5,6 +5,7 @@
 
 import 'api/api.dart';
 import 'api/events.dart';
+import 'api/shortcuts.dart';
 
 import 'dart:async';
 import 'dart:convert';
@@ -75,7 +76,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1008772151;
+  int get rustContentHash => 1653083907;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -87,13 +88,32 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<ModelSnapshot> crateApiApiAddCommandShortcut({
+    required String targetGroupId,
+    required String label,
+    required String command,
+  });
+
   Future<ModelSnapshot> crateApiApiAddGroup({required String label});
+
+  Future<ModelSnapshot> crateApiApiAddLockShortcut({
+    required String targetGroupId,
+  });
+
+  Future<String> crateApiApiBackupConfig();
+
+  Future<void> crateApiApiBeginShortcut({
+    required String provider,
+    required String targetGroupId,
+  });
 
   Future<void> crateApiApiChooseWallpaper();
 
   Future<ModelSnapshot> crateApiApiDeleteGroup({required String id});
 
   Stream<CoreEvent> crateApiApiEvents();
+
+  Future<ModelSnapshot> crateApiApiFactoryReset();
 
   Future<List<UsageHit>> crateApiApiFrequentApps({required int limit});
 
@@ -107,10 +127,18 @@ abstract class RustLibApi extends BaseApi {
 
   Future<ModelSnapshot> crateApiApiInit({String? configRootOverride});
 
+  Future<Uint8List?> crateApiApiItemIcon({required String id});
+
   Future<void> crateApiApiLaunchApp({
     required String package,
     required String activity,
   });
+
+  Future<void> crateApiApiLaunchShortcut({required String id});
+
+  Future<List<String>> crateApiApiListBackups();
+
+  Future<void> crateApiApiLockScreen();
 
   Future<ModelSnapshot> crateApiApiMoveGroup({
     required String id,
@@ -139,6 +167,8 @@ abstract class RustLibApi extends BaseApi {
     required String label,
   });
 
+  Future<ModelSnapshot> crateApiApiRestoreConfig({required String fileName});
+
   Future<List<SearchHit>> crateApiApiSearchAllApps({required String query});
 
   Future<ModelSnapshot> crateApiApiSetGroupHidden({
@@ -155,6 +185,8 @@ abstract class RustLibApi extends BaseApi {
     required String id,
     required List<int> png,
   });
+
+  Future<List<ShortcutProvider>> crateApiApiShortcutProviders();
 
   Future<ModelSnapshot> crateApiApiSnapshot();
 
@@ -178,6 +210,43 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Future<ModelSnapshot> crateApiApiAddCommandShortcut({
+    required String targetGroupId,
+    required String label,
+    required String command,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(targetGroupId, serializer);
+          sse_encode_String(label, serializer);
+          sse_encode_String(command, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiAddCommandShortcutConstMeta,
+        argValues: [targetGroupId, label, command],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiAddCommandShortcutConstMeta =>
+      const TaskConstMeta(
+        debugName: "add_command_shortcut",
+        argNames: ["targetGroupId", "label", "command"],
+      );
+
+  @override
   Future<ModelSnapshot> crateApiApiAddGroup({required String label}) {
     return handler.executeNormal(
       NormalTask(
@@ -187,7 +256,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 2,
             port: port_,
           );
         },
@@ -206,6 +275,99 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "add_group", argNames: ["label"]);
 
   @override
+  Future<ModelSnapshot> crateApiApiAddLockShortcut({
+    required String targetGroupId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(targetGroupId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiAddLockShortcutConstMeta,
+        argValues: [targetGroupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiAddLockShortcutConstMeta => const TaskConstMeta(
+    debugName: "add_lock_shortcut",
+    argNames: ["targetGroupId"],
+  );
+
+  @override
+  Future<String> crateApiApiBackupConfig() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiBackupConfigConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiBackupConfigConstMeta =>
+      const TaskConstMeta(debugName: "backup_config", argNames: []);
+
+  @override
+  Future<void> crateApiApiBeginShortcut({
+    required String provider,
+    required String targetGroupId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(provider, serializer);
+          sse_encode_String(targetGroupId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiBeginShortcutConstMeta,
+        argValues: [provider, targetGroupId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiBeginShortcutConstMeta => const TaskConstMeta(
+    debugName: "begin_shortcut",
+    argNames: ["provider", "targetGroupId"],
+  );
+
+  @override
   Future<void> crateApiApiChooseWallpaper() {
     return handler.executeNormal(
       NormalTask(
@@ -214,7 +376,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 6,
             port: port_,
           );
         },
@@ -242,7 +404,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 7,
             port: port_,
           );
         },
@@ -272,7 +434,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 4,
+              funcId: 8,
               port: port_,
             );
           },
@@ -293,6 +455,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "events", argNames: ["sink"]);
 
   @override
+  Future<ModelSnapshot> crateApiApiFactoryReset() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 9,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiFactoryResetConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiFactoryResetConstMeta =>
+      const TaskConstMeta(debugName: "factory_reset", argNames: []);
+
+  @override
   Future<List<UsageHit>> crateApiApiFrequentApps({required int limit}) {
     return handler.executeNormal(
       NormalTask(
@@ -302,7 +491,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 10,
             port: port_,
           );
         },
@@ -329,7 +518,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 11,
             port: port_,
           );
         },
@@ -363,7 +552,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 12,
             port: port_,
           );
         },
@@ -393,7 +582,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 13,
             port: port_,
           );
         },
@@ -412,6 +601,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "init", argNames: ["configRootOverride"]);
 
   @override
+  Future<Uint8List?> crateApiApiItemIcon({required String id}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 14,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_list_prim_u_8_strict,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiApiItemIconConstMeta,
+        argValues: [id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiItemIconConstMeta =>
+      const TaskConstMeta(debugName: "item_icon", argNames: ["id"]);
+
+  @override
   Future<void> crateApiApiLaunchApp({
     required String package,
     required String activity,
@@ -425,7 +642,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 15,
             port: port_,
           );
         },
@@ -446,6 +663,88 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   );
 
   @override
+  Future<void> crateApiApiLaunchShortcut({required String id}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(id, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiLaunchShortcutConstMeta,
+        argValues: [id],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiLaunchShortcutConstMeta =>
+      const TaskConstMeta(debugName: "launch_shortcut", argNames: ["id"]);
+
+  @override
+  Future<List<String>> crateApiApiListBackups() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiListBackupsConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiListBackupsConstMeta =>
+      const TaskConstMeta(debugName: "list_backups", argNames: []);
+
+  @override
+  Future<void> crateApiApiLockScreen() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiLockScreenConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiLockScreenConstMeta =>
+      const TaskConstMeta(debugName: "lock_screen", argNames: []);
+
+  @override
   Future<ModelSnapshot> crateApiApiMoveGroup({
     required String id,
     required int newOrder,
@@ -459,7 +758,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 19,
             port: port_,
           );
         },
@@ -495,7 +794,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 20,
             port: port_,
           );
         },
@@ -525,7 +824,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 21,
             port: port_,
           );
         },
@@ -552,7 +851,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 22,
             port: port_,
           );
         },
@@ -580,7 +879,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 23,
             port: port_,
           );
         },
@@ -612,7 +911,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 24,
             port: port_,
           );
         },
@@ -644,7 +943,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 25,
             port: port_,
           );
         },
@@ -663,6 +962,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "rename_item", argNames: ["id", "label"]);
 
   @override
+  Future<ModelSnapshot> crateApiApiRestoreConfig({required String fileName}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(fileName, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 26,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_model_snapshot,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiRestoreConfigConstMeta,
+        argValues: [fileName],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiRestoreConfigConstMeta =>
+      const TaskConstMeta(debugName: "restore_config", argNames: ["fileName"]);
+
+  @override
   Future<List<SearchHit>> crateApiApiSearchAllApps({required String query}) {
     return handler.executeNormal(
       NormalTask(
@@ -672,7 +999,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 27,
             port: port_,
           );
         },
@@ -704,7 +1031,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 28,
             port: port_,
           );
         },
@@ -738,7 +1065,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 29,
             port: port_,
           );
         },
@@ -772,7 +1099,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 30,
             port: port_,
           );
         },
@@ -791,6 +1118,33 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "set_item_icon", argNames: ["id", "png"]);
 
   @override
+  Future<List<ShortcutProvider>> crateApiApiShortcutProviders() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 31,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_shortcut_provider,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiApiShortcutProvidersConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiApiShortcutProvidersConstMeta =>
+      const TaskConstMeta(debugName: "shortcut_providers", argNames: []);
+
+  @override
   Future<ModelSnapshot> crateApiApiSnapshot() {
     return handler.executeNormal(
       NormalTask(
@@ -799,7 +1153,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 32,
             port: port_,
           );
         },
@@ -827,7 +1181,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 33,
             port: port_,
           );
         },
@@ -855,7 +1209,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 34,
             port: port_,
           );
         },
@@ -887,7 +1241,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 35,
             port: port_,
           );
         },
@@ -914,7 +1268,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 36,
             port: port_,
           );
         },
@@ -1014,6 +1368,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Orientation dco_decode_box_autoadd_orientation(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_orientation(raw);
+  }
+
+  @protected
+  ScrollFadeStyle dco_decode_box_autoadd_scroll_fade_style(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_scroll_fade_style(raw);
   }
 
   @protected
@@ -1212,6 +1572,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<ShortcutProvider> dco_decode_list_shortcut_provider(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_shortcut_provider).toList();
+  }
+
+  @protected
   List<UsageHit> dco_decode_list_usage_hit(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_usage_hit).toList();
@@ -1295,6 +1661,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScrollFadeStyle? dco_decode_opt_box_autoadd_scroll_fade_style(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_scroll_fade_style(raw);
+  }
+
+  @protected
   ShortcutPayload? dco_decode_opt_box_autoadd_shortcut_payload(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_shortcut_payload(raw);
@@ -1313,9 +1685,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Uint8List? dco_decode_opt_list_prim_u_8_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_list_prim_u_8_strict(raw);
+  }
+
+  @protected
   Orientation dco_decode_orientation(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return Orientation.values[raw as int];
+  }
+
+  @protected
+  ScrollFadeStyle dco_decode_scroll_fade_style(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return ScrollFadeStyle.values[raw as int];
   }
 
   @protected
@@ -1335,24 +1719,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 15)
-      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
+    if (arr.length != 16)
+      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
     return Settings(
       gridColumnsPortrait: dco_decode_i_64(arr[0]),
       gridColumnsLandscape: dco_decode_i_64(arr[1]),
       layout: dco_decode_layout_style(arr[2]),
       tabVisibility: dco_decode_tab_visibility(arr[3]),
-      wallpaperAlpha: dco_decode_i_64(arr[4]),
-      statusBarVisible: dco_decode_bool(arr[5]),
-      iconsVisible: dco_decode_bool(arr[6]),
-      iconSize: dco_decode_i_64(arr[7]),
-      iconAlpha: dco_decode_i_64(arr[8]),
-      labelsVisible: dco_decode_bool(arr[9]),
-      labelSize: dco_decode_i_64(arr[10]),
-      labelTypeface: dco_decode_typeface(arr[11]),
-      labelColour: dco_decode_label_colour(arr[12]),
-      labelShadow: dco_decode_bool(arr[13]),
-      orientation: dco_decode_orientation(arr[14]),
+      scrollFade: dco_decode_scroll_fade_style(arr[4]),
+      wallpaperAlpha: dco_decode_i_64(arr[5]),
+      statusBarVisible: dco_decode_bool(arr[6]),
+      iconsVisible: dco_decode_bool(arr[7]),
+      iconSize: dco_decode_i_64(arr[8]),
+      iconAlpha: dco_decode_i_64(arr[9]),
+      labelsVisible: dco_decode_bool(arr[10]),
+      labelSize: dco_decode_i_64(arr[11]),
+      labelTypeface: dco_decode_typeface(arr[12]),
+      labelColour: dco_decode_label_colour(arr[13]),
+      labelShadow: dco_decode_bool(arr[14]),
+      orientation: dco_decode_orientation(arr[15]),
     );
   }
 
@@ -1360,24 +1745,25 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SettingsPatch dco_decode_settings_patch(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 15)
-      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
+    if (arr.length != 16)
+      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
     return SettingsPatch(
       gridColumnsPortrait: dco_decode_opt_box_autoadd_i_64(arr[0]),
       gridColumnsLandscape: dco_decode_opt_box_autoadd_i_64(arr[1]),
       layout: dco_decode_opt_box_autoadd_layout_style(arr[2]),
       tabVisibility: dco_decode_opt_box_autoadd_tab_visibility(arr[3]),
-      wallpaperAlpha: dco_decode_opt_box_autoadd_i_64(arr[4]),
-      statusBarVisible: dco_decode_opt_box_autoadd_bool(arr[5]),
-      iconsVisible: dco_decode_opt_box_autoadd_bool(arr[6]),
-      iconSize: dco_decode_opt_box_autoadd_i_64(arr[7]),
-      iconAlpha: dco_decode_opt_box_autoadd_i_64(arr[8]),
-      labelsVisible: dco_decode_opt_box_autoadd_bool(arr[9]),
-      labelSize: dco_decode_opt_box_autoadd_i_64(arr[10]),
-      labelTypeface: dco_decode_opt_box_autoadd_typeface(arr[11]),
-      labelColour: dco_decode_opt_box_autoadd_label_colour(arr[12]),
-      labelShadow: dco_decode_opt_box_autoadd_bool(arr[13]),
-      orientation: dco_decode_opt_box_autoadd_orientation(arr[14]),
+      scrollFade: dco_decode_opt_box_autoadd_scroll_fade_style(arr[4]),
+      wallpaperAlpha: dco_decode_opt_box_autoadd_i_64(arr[5]),
+      statusBarVisible: dco_decode_opt_box_autoadd_bool(arr[6]),
+      iconsVisible: dco_decode_opt_box_autoadd_bool(arr[7]),
+      iconSize: dco_decode_opt_box_autoadd_i_64(arr[8]),
+      iconAlpha: dco_decode_opt_box_autoadd_i_64(arr[9]),
+      labelsVisible: dco_decode_opt_box_autoadd_bool(arr[10]),
+      labelSize: dco_decode_opt_box_autoadd_i_64(arr[11]),
+      labelTypeface: dco_decode_opt_box_autoadd_typeface(arr[12]),
+      labelColour: dco_decode_opt_box_autoadd_label_colour(arr[13]),
+      labelShadow: dco_decode_opt_box_autoadd_bool(arr[14]),
+      orientation: dco_decode_opt_box_autoadd_orientation(arr[15]),
     );
   }
 
@@ -1386,6 +1772,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     switch (raw[0]) {
       case 0:
+        return ShortcutPayload_LockScreen();
+      case 1:
         return ShortcutPayload_Android(
           action: dco_decode_opt_String(raw[1]),
           data: dco_decode_opt_String(raw[2]),
@@ -1396,11 +1784,23 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           flags: dco_decode_i_32(raw[7]),
           extras: dco_decode_list_extra(raw[8]),
         );
-      case 1:
+      case 2:
         return ShortcutPayload_Command(command: dco_decode_String(raw[1]));
       default:
         throw Exception("unreachable");
     }
+  }
+
+  @protected
+  ShortcutProvider dco_decode_shortcut_provider(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return ShortcutProvider(
+      id: dco_decode_String(arr[0]),
+      label: dco_decode_String(arr[1]),
+    );
   }
 
   @protected
@@ -1531,6 +1931,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Orientation sse_decode_box_autoadd_orientation(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_orientation(deserializer));
+  }
+
+  @protected
+  ScrollFadeStyle sse_decode_box_autoadd_scroll_fade_style(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_scroll_fade_style(deserializer));
   }
 
   @protected
@@ -1784,6 +2192,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<ShortcutProvider> sse_decode_list_shortcut_provider(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <ShortcutProvider>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_shortcut_provider(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<UsageHit> sse_decode_list_usage_hit(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -1933,6 +2355,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScrollFadeStyle? sse_decode_opt_box_autoadd_scroll_fade_style(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_scroll_fade_style(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   ShortcutPayload? sse_decode_opt_box_autoadd_shortcut_payload(
     SseDeserializer deserializer,
   ) {
@@ -1970,10 +2405,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  Uint8List? sse_decode_opt_list_prim_u_8_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_list_prim_u_8_strict(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   Orientation sse_decode_orientation(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var inner = sse_decode_i_32(deserializer);
     return Orientation.values[inner];
+  }
+
+  @protected
+  ScrollFadeStyle sse_decode_scroll_fade_style(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return ScrollFadeStyle.values[inner];
   }
 
   @protected
@@ -1992,6 +2445,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_gridColumnsLandscape = sse_decode_i_64(deserializer);
     var var_layout = sse_decode_layout_style(deserializer);
     var var_tabVisibility = sse_decode_tab_visibility(deserializer);
+    var var_scrollFade = sse_decode_scroll_fade_style(deserializer);
     var var_wallpaperAlpha = sse_decode_i_64(deserializer);
     var var_statusBarVisible = sse_decode_bool(deserializer);
     var var_iconsVisible = sse_decode_bool(deserializer);
@@ -2008,6 +2462,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       gridColumnsLandscape: var_gridColumnsLandscape,
       layout: var_layout,
       tabVisibility: var_tabVisibility,
+      scrollFade: var_scrollFade,
       wallpaperAlpha: var_wallpaperAlpha,
       statusBarVisible: var_statusBarVisible,
       iconsVisible: var_iconsVisible,
@@ -2033,6 +2488,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_tabVisibility = sse_decode_opt_box_autoadd_tab_visibility(
       deserializer,
     );
+    var var_scrollFade = sse_decode_opt_box_autoadd_scroll_fade_style(
+      deserializer,
+    );
     var var_wallpaperAlpha = sse_decode_opt_box_autoadd_i_64(deserializer);
     var var_statusBarVisible = sse_decode_opt_box_autoadd_bool(deserializer);
     var var_iconsVisible = sse_decode_opt_box_autoadd_bool(deserializer);
@@ -2049,6 +2507,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       gridColumnsLandscape: var_gridColumnsLandscape,
       layout: var_layout,
       tabVisibility: var_tabVisibility,
+      scrollFade: var_scrollFade,
       wallpaperAlpha: var_wallpaperAlpha,
       statusBarVisible: var_statusBarVisible,
       iconsVisible: var_iconsVisible,
@@ -2070,6 +2529,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var tag_ = sse_decode_i_32(deserializer);
     switch (tag_) {
       case 0:
+        return ShortcutPayload_LockScreen();
+      case 1:
         var var_action = sse_decode_opt_String(deserializer);
         var var_data = sse_decode_opt_String(deserializer);
         var var_mimeType = sse_decode_opt_String(deserializer);
@@ -2088,12 +2549,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           flags: var_flags,
           extras: var_extras,
         );
-      case 1:
+      case 2:
         var var_command = sse_decode_String(deserializer);
         return ShortcutPayload_Command(command: var_command);
       default:
         throw UnimplementedError('');
     }
+  }
+
+  @protected
+  ShortcutProvider sse_decode_shortcut_provider(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_id = sse_decode_String(deserializer);
+    var var_label = sse_decode_String(deserializer);
+    return ShortcutProvider(id: var_id, label: var_label);
   }
 
   @protected
@@ -2244,6 +2713,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_orientation(self, serializer);
+  }
+
+  @protected
+  void sse_encode_box_autoadd_scroll_fade_style(
+    ScrollFadeStyle self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_scroll_fade_style(self, serializer);
   }
 
   @protected
@@ -2462,6 +2940,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_shortcut_provider(
+    List<ShortcutProvider> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_shortcut_provider(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_usage_hit(
     List<UsageHit> self,
     SseSerializer serializer,
@@ -2603,6 +3093,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_scroll_fade_style(
+    ScrollFadeStyle? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_scroll_fade_style(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_shortcut_payload(
     ShortcutPayload? self,
     SseSerializer serializer,
@@ -2642,7 +3145,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_list_prim_u_8_strict(
+    Uint8List? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_list_prim_u_8_strict(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_orientation(Orientation self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_scroll_fade_style(
+    ScrollFadeStyle self,
+    SseSerializer serializer,
+  ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
   }
@@ -2662,6 +3187,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_64(self.gridColumnsLandscape, serializer);
     sse_encode_layout_style(self.layout, serializer);
     sse_encode_tab_visibility(self.tabVisibility, serializer);
+    sse_encode_scroll_fade_style(self.scrollFade, serializer);
     sse_encode_i_64(self.wallpaperAlpha, serializer);
     sse_encode_bool(self.statusBarVisible, serializer);
     sse_encode_bool(self.iconsVisible, serializer);
@@ -2682,6 +3208,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_box_autoadd_i_64(self.gridColumnsLandscape, serializer);
     sse_encode_opt_box_autoadd_layout_style(self.layout, serializer);
     sse_encode_opt_box_autoadd_tab_visibility(self.tabVisibility, serializer);
+    sse_encode_opt_box_autoadd_scroll_fade_style(self.scrollFade, serializer);
     sse_encode_opt_box_autoadd_i_64(self.wallpaperAlpha, serializer);
     sse_encode_opt_box_autoadd_bool(self.statusBarVisible, serializer);
     sse_encode_opt_box_autoadd_bool(self.iconsVisible, serializer);
@@ -2702,6 +3229,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     switch (self) {
+      case ShortcutPayload_LockScreen():
+        sse_encode_i_32(0, serializer);
       case ShortcutPayload_Android(
         action: final action,
         data: final data,
@@ -2712,7 +3241,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         flags: final flags,
         extras: final extras,
       ):
-        sse_encode_i_32(0, serializer);
+        sse_encode_i_32(1, serializer);
         sse_encode_opt_String(action, serializer);
         sse_encode_opt_String(data, serializer);
         sse_encode_opt_String(mimeType, serializer);
@@ -2722,9 +3251,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_i_32(flags, serializer);
         sse_encode_list_extra(extras, serializer);
       case ShortcutPayload_Command(command: final command):
-        sse_encode_i_32(1, serializer);
+        sse_encode_i_32(2, serializer);
         sse_encode_String(command, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_shortcut_provider(
+    ShortcutProvider self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.id, serializer);
+    sse_encode_String(self.label, serializer);
   }
 
   @protected

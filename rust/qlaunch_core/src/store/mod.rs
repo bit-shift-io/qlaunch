@@ -1,4 +1,4 @@
-mod atomic;
+pub(crate) mod atomic;
 mod location;
 mod migrate;
 
@@ -25,6 +25,10 @@ const DOCUMENT_NAME: &str = "qlaunch.json";
 const QUARANTINE_NAME: &str = "qlaunch.json.corrupt";
 const BACKUP_NAME: &str = "qlaunch.json.bak";
 const ICONS_DIR: &str = "icons";
+
+/// The copy of the current document kept beside it before a restore replaces
+/// it. Overwritten by the next restore.
+pub const PRE_RESTORE_NAME: &str = "qlaunch-backup.pre-restore.json";
 
 /// The whole of what is stored on disk: one versioned JSON document.
 ///
@@ -217,8 +221,26 @@ impl Store {
     /// document). Refused with `WritesBlocked` while the document is unreadable
     /// (see [`Store`]). A model that [`Model::validate`] rejects
     /// is refused, since `load` would only quarantine it again.
-    pub fn save(&self, model: &Model, settings: &Settings, usage: &Usage) -> Result<(), StoreError> {
+    pub fn save(
+        &self,
+        model: &Model,
+        settings: &Settings,
+        usage: &Usage,
+    ) -> Result<(), StoreError> {
         self.check_writable()?;
+        let bytes = Self::document_bytes(model, settings, usage)?;
+        fs::create_dir_all(self.icons_dir())?;
+        atomic::write_atomic(&self.document_path(), &bytes)?;
+        Ok(())
+    }
+
+    /// The exact bytes [`Store::save`] would write for `model`, `settings` and
+    /// `usage`, so a backup is the same document, not a second format.
+    pub fn document_bytes(
+        model: &Model,
+        settings: &Settings,
+        usage: &Usage,
+    ) -> Result<Vec<u8>, StoreError> {
         model.validate()?;
         let document = Document {
             schema: SCHEMA_VERSION,
@@ -228,10 +250,22 @@ impl Store {
             groups: model.groups.clone(),
             items: model.items.clone(),
         };
-        let bytes = serde_json::to_vec_pretty(&document)?;
-        fs::create_dir_all(self.icons_dir())?;
-        atomic::write_atomic(&self.document_path(), &bytes)?;
-        Ok(())
+        Ok(serde_json::to_vec_pretty(&document)?)
+    }
+
+    /// Reads a document from bytes rather than from disk, for a restore.
+    /// Nothing is written and a damaged file is an error, never quarantined.
+    pub fn parse_document(bytes: &[u8]) -> Result<Loaded, StoreError> {
+        interpret(bytes).map(|(loaded, _)| loaded)
+    }
+
+    /// Keeps `bytes` as [`PRE_RESTORE_NAME`] beside the document, replacing any
+    /// earlier copy. Refused while the document is unreadable, like `save`.
+    pub fn write_pre_restore(&self, bytes: &[u8]) -> Result<PathBuf, StoreError> {
+        self.check_writable()?;
+        let path = self.root.join(PRE_RESTORE_NAME);
+        atomic::write_atomic(&path, bytes)?;
+        Ok(path)
     }
 
     /// Stores a custom icon for `item` and returns the file name to put in

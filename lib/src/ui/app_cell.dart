@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/ui/label_style.dart';
+import 'package:qlaunch/src/ui/grid_geometry.dart';
 
 /// One app in the grid: an icon and a label laid out per `Settings.layout`.
 ///
@@ -18,6 +19,7 @@ class AppCell extends StatelessWidget {
     required this.settings,
     this.onTap,
     this.onLongPress,
+    this.onPointerDown,
   });
 
   final Item item;
@@ -31,18 +33,21 @@ class AppCell extends StatelessWidget {
   /// Called for every item, launchable or not.
   final VoidCallback? onLongPress;
 
+  /// Reports the pointer that lands on this cell. A listener is used rather
+  /// than a recogniser so it cannot compete with the cell's own tap.
+  final ValueChanged<int>? onPointerDown;
+
   /// The box `icon_size` dp square that holds the icon or its placeholder.
   static const iconKey = ValueKey('appCell.icon');
   static const labelKey = ValueKey('appCell.label');
   static const placeholderKey = ValueKey('appCell.placeholder');
 
-  static const _gap = 4.0;
-
   // An uninstalled item stays in the model so that reinstalling restores it
   // to its group; it is drawn faded to say it cannot be launched.
   static const _uninstalledOpacity = 0.4;
 
-  bool get _launchable => item.app != null && !item.uninstalled;
+  bool get _launchable =>
+      item.shortcut != null || (item.app != null && !item.uninstalled);
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +62,12 @@ class AppCell extends StatelessWidget {
       onLongPress: onLongPress ?? () {},
       child: LayoutBuilder(builder: _content),
     );
+    if (onPointerDown != null) {
+      cell = Listener(
+        onPointerDown: (event) => onPointerDown!(event.pointer),
+        child: cell,
+      );
+    }
     if (item.uninstalled) {
       cell = Opacity(opacity: _uninstalledOpacity, child: cell);
     }
@@ -67,13 +78,20 @@ class AppCell extends StatelessWidget {
 
   Widget _content(BuildContext context, BoxConstraints constraints) {
     final layout = settings.layout;
-    final width = constraints.hasBoundedWidth ? constraints.maxWidth : null;
+    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 100.0;
     final list = layout == LayoutStyle.list;
 
     // Cap the icon so it can never be wider than its cell; in the list layout
     // it must leave room for the label as well.
     var side = settings.iconSize.toDouble();
-    if (width != null) side = math.min(side, list ? width / 2 : width);
+    side = math.min(side, list ? math.max(0, (width - 10) / 2) : width);
+    if (constraints.hasBoundedHeight) {
+      final textHeight = gridLabelHeight(context, settings);
+      side = math.min(
+        side,
+        math.max(0, constraints.maxHeight - (list ? 10 : textHeight + 10)),
+      );
+    }
 
     final iconBox = settings.iconsVisible ? _icon(side) : null;
     final label = settings.labelsVisible ? _label(list) : null;
@@ -84,7 +102,7 @@ class AppCell extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           ?iconBox,
-          if (iconBox != null && label != null) const SizedBox(width: _gap),
+          if (iconBox != null && label != null) const SizedBox(width: 10),
           if (label != null) Flexible(child: label),
         ],
       );
@@ -96,28 +114,30 @@ class AppCell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           ?iconBox,
-          if (iconBox != null && label != null) const SizedBox(height: _gap),
-          ?label,
+          if (iconBox != null && label != null) const SizedBox(height: 2),
+          if (label != null) Flexible(child: label),
         ],
       );
     }
 
-    // Large icon and label settings must shrink to fit rather than overflow.
-    // The content has its natural height inside the FittedBox, so where it sits
-    // in the cell is the FittedBox's alignment: tiles at the top, the others
-    // centred.
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: layout == LayoutStyle.tiles
-          ? Alignment.topCenter
-          : Alignment.center,
-      child: SizedBox(width: width, child: body),
+    return ClipRect(
+      child: Padding(
+        padding: list
+            ? const EdgeInsets.all(5)
+            : const EdgeInsets.only(top: 6, bottom: 2),
+        child: Align(
+          alignment: layout == LayoutStyle.tiles
+              ? Alignment.topCenter
+              : Alignment.center,
+          child: body,
+        ),
+      ),
     );
   }
 
   Widget _icon(double side) {
     final provider = item.uninstalled ? null : icon;
-    final placeholder = _Placeholder(side: side);
+    final placeholder = _Placeholder(side: side, item: item);
     // `icon_alpha` is 0-100. Rust clamps it, and Opacity asserts its range, so
     // clamp here as well rather than trust the value to be sane.
     final opacity = (settings.iconAlpha / 100).clamp(0.0, 1.0);
@@ -138,8 +158,8 @@ class AppCell extends StatelessWidget {
     return Text(
       item.label,
       key: labelKey,
-      maxLines: 1,
-      softWrap: false,
+      maxLines: 2,
+      softWrap: true,
       overflow: TextOverflow.ellipsis,
       textAlign: list ? TextAlign.start : TextAlign.center,
       // The same style the tab strip reads, so labels cannot drift apart.
@@ -149,12 +169,19 @@ class AppCell extends StatelessWidget {
 }
 
 class _Placeholder extends StatelessWidget {
-  const _Placeholder({required this.side});
+  const _Placeholder({required this.side, required this.item});
 
   final double side;
+  final Item item;
 
   @override
   Widget build(BuildContext context) {
+    final icon = switch (item.shortcut) {
+      ShortcutPayload_LockScreen() => Icons.lock_outline,
+      ShortcutPayload_Command() => Icons.terminal,
+      ShortcutPayload_Android() => Icons.link,
+      null => Icons.apps,
+    };
     return DecoratedBox(
       key: AppCell.placeholderKey,
       decoration: BoxDecoration(
@@ -162,7 +189,7 @@ class _Placeholder extends StatelessWidget {
         borderRadius: BorderRadius.circular(side * 0.2),
       ),
       child: Center(
-        child: Icon(Icons.apps, size: side * 0.6, color: Colors.white70),
+        child: Icon(icon, size: side * 0.6, color: Colors.white70),
       ),
     );
   }

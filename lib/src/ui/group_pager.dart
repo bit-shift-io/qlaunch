@@ -10,12 +10,24 @@ class GroupPagerController {
   GroupPagerController({required List<String> pageIds})
     : _pageIds = List.of(pageIds) {
     _currentPage = initialPage;
+    position.value = _currentPage.toDouble();
   }
 
   static const int virtualPageCount = 100000;
 
   List<String> _pageIds;
   late int _currentPage;
+  final ValueNotifier<double> position = ValueNotifier(0);
+  int _revision = 0;
+  int _command = 0;
+
+  void dispose() => position.dispose();
+
+  void step(int direction) {
+    if (_pageIds.length < 2) return;
+    _currentPage += direction;
+    _command++;
+  }
 
   /// The page ids in display order. Ids are expected to be distinct: lookups by
   /// id take the first occurrence, so with `['a', 'b', 'a']` a user on the
@@ -37,6 +49,7 @@ class GroupPagerController {
     _pageIds = List.of(value);
     final position = remembered == null ? -1 : _pageIds.indexOf(remembered);
     _currentPage = position < 0 ? initialPage : initialPage + position;
+    _revision++;
   }
 
   /// The page the pager is showing. Starts at [initialPage] and is kept in
@@ -92,7 +105,10 @@ class GroupPagerController {
   bool goToGroup(String groupId) {
     final index = virtualIndexFor(groupId);
     if (index < 0) return false;
-    _currentPage = index;
+    final length = _pageIds.length;
+    final forward = (index - _currentPage) % length;
+    _currentPage += forward > length / 2 ? forward - length : forward;
+    _command++;
     return true;
   }
 
@@ -114,9 +130,11 @@ class GroupPager extends StatefulWidget {
     required this.controller,
     required this.gridFor,
     this.onGroupChanged,
+    this.columns = 4,
   });
 
   final GroupPagerController controller;
+  final int columns;
 
   /// Builds the content for a group. Receives `''` when there are no pages.
   final Widget Function(BuildContext context, String groupId) gridFor;
@@ -134,6 +152,8 @@ class _GroupPagerState extends State<GroupPager> {
   late String _reportedGroup;
   bool _syncing = false;
   bool _reconcileQueued = false;
+  late int _revision;
+  late int _command;
 
   // With no pages every index maps to '', and 100000 blank pages would be an
   // endless scroll through nothing. One page lets the caller draw an empty
@@ -146,18 +166,57 @@ class _GroupPagerState extends State<GroupPager> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _targetPage);
+    _revision = widget.controller._revision;
+    _command = widget.controller._command;
+    _pageController.addListener(_onScroll);
     _reportedGroup = widget.controller.currentGroupId(
       widget.controller.currentPage,
     );
+    // The initial layout does not notify listeners, so the strip would keep
+    // whatever position the controller had before it was moved onto its
+    // opening group. Read the laid-out page once so the strip starts correct.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onScroll();
+    });
   }
 
   @override
   void didUpdateWidget(GroupPager oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncPage();
+    if (_revision != widget.controller._revision) {
+      _revision = widget.controller._revision;
+      _command = widget.controller._command;
+      // Jumping notifies the page position, and this runs while the parent is
+      // building. Defer it, or a listener such as the tab strip would be
+      // marked dirty during the same build.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _syncPage();
+        _queueReconcile();
+      });
+    } else if (_command != widget.controller._command) {
+      _command = widget.controller._command;
+      final target = _targetPage;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pageController.hasClients) return;
+        if (MediaQuery.disableAnimationsOf(context)) {
+          _pageController.jumpToPage(target);
+        } else {
+          _pageController.animateToPage(
+            target,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
+    }
     // Reporting cannot happen here: calling the parent while it is building is
     // not safe. It also has to wait for a layout if there has not been one yet.
-    _queueReconcile();
+  }
+
+  void _onScroll() {
+    final page = _pageController.page;
+    if (page != null) widget.controller.position.value = page;
   }
 
   @override
@@ -225,9 +284,33 @@ class _GroupPagerState extends State<GroupPager> {
       itemCount: controller.pageIds.isEmpty
           ? 1
           : GroupPagerController.virtualPageCount,
+      physics: controller.pageIds.length < 2
+          ? const NeverScrollableScrollPhysics()
+          : null,
       onPageChanged: _onPageChanged,
-      itemBuilder: (context, i) =>
-          widget.gridFor(context, controller.groupIdAt(i)),
+      itemBuilder: (context, i) => AnimatedBuilder(
+        animation: _pageController,
+        child: widget.gridFor(context, controller.groupIdAt(i)),
+        builder: (context, child) {
+          final page =
+              _pageController.hasClients &&
+                  _pageController.position.haveDimensions
+              ? _pageController.page ?? _targetPage.toDouble()
+              : _targetPage.toDouble();
+          final relative = i - page;
+          final width = _pageController.position.viewportDimension;
+          final travel = widget.columns <= 1 ? 0.5 : 1 / widget.columns;
+          return Transform.translate(
+            offset: Offset(-relative * width * (1 - travel), 0),
+            child: Opacity(
+              // Fade a little faster than the position moves so a heavy page
+              // stops compositing sooner; it still crosses the neighbour.
+              opacity: (1 - relative.abs() * 1.5).clamp(0.0, 1.0),
+              child: child,
+            ),
+          );
+        },
+      ),
     );
   }
 }

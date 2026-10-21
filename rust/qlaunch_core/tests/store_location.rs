@@ -246,7 +246,9 @@ fn a_later_successful_load_lifts_the_block() {
 
     let loaded = store.load().unwrap();
 
-    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
+    store
+        .save(&loaded.model, &loaded.settings, &Usage::default())
+        .unwrap();
 }
 
 #[test]
@@ -258,7 +260,9 @@ fn save_works_after_loading_a_good_document() {
     let mut loaded = store.load().unwrap();
     loaded.settings.icon_size = 80;
 
-    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
+    store
+        .save(&loaded.model, &loaded.settings, &Usage::default())
+        .unwrap();
     assert_eq!(store.load().unwrap().settings.icon_size, 80);
 }
 
@@ -270,7 +274,9 @@ fn save_works_after_a_load_that_quarantined_a_corrupt_document() {
     let mut loaded = store.load().unwrap();
     loaded.settings.icon_size = 80;
 
-    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
+    store
+        .save(&loaded.model, &loaded.settings, &Usage::default())
+        .unwrap();
 
     assert_eq!(store.load().unwrap().settings.icon_size, 80);
     assert_eq!(
@@ -289,7 +295,9 @@ fn save_works_after_a_load_found_nothing_even_if_creating_it_failed() {
 
     fs::remove_file(dir.path().join("icons")).unwrap();
 
-    store.save(&loaded.model, &loaded.settings, &Usage::default()).unwrap();
+    store
+        .save(&loaded.model, &loaded.settings, &Usage::default())
+        .unwrap();
 }
 
 #[test]
@@ -298,7 +306,9 @@ fn a_new_store_can_save_without_loading_first() {
     let store = Store::new(dir.path().to_path_buf());
     let model = qlaunch_core::model::Model::new_default();
 
-    store.save(&model, &Settings::default(), &Usage::default()).unwrap();
+    store
+        .save(&model, &Settings::default(), &Usage::default())
+        .unwrap();
 
     assert!(store.document_path().exists());
 }

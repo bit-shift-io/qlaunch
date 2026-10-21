@@ -23,7 +23,11 @@ void main() {
           makeGroup('games', role: GroupRole.games),
         ],
         items: [
-          makeItem('i1', 'apps', app: AppRef(package: 'com.x', activity: 'Main')),
+          makeItem(
+            'i1',
+            'apps',
+            app: AppRef(package: 'com.x', activity: 'Main'),
+          ),
         ],
       ),
     );
@@ -51,7 +55,10 @@ void main() {
   testWidgets('saving a new label renames the item', (tester) async {
     await pumpDialog(tester);
 
-    await tester.enterText(find.byKey(AppSettingsDialog.labelFieldKey), 'Firefox');
+    await tester.enterText(
+      find.byKey(AppSettingsDialog.labelFieldKey),
+      'Firefox',
+    );
     await tester.tap(find.byKey(AppSettingsDialog.saveKey));
     await tester.pumpAndSettle();
 
@@ -124,5 +131,31 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(AppSettingsDialog.uninstallKey), findsNothing);
+  });
+
+  testWidgets('a shortcut offers removal instead of uninstall', (tester) async {
+    fake.current = snapshotOf(
+      pageIds: ['apps'],
+      groups: [makeGroup('apps', role: GroupRole.apps)],
+      items: [
+        makeItem('lock', 'apps', shortcut: const ShortcutPayload.lockScreen()),
+      ],
+    );
+    await state.load();
+    final item = state.itemsIn('apps').single;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AppSettingsDialog(state: state, item: item),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(AppSettingsDialog.uninstallKey), findsNothing);
+    await tester.tap(find.byKey(AppSettingsDialog.removeKey));
+    await tester.pumpAndSettle();
+
+    expect(fake.calls, contains('removeItem(lock)'));
   });
 }
