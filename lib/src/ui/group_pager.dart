@@ -21,6 +21,10 @@ class GroupPagerController {
   int _revision = 0;
   int _command = 0;
 
+  /// Changes to the group list and explicit navigation requests, respectively.
+  int get revision => _revision;
+  int get command => _command;
+
   void dispose() => position.dispose();
 
   void step(int direction) {

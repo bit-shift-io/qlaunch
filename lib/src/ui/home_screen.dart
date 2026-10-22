@@ -12,6 +12,7 @@ import 'package:qlaunch/src/ui/app_search.dart';
 import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
+import 'package:qlaunch/src/ui/group_scroller.dart';
 import 'package:qlaunch/src/ui/launcher_menu.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
@@ -196,7 +197,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Tapping a tab switches the pager to that group, same as a swipe would.
   void _goToGroup(String groupId) {
-    if (_controller.currentGroupId(_controller.currentPage) == groupId) {
+    if (_controller.currentGroupId(_controller.currentPage) == groupId &&
+        widget.state.snapshot?.settings.continuousScroll != true) {
       return;
     }
     if (!_controller.goToGroup(groupId)) return;
@@ -505,26 +507,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                   _updateWarming();
                                   return false;
                                 },
-                                child: GroupPager(
-                                  controller: _controller,
-                                  columns:
-                                      (MediaQuery.orientationOf(context) ==
-                                                  Orientation.portrait
-                                              ? settings?.gridColumnsPortrait
-                                              : settings?.gridColumnsLandscape)
-                                          ?.toInt() ??
-                                      4,
-                                  onGroupChanged: _onGroupChanged,
-                                  // Each page is built with the group the controller
-                                  // puts at that index, so nothing here converts an
-                                  // index itself.
-                                  gridFor: (context, groupId) => AppGrid(
-                                    state: widget.state,
-                                    groupId: groupId,
-                                    onItemLongPress: _openAppSettings,
-                                    onItemPointerDown: _onItemPointerDown,
-                                  ),
-                                ),
+                                child: settings?.continuousScroll == true
+                                    ? GroupScroller(
+                                        state: widget.state,
+                                        controller: _controller,
+                                        onGroupChanged: _onGroupChanged,
+                                        onStep: _step,
+                                        onItemLongPress: _openAppSettings,
+                                        onItemPointerDown: _onItemPointerDown,
+                                      )
+                                    : GroupPager(
+                                        controller: _controller,
+                                        columns:
+                                            (MediaQuery.orientationOf(
+                                                          context,
+                                                        ) ==
+                                                        Orientation.portrait
+                                                    ? settings
+                                                          ?.gridColumnsPortrait
+                                                    : settings
+                                                          ?.gridColumnsLandscape)
+                                                ?.toInt() ??
+                                            4,
+                                        onGroupChanged: _onGroupChanged,
+                                        // Each page is built with the group the controller
+                                        // puts at that index, so nothing here converts an
+                                        // index itself.
+                                        gridFor: (context, groupId) => AppGrid(
+                                          state: widget.state,
+                                          groupId: groupId,
+                                          onItemLongPress: _openAppSettings,
+                                          onItemPointerDown: _onItemPointerDown,
+                                        ),
+                                      ),
                               ),
                             ),
                           ),

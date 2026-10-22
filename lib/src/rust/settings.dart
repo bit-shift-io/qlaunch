@@ -21,6 +21,7 @@ class Settings {
   final LayoutStyle layout;
   final TabVisibility tabVisibility;
   final ScrollFadeStyle scrollFade;
+  final bool continuousScroll;
   final PlatformInt64 wallpaperAlpha;
   final bool statusBarVisible;
   final bool iconsVisible;
@@ -39,6 +40,7 @@ class Settings {
     required this.layout,
     required this.tabVisibility,
     required this.scrollFade,
+    required this.continuousScroll,
     required this.wallpaperAlpha,
     required this.statusBarVisible,
     required this.iconsVisible,
@@ -59,6 +61,7 @@ class Settings {
       layout.hashCode ^
       tabVisibility.hashCode ^
       scrollFade.hashCode ^
+      continuousScroll.hashCode ^
       wallpaperAlpha.hashCode ^
       statusBarVisible.hashCode ^
       iconsVisible.hashCode ^
@@ -81,6 +84,7 @@ class Settings {
           layout == other.layout &&
           tabVisibility == other.tabVisibility &&
           scrollFade == other.scrollFade &&
+          continuousScroll == other.continuousScroll &&
           wallpaperAlpha == other.wallpaperAlpha &&
           statusBarVisible == other.statusBarVisible &&
           iconsVisible == other.iconsVisible &&
@@ -100,6 +104,7 @@ class SettingsPatch {
   final LayoutStyle? layout;
   final TabVisibility? tabVisibility;
   final ScrollFadeStyle? scrollFade;
+  final bool? continuousScroll;
   final PlatformInt64? wallpaperAlpha;
   final bool? statusBarVisible;
   final bool? iconsVisible;
@@ -118,6 +123,7 @@ class SettingsPatch {
     this.layout,
     this.tabVisibility,
     this.scrollFade,
+    this.continuousScroll,
     this.wallpaperAlpha,
     this.statusBarVisible,
     this.iconsVisible,
@@ -138,6 +144,7 @@ class SettingsPatch {
       layout.hashCode ^
       tabVisibility.hashCode ^
       scrollFade.hashCode ^
+      continuousScroll.hashCode ^
       wallpaperAlpha.hashCode ^
       statusBarVisible.hashCode ^
       iconsVisible.hashCode ^
@@ -160,6 +167,7 @@ class SettingsPatch {
           layout == other.layout &&
           tabVisibility == other.tabVisibility &&
           scrollFade == other.scrollFade &&
+          continuousScroll == other.continuousScroll &&
           wallpaperAlpha == other.wallpaperAlpha &&
           statusBarVisible == other.statusBarVisible &&
           iconsVisible == other.iconsVisible &&

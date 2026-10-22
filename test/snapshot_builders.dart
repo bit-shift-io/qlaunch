@@ -9,6 +9,7 @@ const testSettings = Settings(
   layout: LayoutStyle.tiles,
   tabVisibility: TabVisibility.always,
   scrollFade: ScrollFadeStyle.gradient,
+  continuousScroll: false,
   wallpaperAlpha: 0,
   statusBarVisible: true,
   iconsVisible: true,

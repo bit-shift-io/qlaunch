@@ -96,6 +96,105 @@ void main() {
   double? pagerPage(WidgetTester tester) =>
       tester.widget<PageView>(find.byType(PageView)).controller?.page;
 
+  group('continuous scrolling prototype', () {
+    Future<void> openScroller(WidgetTester tester) async {
+      setSurface(tester, const Size(400, 800));
+      const ids = ['home', 'apps', 'games'];
+      await load(
+        pageIds: ids,
+        settings: settingsWith(continuousScroll: true),
+        items: [
+          for (final id in ids)
+            for (var i = 0; i < 24; i++) launchable('$id-$i', id),
+        ],
+      );
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+    }
+
+    ScrollController scrollController(WidgetTester tester) => tester
+        .widget<CustomScrollView>(find.byKey(const ValueKey('groupScroller')))
+        .controller!;
+
+    String activeGroup(WidgetTester tester) =>
+        tester.widget<TabStrip>(find.byType(TabStrip)).currentGroupId;
+
+    testWidgets('scrolling wraps both ways and keeps the tabs in sync', (
+      tester,
+    ) async {
+      await openScroller(tester);
+      final scroll = scrollController(tester);
+      expect(activeGroup(tester), 'home');
+      final scroller = find.byKey(const ValueKey('groupScroller'));
+      final heading = find
+          .descendant(of: scroller, matching: find.text('home'))
+          .first;
+      expect(
+        tester.getCenter(heading).dx,
+        closeTo(tester.getCenter(scroller).dx, 0.1),
+      );
+      scroll.jumpTo(-100);
+      await tester.pumpAndSettle();
+      expect(activeGroup(tester), 'games');
+      expect(scroll.offset, -100);
+      scroll.jumpTo(2000);
+      await tester.pumpAndSettle();
+      expect(scroll.offset, 2000);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('tab taps and horizontal swipes scroll to section headings', (
+      tester,
+    ) async {
+      await openScroller(tester);
+      await tester.tap(find.byKey(TabStrip.tabKey(1)));
+      await tester.pumpAndSettle();
+      expect(activeGroup(tester), 'apps');
+      final appsOffset = scrollController(tester).offset;
+      expect(appsOffset, greaterThan(0));
+      await tester.drag(
+        find.byKey(const ValueKey('groupScroller')),
+        const Offset(-200, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(activeGroup(tester), 'games');
+      await tester.drag(
+        find.byKey(const ValueKey('groupScroller')),
+        const Offset(200, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(activeGroup(tester), 'apps');
+      expect(scrollController(tester).offset, closeTo(appsOffset, 0.1));
+      scrollController(tester).jumpTo(appsOffset + 100);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(TabStrip.tabKey(0)));
+      await tester.pumpAndSettle();
+      expect(scrollController(tester).offset, closeTo(appsOffset, 0.1));
+    });
+
+    testWidgets('changing the saved mode swaps navigation in place', (
+      tester,
+    ) async {
+      await openScroller(tester);
+      fake.current = withSettings(
+        fake.current,
+        settingsWith(continuousScroll: false),
+      );
+      await state.updateSettings(const SettingsPatch(continuousScroll: false));
+      await tester.pumpAndSettle();
+      expect(find.byType(PageView), findsOneWidget);
+      expect(find.byKey(const ValueKey('groupScroller')), findsNothing);
+      fake.current = withSettings(
+        fake.current,
+        settingsWith(continuousScroll: true),
+      );
+      await state.updateSettings(const SettingsPatch(continuousScroll: true));
+      await tester.pumpAndSettle();
+      expect(find.byType(PageView), findsNothing);
+      expect(find.byKey(const ValueKey('groupScroller')), findsOneWidget);
+    });
+  });
+
   group('tab visibility', () {
     const shown = {
       TabVisibility.always: (portrait: true, landscape: true),

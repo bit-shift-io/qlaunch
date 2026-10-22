@@ -40,10 +40,23 @@ void main() {
   }
 
   group('controls', () {
+    testWidgets('continuous scrolling sends only its mode setting', (
+      tester,
+    ) async {
+      await pumpSettings(tester);
+      await tapControl(
+        tester,
+        find.byKey(SettingsScreen.controlKey(SettingField.continuousScroll)),
+      );
+      expect(fake.settingsPatches, [
+        const SettingsPatch(continuousScroll: true),
+      ]);
+    });
+
     testWidgets('every setting in the table has one', (tester) async {
       await pumpSettings(tester);
-      // §8.6's table: 16 settings. The actions live behind the Advanced row.
-      expect(SettingField.values, hasLength(16));
+      // The original settings plus the continuous-scrolling prototype.
+      expect(SettingField.values, hasLength(17));
       for (final field in SettingField.values) {
         expect(
           find.byKey(SettingsScreen.controlKey(field)),

@@ -47,6 +47,7 @@ enum SettingField {
   layout,
   tabVisibility,
   scrollFade,
+  continuousScroll,
   wallpaperAlpha,
   statusBarVisible,
   iconsVisible,
@@ -97,6 +98,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _header('Display'),
+                  _switch(
+                    SettingField.continuousScroll,
+                    'Continuous scrolling (prototype)',
+                    settings.continuousScroll,
+                    (v) => SettingsPatch(continuousScroll: v),
+                  ),
                   _number(
                     SettingField.gridColumnsPortrait,
                     'Portrait columns',

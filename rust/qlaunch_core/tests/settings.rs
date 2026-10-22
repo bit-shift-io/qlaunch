@@ -185,6 +185,7 @@ fn field_names_serialise_verbatim() {
     assert_eq!(
         keys,
         [
+            "continuous_scroll",
             "grid_columns_landscape",
             "grid_columns_portrait",
             "icon_alpha",
@@ -203,6 +204,19 @@ fn field_names_serialise_verbatim() {
             "wallpaper_alpha",
         ]
     );
+}
+
+#[test]
+fn continuous_scrolling_defaults_off_and_round_trips_when_enabled() {
+    let mut settings: Settings = serde_json::from_str("{}").unwrap();
+    assert!(!settings.continuous_scroll);
+    settings.apply(&SettingsPatch {
+        continuous_scroll: Some(true),
+        ..Default::default()
+    });
+    let saved = serde_json::to_string(&settings).unwrap();
+    let restored: Settings = serde_json::from_str(&saved).unwrap();
+    assert!(restored.continuous_scroll);
 }
 
 #[test]

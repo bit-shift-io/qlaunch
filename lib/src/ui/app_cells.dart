@@ -28,6 +28,7 @@ class AppCells extends StatelessWidget {
     this.onItemTap,
     this.onItemLongPress,
     this.onItemPointerDown,
+    this.embedded = false,
   });
 
   final LauncherState state;
@@ -49,6 +50,9 @@ class AppCells extends StatelessWidget {
   /// Reports the pointer that lands on a cell, before an ancestor listener
   /// sees the same down event.
   final ValueChanged<int>? onItemPointerDown;
+
+  /// A non-scrolling row inside the continuous group scroller.
+  final bool embedded;
 
   void _launch(Item item) {
     final app = item.app;
@@ -75,79 +79,95 @@ class AppCells extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final rowExtent = gridRowExtent(
-          context,
-          settings,
-          constraints.maxWidth / columns,
-        );
-        final tileFade = settings.scrollFade == ScrollFadeStyle.tile;
+        final rowExtent = embedded
+            ? constraints.maxHeight
+            : gridRowExtent(context, settings, constraints.maxWidth / columns);
+        final tileFade =
+            !embedded && settings.scrollFade == ScrollFadeStyle.tile;
+        Widget buildTile(BuildContext context, int i) {
+          final item = items[i];
+          final app = item.app;
+          // Only an installed app has a platform icon, and only a shortcut with
+          // a stored icon has bytes to read. Everything else draws the
+          // placeholder. A hidden or zero-sized icon is not worth a request.
+          Future<ImageProvider?>? icon;
+          ImageProvider? cached;
+          if (settings.iconsVisible && sizePx > 0) {
+            if (app != null && !item.uninstalled) {
+              cached = state.cachedIcon(app.package, app.activity, sizePx);
+              if (cached == null) {
+                icon = state.iconFor(app.package, app.activity, sizePx);
+              }
+            } else if (item.iconOverride != null) {
+              cached = state.cachedItemIcon(
+                item.id,
+                item.iconOverride!,
+                sizePx,
+              );
+              if (cached == null) {
+                icon = state.itemIcon(
+                  item.id,
+                  reference: item.iconOverride!,
+                  sizePx: sizePx,
+                );
+              }
+            }
+          }
+          Widget cell(ImageProvider? icon) => AppCell(
+            item: item,
+            icon: icon,
+            settings: settings,
+            onTap: () => (onItemTap ?? _launch)(item),
+            onLongPress: onItemLongPress == null
+                ? null
+                : () => onItemLongPress!(item),
+            onPointerDown: onItemPointerDown,
+          );
+          final Widget tile;
+          if (icon == null) {
+            tile = KeyedSubtree(key: ValueKey(item.id), child: cell(cached));
+          } else {
+            tile = FutureBuilder<ImageProvider?>(
+              key: ValueKey(item.id),
+              future: icon,
+              builder: (context, snapshot) => cell(snapshot.data),
+            );
+          }
+          if (!tileFade) return tile;
+          return TileEdgeFade(
+            key: ValueKey(item.id),
+            index: i,
+            columns: columns,
+            rowExtent: rowExtent,
+            viewportHeight: constraints.maxHeight,
+            child: tile,
+          );
+        }
+
+        if (embedded) {
+          // The outer scroller owns laziness and scrolling. A viewport for each
+          // row adds scroll positions, clipping and layout work without benefit.
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < columns; i++)
+                Expanded(
+                  child: i < items.length
+                      ? buildTile(context, i)
+                      : const SizedBox.shrink(),
+                ),
+            ],
+          );
+        }
         final grid = GridView.builder(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             mainAxisExtent: rowExtent,
           ),
           itemCount: items.length,
-          itemBuilder: (context, i) {
-            final item = items[i];
-            final app = item.app;
-            // Only an installed app has a platform icon, and only a shortcut with
-            // a stored icon has bytes to read. Everything else draws the
-            // placeholder. A hidden or zero-sized icon is not worth a request.
-            Future<ImageProvider?>? icon;
-            ImageProvider? cached;
-            if (settings.iconsVisible && sizePx > 0) {
-              if (app != null && !item.uninstalled) {
-                cached = state.cachedIcon(app.package, app.activity, sizePx);
-                if (cached == null) {
-                  icon = state.iconFor(app.package, app.activity, sizePx);
-                }
-              } else if (item.iconOverride != null) {
-                cached = state.cachedItemIcon(
-                  item.id,
-                  item.iconOverride!,
-                  sizePx,
-                );
-                if (cached == null) {
-                  icon = state.itemIcon(
-                    item.id,
-                    reference: item.iconOverride!,
-                    sizePx: sizePx,
-                  );
-                }
-              }
-            }
-            Widget cell(ImageProvider? icon) => AppCell(
-              item: item,
-              icon: icon,
-              settings: settings,
-              onTap: () => (onItemTap ?? _launch)(item),
-              onLongPress: onItemLongPress == null
-                  ? null
-                  : () => onItemLongPress!(item),
-              onPointerDown: onItemPointerDown,
-            );
-            final Widget tile;
-            if (icon == null) {
-              tile = KeyedSubtree(key: ValueKey(item.id), child: cell(cached));
-            } else {
-              tile = FutureBuilder<ImageProvider?>(
-                key: ValueKey(item.id),
-                future: icon,
-                builder: (context, snapshot) => cell(snapshot.data),
-              );
-            }
-            if (!tileFade) return tile;
-            return TileEdgeFade(
-              key: ValueKey(item.id),
-              index: i,
-              columns: columns,
-              rowExtent: rowExtent,
-              viewportHeight: constraints.maxHeight,
-              child: tile,
-            );
-          },
+          itemBuilder: buildTile,
         );
-        return settings.scrollFade == ScrollFadeStyle.gradient
+        return !embedded && settings.scrollFade == ScrollFadeStyle.gradient
             ? ScrollEdgeFade(child: grid)
             : grid;
       },

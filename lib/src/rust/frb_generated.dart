@@ -1738,25 +1738,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 16)
-      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
+    if (arr.length != 17)
+      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
     return Settings(
       gridColumnsPortrait: dco_decode_i_64(arr[0]),
       gridColumnsLandscape: dco_decode_i_64(arr[1]),
       layout: dco_decode_layout_style(arr[2]),
       tabVisibility: dco_decode_tab_visibility(arr[3]),
       scrollFade: dco_decode_scroll_fade_style(arr[4]),
-      wallpaperAlpha: dco_decode_i_64(arr[5]),
-      statusBarVisible: dco_decode_bool(arr[6]),
-      iconsVisible: dco_decode_bool(arr[7]),
-      iconSize: dco_decode_i_64(arr[8]),
-      iconAlpha: dco_decode_i_64(arr[9]),
-      labelsVisible: dco_decode_bool(arr[10]),
-      labelSize: dco_decode_i_64(arr[11]),
-      labelTypeface: dco_decode_typeface(arr[12]),
-      labelColour: dco_decode_label_colour(arr[13]),
-      labelShadow: dco_decode_bool(arr[14]),
-      orientation: dco_decode_orientation(arr[15]),
+      continuousScroll: dco_decode_bool(arr[5]),
+      wallpaperAlpha: dco_decode_i_64(arr[6]),
+      statusBarVisible: dco_decode_bool(arr[7]),
+      iconsVisible: dco_decode_bool(arr[8]),
+      iconSize: dco_decode_i_64(arr[9]),
+      iconAlpha: dco_decode_i_64(arr[10]),
+      labelsVisible: dco_decode_bool(arr[11]),
+      labelSize: dco_decode_i_64(arr[12]),
+      labelTypeface: dco_decode_typeface(arr[13]),
+      labelColour: dco_decode_label_colour(arr[14]),
+      labelShadow: dco_decode_bool(arr[15]),
+      orientation: dco_decode_orientation(arr[16]),
     );
   }
 
@@ -1764,25 +1765,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SettingsPatch dco_decode_settings_patch(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 16)
-      throw Exception('unexpected arr length: expect 16 but see ${arr.length}');
+    if (arr.length != 17)
+      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
     return SettingsPatch(
       gridColumnsPortrait: dco_decode_opt_box_autoadd_i_64(arr[0]),
       gridColumnsLandscape: dco_decode_opt_box_autoadd_i_64(arr[1]),
       layout: dco_decode_opt_box_autoadd_layout_style(arr[2]),
       tabVisibility: dco_decode_opt_box_autoadd_tab_visibility(arr[3]),
       scrollFade: dco_decode_opt_box_autoadd_scroll_fade_style(arr[4]),
-      wallpaperAlpha: dco_decode_opt_box_autoadd_i_64(arr[5]),
-      statusBarVisible: dco_decode_opt_box_autoadd_bool(arr[6]),
-      iconsVisible: dco_decode_opt_box_autoadd_bool(arr[7]),
-      iconSize: dco_decode_opt_box_autoadd_i_64(arr[8]),
-      iconAlpha: dco_decode_opt_box_autoadd_i_64(arr[9]),
-      labelsVisible: dco_decode_opt_box_autoadd_bool(arr[10]),
-      labelSize: dco_decode_opt_box_autoadd_i_64(arr[11]),
-      labelTypeface: dco_decode_opt_box_autoadd_typeface(arr[12]),
-      labelColour: dco_decode_opt_box_autoadd_label_colour(arr[13]),
-      labelShadow: dco_decode_opt_box_autoadd_bool(arr[14]),
-      orientation: dco_decode_opt_box_autoadd_orientation(arr[15]),
+      continuousScroll: dco_decode_opt_box_autoadd_bool(arr[5]),
+      wallpaperAlpha: dco_decode_opt_box_autoadd_i_64(arr[6]),
+      statusBarVisible: dco_decode_opt_box_autoadd_bool(arr[7]),
+      iconsVisible: dco_decode_opt_box_autoadd_bool(arr[8]),
+      iconSize: dco_decode_opt_box_autoadd_i_64(arr[9]),
+      iconAlpha: dco_decode_opt_box_autoadd_i_64(arr[10]),
+      labelsVisible: dco_decode_opt_box_autoadd_bool(arr[11]),
+      labelSize: dco_decode_opt_box_autoadd_i_64(arr[12]),
+      labelTypeface: dco_decode_opt_box_autoadd_typeface(arr[13]),
+      labelColour: dco_decode_opt_box_autoadd_label_colour(arr[14]),
+      labelShadow: dco_decode_opt_box_autoadd_bool(arr[15]),
+      orientation: dco_decode_opt_box_autoadd_orientation(arr[16]),
     );
   }
 
@@ -2489,6 +2491,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_layout = sse_decode_layout_style(deserializer);
     var var_tabVisibility = sse_decode_tab_visibility(deserializer);
     var var_scrollFade = sse_decode_scroll_fade_style(deserializer);
+    var var_continuousScroll = sse_decode_bool(deserializer);
     var var_wallpaperAlpha = sse_decode_i_64(deserializer);
     var var_statusBarVisible = sse_decode_bool(deserializer);
     var var_iconsVisible = sse_decode_bool(deserializer);
@@ -2506,6 +2509,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       layout: var_layout,
       tabVisibility: var_tabVisibility,
       scrollFade: var_scrollFade,
+      continuousScroll: var_continuousScroll,
       wallpaperAlpha: var_wallpaperAlpha,
       statusBarVisible: var_statusBarVisible,
       iconsVisible: var_iconsVisible,
@@ -2534,6 +2538,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_scrollFade = sse_decode_opt_box_autoadd_scroll_fade_style(
       deserializer,
     );
+    var var_continuousScroll = sse_decode_opt_box_autoadd_bool(deserializer);
     var var_wallpaperAlpha = sse_decode_opt_box_autoadd_i_64(deserializer);
     var var_statusBarVisible = sse_decode_opt_box_autoadd_bool(deserializer);
     var var_iconsVisible = sse_decode_opt_box_autoadd_bool(deserializer);
@@ -2551,6 +2556,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       layout: var_layout,
       tabVisibility: var_tabVisibility,
       scrollFade: var_scrollFade,
+      continuousScroll: var_continuousScroll,
       wallpaperAlpha: var_wallpaperAlpha,
       statusBarVisible: var_statusBarVisible,
       iconsVisible: var_iconsVisible,
@@ -3251,6 +3257,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_layout_style(self.layout, serializer);
     sse_encode_tab_visibility(self.tabVisibility, serializer);
     sse_encode_scroll_fade_style(self.scrollFade, serializer);
+    sse_encode_bool(self.continuousScroll, serializer);
     sse_encode_i_64(self.wallpaperAlpha, serializer);
     sse_encode_bool(self.statusBarVisible, serializer);
     sse_encode_bool(self.iconsVisible, serializer);
@@ -3272,6 +3279,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_box_autoadd_layout_style(self.layout, serializer);
     sse_encode_opt_box_autoadd_tab_visibility(self.tabVisibility, serializer);
     sse_encode_opt_box_autoadd_scroll_fade_style(self.scrollFade, serializer);
+    sse_encode_opt_box_autoadd_bool(self.continuousScroll, serializer);
     sse_encode_opt_box_autoadd_i_64(self.wallpaperAlpha, serializer);
     sse_encode_opt_box_autoadd_bool(self.statusBarVisible, serializer);
     sse_encode_opt_box_autoadd_bool(self.iconsVisible, serializer);
