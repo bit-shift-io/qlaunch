@@ -4,7 +4,9 @@ import 'package:qlaunch/src/ui/background_layer.dart';
 
 Future<void> _pump(WidgetTester tester, {int alpha = 0}) async {
   await tester.pumpWidget(
-    MaterialApp(home: Scaffold(body: BackgroundLayer(alpha: alpha))),
+    MaterialApp(
+      home: Scaffold(body: BackgroundLayer(alpha: alpha)),
+    ),
   );
 }
 

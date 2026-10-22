@@ -1,10 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
-import 'package:qlaunch/src/ui/label_style.dart';
-import 'package:qlaunch/src/ui/grid_geometry.dart';
+import 'package:qlaunch/src/ui/app_cell_visual.dart';
+import 'package:qlaunch/src/ui/raster_cache_identity.dart';
 import 'package:qlaunch/src/ui/raster_tile.dart';
 
 /// One app in the grid: an icon and a label laid out per `Settings.layout`.
@@ -18,6 +16,7 @@ class AppCell extends StatefulWidget {
     required this.item,
     required this.icon,
     required this.settings,
+    this.geometry,
     this.onTap,
     this.onLongPress,
     this.onPointerDown,
@@ -26,6 +25,10 @@ class AppCell extends StatefulWidget {
   final Item item;
   final ImageProvider? icon;
   final Settings settings;
+
+  /// Measured once by the enclosing grid; standalone cells fall back to
+  /// measuring their own label.
+  final AppCellGeometry? geometry;
 
   /// Called only for an item that can be launched: one with an app that is
   /// still installed. For any other item a tap does nothing.
@@ -39,9 +42,9 @@ class AppCell extends StatefulWidget {
   final ValueChanged<int>? onPointerDown;
 
   /// The box `icon_size` dp square that holds the icon or its placeholder.
-  static const iconKey = ValueKey('appCell.icon');
-  static const labelKey = ValueKey('appCell.label');
-  static const placeholderKey = ValueKey('appCell.placeholder');
+  static const iconKey = AppCellVisual.iconKey;
+  static const labelKey = AppCellVisual.labelKey;
+  static const placeholderKey = AppCellVisual.placeholderKey;
 
   // A legacy document can carry an uninstalled item until a successful app
   // listing removes it; while it is still here, draw it faded to say it
@@ -123,184 +126,87 @@ class _AppCellState extends State<AppCell> {
 
   Widget _content(BuildContext context, BoxConstraints constraints) {
     final layout = settings.layout;
-    final width = constraints.hasBoundedWidth ? constraints.maxWidth : 100.0;
-    final list = layout == LayoutStyle.list;
+    final geometry =
+        widget.geometry ?? appCellGeometry(context, settings, constraints);
+    final side = geometry.iconSide;
+    final generation = RasterCacheScope.generationOf(context);
 
-    // Cap the icon so it can never be wider than its cell; in the list layout
-    // it must leave room for the label as well.
-    var side = settings.iconSize.toDouble();
-    side = math.min(side, list ? math.max(0, (width - 10) / 2) : width);
-    if (constraints.hasBoundedHeight) {
-      final textHeight = gridLabelHeight(context, settings);
-      side = math.min(
-        side,
-        math.max(0, constraints.maxHeight - (list ? 10 : textHeight + 10)),
-      );
-    }
-
-    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
-    final textScale = MediaQuery.textScalerOf(context)
-        .scale(settings.labelSize.toDouble());
-    final labelSignature = (
-      item.label,
-      width,
-      side,
-      list,
-      settings.labelSize,
-      settings.labelTypeface,
-      settings.labelColour,
-      settings.labelShadow,
-      settings.labelShadowBlur,
-      textScale,
-      devicePixelRatio,
-      constraints.hasBoundedHeight ? constraints.maxHeight : -1.0,
+    Widget? iconBox = settings.iconsVisible
+        ? AppCellVisual.iconWidget(
+            item: item,
+            icon: widget.icon,
+            settings: settings,
+            side: side,
+            onIconFrame: _markIconReady,
+          )
+        : null;
+    Widget? label = settings.labelsVisible
+        ? AppCellVisual.labelWidget(item: item, settings: settings)
+        : null;
+    final rasterMode = TileRasterCache.modeFor(
+      iconsVisible: settings.iconsVisible,
+      labelsVisible: settings.labelsVisible,
     );
-    final iconSignature = (
-      item.id,
-      item.shortcut,
-      item.uninstalled,
-      widget.icon,
-      side,
-      settings.iconAlpha,
-      devicePixelRatio,
-    );
-
-    Widget? iconBox = settings.iconsVisible ? _icon(side) : null;
-    Widget? label = settings.labelsVisible ? _label(list) : null;
-    if (TileRasterCache.mode == TileRasterMode.separate) {
+    if (rasterMode == TileRasterMode.separate) {
       if (iconBox != null) {
         iconBox = RasterTile(
-          signature: iconSignature,
-          cacheable: _iconCacheable,
+          cacheKey: appCellRasterKey(
+            generation: generation,
+            item: item,
+            icon: widget.icon,
+            settings: settings,
+            geometry: geometry,
+            kind: 'icon',
+          ),
+          captureReady: _iconCacheable,
           child: iconBox,
         );
       }
       if (label != null) {
         label = RasterTile(
-          signature: labelSignature,
+          cacheKey: appCellRasterKey(
+            generation: generation,
+            item: item,
+            icon: widget.icon,
+            settings: settings,
+            geometry: geometry,
+            kind: 'label',
+          ),
           label: item.label,
           child: label,
         );
       }
     }
 
-    final Widget body;
-    if (list) {
-      body = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ?iconBox,
-          if (iconBox != null && label != null) const SizedBox(width: 10),
-          if (label != null) Flexible(child: label),
-        ],
-      );
-    } else {
-      // A Column lays its children out in sequence, so the label cannot be
-      // drawn over the icon (the old centred layout's bug).
-      body = Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          ?iconBox,
-          if (iconBox != null && label != null) const SizedBox(height: 2),
-          if (label != null) Flexible(child: label),
-        ],
+    if (rasterMode != TileRasterMode.combined) {
+      return AppCellVisual.frame(
+        layout: layout,
+        body: AppCellVisual.bodyFrom(
+          layout: layout,
+          iconBox: iconBox,
+          label: label,
+        ),
       );
     }
 
-    final content = ClipRect(
-      child: Padding(
-        padding: list
-            ? const EdgeInsets.all(5)
-            : const EdgeInsets.only(top: 6, bottom: 2),
-        child: Align(
-          alignment: layout == LayoutStyle.tiles
-              ? Alignment.topCenter
-              : Alignment.center,
-          child: body,
-        ),
-      ),
-    );
-    if (TileRasterCache.mode != TileRasterMode.combined) return content;
-
-    // Includes every input that changes the painted tile, so a font, size,
-    // colour, shadow, text-scale or DPI change re-renders from the live widget.
+    // The warm path renders the same AppCellVisual with the same geometry.
     return RasterTile(
-      signature: (
-        layout,
-        iconSignature,
-        labelSignature,
-        settings.iconsVisible,
-        settings.labelsVisible,
+      cacheKey: appCellRasterKey(
+        generation: generation,
+        item: item,
+        icon: widget.icon,
+        settings: settings,
+        geometry: geometry,
+        kind: 'tile',
       ),
-      cacheable: _iconCacheable,
+      captureReady: _iconCacheable,
       label: item.label,
-      child: content,
-    );
-  }
-
-  Widget _icon(double side) {
-    final provider = item.uninstalled ? null : widget.icon;
-    final placeholder = _Placeholder(side: side, item: item);
-    // `icon_alpha` is 0-100. Rust clamps it, and Opacity asserts its range, so
-    // clamp here as well rather than trust the value to be sane.
-    final opacity = (settings.iconAlpha / 100).clamp(0.0, 1.0);
-    Widget image = provider == null
-        ? placeholder
-        : Image(
-            image: provider,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-              if (frame != null) _markIconReady(provider);
-              return child;
-            },
-            errorBuilder: (context, error, stack) {
-              _markIconReady(provider);
-              return placeholder;
-            },
-          );
-    // At full opacity the layer would be a no-op saveLayer, so skip it.
-    if (opacity < 1.0) image = Opacity(opacity: opacity, child: image);
-    return SizedBox.square(key: AppCell.iconKey, dimension: side, child: image);
-  }
-
-  Widget _label(bool list) {
-    return Text(
-      item.label,
-      key: AppCell.labelKey,
-      maxLines: 2,
-      softWrap: true,
-      overflow: TextOverflow.ellipsis,
-      textAlign: list ? TextAlign.start : TextAlign.center,
-      // The same style the tab strip reads, so labels cannot drift apart.
-      style: labelTextStyle(settings),
-    );
-  }
-}
-
-class _Placeholder extends StatelessWidget {
-  const _Placeholder({required this.side, required this.item});
-
-  final double side;
-  final Item item;
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = switch (item.shortcut) {
-      ShortcutPayload_LockScreen() => Icons.lock_outline,
-      ShortcutPayload_Command() => Icons.terminal,
-      ShortcutPayload_Android() => Icons.link,
-      null => Icons.apps,
-    };
-    return DecoratedBox(
-      key: AppCell.placeholderKey,
-      decoration: BoxDecoration(
-        color: Colors.white24,
-        borderRadius: BorderRadius.circular(side * 0.2),
-      ),
-      child: Center(
-        child: Icon(icon, size: side * 0.6, color: Colors.white70),
+      child: AppCellVisual(
+        item: item,
+        icon: widget.icon,
+        settings: settings,
+        geometry: geometry,
+        onIconFrame: _markIconReady,
       ),
     );
   }

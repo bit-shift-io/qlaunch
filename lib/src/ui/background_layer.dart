@@ -43,7 +43,9 @@ class BackgroundLayer extends StatelessWidget {
       children: [
         ColoredBox(
           key: baseKey,
-          color: _transparentBase ? Colors.transparent : BackgroundLayer.baseColour,
+          color: _transparentBase
+              ? Colors.transparent
+              : BackgroundLayer.baseColour,
         ),
         ColoredBox(
           key: overlayKey,

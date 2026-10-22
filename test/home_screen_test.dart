@@ -17,9 +17,11 @@ import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
 import 'package:qlaunch/src/ui/launcher_menu.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
+import 'package:qlaunch/src/ui/raster_tile.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
 import 'fake_backend.dart';
+import 'raster_test_images.dart' as fixtures;
 import 'snapshot_builders.dart';
 
 void main() {
@@ -66,11 +68,16 @@ void main() {
     await state.load();
   }
 
-  Future<void> pumpHome(WidgetTester tester, {IconWarmer? warmer}) async {
+  Future<void> pumpHome(
+    WidgetTester tester, {
+    IconWarmer? warmer,
+    RasterImageStore? rasterStore,
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
           state: state,
+          rasterStore: rasterStore,
           iconWarmer:
               warmer ?? IconWarmer(schedule: (task) => scheduleMicrotask(task)),
         ),
@@ -948,6 +955,191 @@ void main() {
       await pumpHome(tester);
       await tester.pumpAndSettle();
       expect(fake.iconCalls, 0);
+    });
+  });
+
+  group('raster generations', () {
+    testWidgets(
+      'tabs and grid share one generation that paging does not churn',
+      (tester) async {
+        setSurface(tester, const Size(400, 800));
+        TileRasterCache.store.clear();
+        addTearDown(TileRasterCache.reset);
+        await load(
+          pageIds: ['home', 'apps', 'games'],
+          settings: settingsWith(labelShadowBlur: 5),
+          items: [
+            for (final id in ['home', 'apps', 'games'])
+              launchable('item-$id', id),
+          ],
+        );
+        await pumpHome(tester);
+        await tester.pumpAndSettle();
+
+        Object generation() => tester
+            .widget<RasterCacheScope>(find.byType(RasterCacheScope))
+            .generation;
+        final first = generation();
+        expect(TileRasterCache.store.currentGeneration, first);
+
+        // Paging and rebuilding must not create a new appearance generation.
+        await tester.tap(find.byKey(TabStrip.tapKey(0)));
+        await tester.pumpAndSettle();
+        expect(generation(), first);
+
+        final seen = <Object>[first];
+        for (final blur in [6, 7]) {
+          await load(settings: settingsWith(labelShadowBlur: blur));
+          await tester.pump();
+          await tester.pumpAndSettle();
+          expect(generation(), isNot(seen.last));
+          expect(TileRasterCache.store.currentGeneration, generation());
+          seen.add(generation());
+        }
+        await load(settings: settingsWith(labelShadowBlur: 5));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        // Returning to an existing appearance reuses its generation.
+        expect(generation(), first);
+        expect(TileRasterCache.store.currentGeneration, first);
+
+        final store = TileRasterCache.store;
+        final probes = <Object, RasterCacheKey>{};
+        for (var i = 0; i < seen.length; i++) {
+          final key = RasterCacheKey(
+            generation: seen[i],
+            kind: 'probe',
+            owner: 'probe:$i',
+            pixels: i,
+          );
+          store
+              .insertAndAcquire(key, fixtures.image(2, 2), 1, const Size(2, 2))
+              .release();
+          probes[seen[i]] = key;
+        }
+
+        // A fourth distinct appearance bounds historical retention to three.
+        await load(settings: settingsWith(labelShadowBlur: 8));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        final fourth = generation();
+        expect(fourth, isNot(first));
+        for (final earlier in seen.sublist(1)) {
+          expect(fourth, isNot(earlier));
+        }
+        expect(store.contains(probes[seen[1]]!), isFalse);
+        expect(store.contains(probes[seen[0]]!), isTrue);
+        expect(store.contains(probes[seen[2]]!), isTrue);
+      },
+    );
+  });
+
+  group('memory pressure', () {
+    late RasterImageStore store;
+
+    setUp(() {
+      store = RasterImageStore();
+      addTearDown(store.clear);
+    });
+
+    testWidgets('keeps displayed pixels, route and settings; no warming', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(
+        pageIds: ['home', 'apps'],
+        homeGroupId: 'home',
+        settings: settingsWith(labelShadow: true),
+      );
+      await pumpHome(tester, rasterStore: store);
+      await tester.pumpAndSettle();
+
+      final generation = store.currentGeneration ?? 0;
+      final pinned = store.insertAndAcquire(
+        RasterCacheKey(
+          generation: generation,
+          kind: 'tile',
+          owner: 'item:item-home',
+          pixels: 'pinned',
+        ),
+        fixtures.image(4, 4),
+        1,
+        const Size(4, 4),
+      );
+      final group = tester
+          .widget<TabStrip>(find.byType(TabStrip))
+          .currentGroupId;
+      final calls = fake.iconCalls;
+
+      tester.binding.handleMemoryPressure();
+      await tester.pumpAndSettle();
+
+      expect(store.statistics.pinnedBytes, 64);
+      expect(store.statistics.retainedBytes, 64);
+      expect(
+        tester.widget<TabStrip>(find.byType(TabStrip)).currentGroupId,
+        group,
+      );
+      expect(state.snapshot!.settings.labelShadow, isTrue);
+      expect(fake.iconCalls, calls);
+      expect(tester.takeException(), isNull);
+
+      pinned.release();
+      expect(store.contains(pinned.key), isFalse);
+      expect(store.statistics.liveBytes, 0);
+
+      // Repeated pressure stays a no-op.
+      tester.binding.handleMemoryPressure();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('pressure in search and after resume does not repopulate', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(homeGroupId: 'home');
+      await pumpHome(tester, rasterStore: store);
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pumpAndSettle();
+      expect(find.byType(AppSearch), findsOneWidget);
+
+      tester.binding.handleMemoryPressure();
+      for (final lifecycle in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(lifecycle);
+      }
+      await tester.pumpAndSettle();
+
+      // Pausing closes the search; resuming rebuilds only what is required,
+      // and the pressure trim left no speculative work queued.
+      expect(find.byType(AppSearch), findsNothing);
+      expect(store.statistics.liveBytes, 0);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('disposal releases every raster lease', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      TileRasterCache.mode = TileRasterMode.combined;
+      addTearDown(TileRasterCache.reset);
+      await load(
+        pageIds: ['home'],
+        items: [for (var i = 0; i < 8; i++) launchable('h$i', 'home')],
+      );
+      await pumpHome(tester, rasterStore: store);
+      await tester.pumpAndSettle();
+      expect(store.statistics.liveBytes, greaterThan(0));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      expect(store.statistics.pinnedBytes, 0);
+      expect(store.statistics.retiredLiveBytes, 0);
     });
   });
 }

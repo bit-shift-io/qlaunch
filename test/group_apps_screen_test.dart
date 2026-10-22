@@ -23,8 +23,16 @@ void main() {
           makeGroup('games', role: GroupRole.games, order: 1),
         ],
         items: [
-          makeItem('a1', 'apps', app: AppRef(package: 'p.a1', activity: 'Main')),
-          makeItem('g1', 'games', app: AppRef(package: 'p.g1', activity: 'Main')),
+          makeItem(
+            'a1',
+            'apps',
+            app: AppRef(package: 'p.a1', activity: 'Main'),
+          ),
+          makeItem(
+            'g1',
+            'games',
+            app: AppRef(package: 'p.g1', activity: 'Main'),
+          ),
           makeItem(
             'dead',
             'apps',
@@ -46,7 +54,9 @@ void main() {
   Future<void> pump(WidgetTester tester, String groupId) async {
     await state.load();
     await tester.pumpWidget(
-      MaterialApp(home: GroupAppsScreen(state: state, groupId: groupId)),
+      MaterialApp(
+        home: GroupAppsScreen(state: state, groupId: groupId),
+      ),
     );
     await tester.pump();
   }

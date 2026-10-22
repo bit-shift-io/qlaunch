@@ -6,6 +6,7 @@ import 'package:qlaunch/src/rust/frb_generated.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
+import 'package:qlaunch/src/ui/raster_tile.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 
 Future<void> main() async {
@@ -15,6 +16,12 @@ Future<void> main() async {
     ..maximumSizeBytes = 64 << 20;
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await RustLib.init();
+  // Automatic production policy; --dart-define=TILE_RASTER overrides it.
+  TileRasterCache.configure(
+    RasterCacheConfig(
+      mode: tileRasterModeFromEnvironment(defaultAutomatic: true),
+    ),
+  );
   runApp(const QLaunchApp());
 }
 

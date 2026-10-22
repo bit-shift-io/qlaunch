@@ -10,7 +10,9 @@ void main() {
   }) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: PagePips(count: count, current: current)),
+        home: Scaffold(
+          body: PagePips(count: count, current: current),
+        ),
       ),
     );
   }
@@ -34,9 +36,6 @@ void main() {
   ) async {
     await pumpPips(tester, count: 3, current: 1);
 
-    expect(
-      dotColour(tester, 1).a,
-      greaterThan(dotColour(tester, 0).a),
-    );
+    expect(dotColour(tester, 1).a, greaterThan(dotColour(tester, 0).a));
   });
 }

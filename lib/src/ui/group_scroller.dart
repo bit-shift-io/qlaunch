@@ -7,6 +7,7 @@ import 'package:qlaunch/src/ui/app_cells.dart';
 import 'package:qlaunch/src/ui/grid_geometry.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/label_style.dart';
+import 'package:qlaunch/src/ui/raster_cache_identity.dart';
 import 'package:qlaunch/src/ui/raster_tile.dart';
 import 'package:qlaunch/src/ui/scroll_edge_fade.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
@@ -159,6 +160,7 @@ class _GroupScrollerState extends State<GroupScroller> {
           });
         }
 
+        final generation = RasterCacheScope.generationOf(context);
         Widget row(int index) {
           final entry = cycle.rows[index % cycle.rows.length];
           if (entry.items == null) {
@@ -171,20 +173,23 @@ class _GroupScrollerState extends State<GroupScroller> {
             return SizedBox(
               height: headingExtent,
               child: RasterTile(
-                signature: (
-                  'heading',
-                  label,
-                  constraints.maxWidth,
-                  headingExtent,
-                  settings.labelSize,
-                  settings.labelTypeface,
-                  settings.labelColour,
-                  settings.labelShadow,
-                  settings.labelShadowBlur,
-                  MediaQuery.textScalerOf(context).scale(
-                    settings.labelSize.toDouble(),
+                cacheKey: labelRasterKey(
+                  generation: generation,
+                  kind: 'heading',
+                  owner: 'group:${entry.groupId}',
+                  pixels: (
+                    label,
+                    constraints.maxWidth,
+                    headingExtent,
+                    settings.labelSize,
+                    settings.labelTypeface,
+                    settings.labelColour,
+                    settings.labelShadow,
+                    settings.labelShadowBlur,
+                    MediaQuery.textScalerOf(context)
+                        .scale(settings.labelSize.toDouble()),
+                    MediaQuery.devicePixelRatioOf(context),
                   ),
-                  MediaQuery.devicePixelRatioOf(context),
                 ),
                 label: label,
                 child: Padding(

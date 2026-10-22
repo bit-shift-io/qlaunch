@@ -1,5 +1,28 @@
 # Continuous scroller performance — 2026-10-22
 
+## Full-resolution raster-cache benchmark
+
+`integration_test/raster_cache_performance_test.dart` visits every visible tab,
+scrolls every nonempty group to the bottom, and measures cold/repeat circuits,
+warm paging, fast swipes, immediate reversals, and blur 5 → 6 → 7 → 5. Home being
+empty does not reduce coverage. Settings changed by the benchmark are restored.
+
+```sh
+JAVA_HOME=/opt/jbr-21 PATH="/opt/jbr-21/bin:$PATH" \
+  flutter drive --profile --no-dds -d DEVICE \
+  --driver=test_driver/performance.dart \
+  --target=integration_test/raster_cache_performance_test.dart
+```
+
+`RASTER_SAMPLES` defaults to 3 with alternating mode order; `RASTER_MODES` defaults
+to `all` or accepts a single mode (`none`, `separate`, `combined`). Set
+`--dart-define=RASTER_TRACE=true` for an additional Dart/Embedder/GC trace.
+Each `RASTER_RESULT` JSON line contains exact action-window timing percentiles,
+counts over the display's refresh budget and 16 ms, image-payload byte estimates,
+captures/evictions, and separate source/decoded icon bytes. Byte estimates are not
+whole-process or graphics-driver allocation measurements. Only consumer lookups
+count as hits/misses; internal capture deduplication does not.
+
 ## Follow-up: Games ↔ Apps stutter in paged mode
 
 The device was in **paged mode** when the remaining stutter was reported. The
@@ -181,3 +204,112 @@ with `--dart-define=MAX_SCROLL_RASTER_P99_MS=...` for other performance targets.
   known heading/row extents instead of SliverList's dead-reckoning layout.
 - A cheaper edge-only fade is worth considering if GPU fill/compositing becomes
   the limiting factor; the current A/B does not justify removing the effect.
+
+## Capture scheduler experiment (Task 6, rejected for visible work)
+
+`RasterCaptureScheduler` deduplicates captures by key, runs visible jobs
+post-paint with a per-frame cap and a 2 ms synchronous submission budget, and
+prioritises visible over speculative work. The permanent benchmark can select it
+with `--dart-define=RASTER_SCHEDULER=immediate|2|4|unbounded`; the default stays
+`immediate`.
+
+Three combined-mode samples for `immediate` and `2`, one each for `4` and
+`unbounded` (median of the cold full traversal, 90 Hz, all captures drained):
+
+| Variant | cold worst raster | cold raster p99 | cold build p99 | over-budget frames | traversal ms |
+| --- | --- | --- | --- | --- | --- |
+| immediate | 78.3 ms | 41.8 ms | 16.6 ms | 2 | 1391 |
+| 2/frame | 62.7 ms (−20%) | 62.7 ms (+50%) | 18.0 ms | 21 | 1858 (+34%) |
+| 4/frame | 62.5 ms (−20%) | 51.9 ms | 14.3 ms | 13 | 1570 (+13%) |
+| unbounded | 59.2 ms (−24%) | 39.7 ms | 16.3 ms | 3 | 1355 (−3%) |
+
+Deferring captures lowers cold worst raster by about 20%, but the bounded
+variants regress time-to-complete and cold raster p99 well past the 10% gate
+(2/frame also trips 21 over-budget frames versus 2). The unbounded variant is
+within noise at a single sample and is behaviourally close to immediate.
+
+**Decision:** the Task 6 gate is not met, so production keeps immediate visible
+capture (`TileRasterCache.immediateVisibleCapture = true`). The scheduler stays
+in the tree for eligible speculative work only (Task 7). This is a retained
+negative result, not a shipped optimisation.
+
+## Offscreen warmer experiment (Task 7, rejected)
+
+`AppCellVisual` was extracted from `AppCell` so a warmer could render exactly the
+live pixels offscreen through a detached `RenderView`/`BuildOwner`/`PipelineOwner`
+pipeline (`renderWarmVisual`). The visual extraction is retained and now backs the
+live combined tile; the production warmer is not shipped.
+
+A widget parity test rendered the same `AppCellVisual`, geometry, DPR, theme,
+locale and text scale both live and through the detached pipeline and compared
+raw RGBA. The pixels differed at a single channel byte (one antialiased edge) in
+one of the parity cases, so the **exact-pixel correctness check fails**. Per the
+plan, an unreliable-parity detached pipeline is removed rather than shipped at
+lower fidelity. No speculative producer is wired up; the Task 6 scheduler remains
+dormant infrastructure for a future warmer.
+
+## Residual swipe composition (Task 8)
+
+With the cache fully warm there are zero new captures during swipes, so the
+remaining cost is not cache churn. Combined-mode warm swipes (three samples,
+90 Hz):
+
+| Scenario | build p99 | raster p99 | raster worst | frames over budget |
+| --- | --- | --- | --- | --- |
+| fast swipes | 4.4-4.6 ms | 10.8-10.9 ms | 14.3-16.9 ms | 9-10 of ~1144 |
+| immediate reversals | 5.9-6.6 ms | 13.5-14.3 ms | 14.8-15.5 ms | 28-31 |
+
+Build stays far under the budget; the small residual is raster/compositing
+(~0.8% of fast-swipe frames), dominated by compositing rather than rebuilds. No
+pager, tab-strip or fade change is retained: there is no single attributed owner
+with a measured improvement, and the plan requires a >=20% reduction in
+over-budget frames or >=10% lower raster p99 to keep a composition change. The
+existing `group_pager_test.dart` and `tab_strip_test.dart` behavior is unchanged.
+Set `--dart-define=RASTER_TRACE=true` to capture a Dart/Embedder/GC timeline if a
+future investigation needs finer attribution.
+
+## Selected production policy and acceptance (Task 9)
+
+`main()` now calls `TileRasterCache.configure(RasterCacheConfig(...))` with the
+automatic policy: 64 MiB / 4096-entry / two-recent-generation store, immediate
+visible capture (the Task 6 scheduler and Task 7 warmer experiments are not
+shipped). `--dart-define=TILE_RASTER=none|separate|combined|automatic` overrides
+it; `automatic` resolves to **combined when icons and labels are visible**,
+**separate when only labels are visible**, and **none when labels are hidden**.
+Tabs and headings stay cached whenever caching is enabled. For the default
+launcher appearance (icons + labels + shadow visible) automatic resolves to
+combined, which is what the numbers below measure.
+
+Profile results on the tablet (90 Hz, 58 items, all tabs/full scrolls, three
+combined samples; baseline was `none` before any retention work):
+
+| Scenario | build p99 | raster p99 | frames > 11.11 ms | captures |
+| --- | --- | --- | --- | --- |
+| warm tab paging | 4.9-5.5 ms | 10.32 / 11.13 / 11.50 ms | 0 / 2 / 2 | +58 first time, 0 after |
+| repeat traversal | 4.8-5.6 ms | 9.12-10.00 ms | 0 | 0 |
+| fast swipes | 4.4-4.6 ms | 10.8-10.9 ms | 9-10 of ~1144 | 0 |
+| blur 5 -> 6 -> 7 -> 5 (final) | 5.0-5.8 ms | 7.9-9.2 ms | 0-1 | 0 on return |
+| pressure trim (populated group) | 0.4-3.6 ms | 2.7-6.0 ms | 0 | 0 (revisit 110) |
+
+Functional gates pass: warm complete traversal has **0 new captures / 0
+evictions**; blur 5 -> 6 -> 7 -> 5 returns with **0 captures**; displayed images
+never corrupt; live bytes return to zero after final releases. Timing: fast
+swipes and repeat traversal meet their gates, and no warm frame exceeds 16 ms,
+but **warm tab paging narrowly misses the 10 ms median raster-p99 gate** (median
+11.13 ms) with 2 of ~150 frames over the 11.11 ms budget. The cause is the same
+residual compositing cost Task 8 could not attribute to one owner; retaining the
+working set is still strictly better than the pristine baseline's ~96-105 ms
+paging stalls. Reported as a miss rather than loosened.
+
+Reproduction:
+
+```sh
+flutter analyze
+flutter test
+
+JAVA_HOME=/opt/jbr-21 PATH="/opt/jbr-21/bin:$PATH" \
+  flutter drive --profile --no-dds -d 6bfcc911 \
+  --dart-define=RASTER_MODES=combined --dart-define=RASTER_SAMPLES=3 \
+  --driver=test_driver/performance.dart \
+  --target=integration_test/raster_cache_performance_test.dart
+```

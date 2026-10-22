@@ -1,167 +1,200 @@
-import 'dart:collection';
-import 'dart:ui' as ui;
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:qlaunch/src/ui/raster_cache_stats.dart';
+import 'package:qlaunch/src/ui/raster_capture_scheduler.dart';
+import 'package:qlaunch/src/ui/raster_image_store.dart';
 
-/// How tiles are cached during the spike.
-enum TileRasterMode {
-  none,
+export 'raster_image_store.dart'
+    show RasterCacheKey, RasterImageLease, RasterImageStore;
 
-  /// Cache the icon and the label independently, keeping the live layout.
-  separate,
+enum TileRasterMode { none, separate, combined, automatic }
 
-  /// Cache the finished tile (icon, label and their spacing) as one image.
-  combined,
+/// Production cache policy; selection of the measured experiments only.
+class RasterCacheConfig {
+  const RasterCacheConfig({
+    this.maximumBytes = 64 << 20,
+    this.maximumEntries = 4096,
+    this.recentGenerations = 2,
+    this.mode = TileRasterMode.automatic,
+    this.visibleScheduler = false,
+  });
+
+  final int maximumBytes;
+  final int maximumEntries;
+  final int recentGenerations;
+  final TileRasterMode mode;
+
+  /// Rejected in Task 6; retained as explicit configuration only.
+  final bool visibleScheduler;
 }
 
-/// Throwaway spike: cache a painted tile, or its parts, as a GPU image.
-///
-/// The key includes everything that changes the pixels, so a font, icon-size,
-/// colour, shadow, text-scale or DPI change misses the cache and captures
-/// again. [mode] defaults to [TileRasterMode.none], keeping the normal widget
-/// path for production and for the widget tests. Delete this file if the spike
-/// loses.
-class TileRasterCache {
-  static TileRasterMode mode = switch (const String.fromEnvironment(
-    'TILE_RASTER',
-  )) {
+/// Reads `--dart-define=TILE_RASTER=...`. Unknown values are a hard error in
+/// debug/profile and fall back to automatic in release.
+TileRasterMode tileRasterModeFromEnvironment({bool defaultAutomatic = false}) {
+  const flag = String.fromEnvironment('TILE_RASTER');
+  if (flag.isEmpty) {
+    return defaultAutomatic ? TileRasterMode.automatic : TileRasterMode.none;
+  }
+  return switch (flag) {
+    'none' => TileRasterMode.none,
     'separate' => TileRasterMode.separate,
     'combined' => TileRasterMode.combined,
-    _ => TileRasterMode.none,
+    'automatic' => TileRasterMode.automatic,
+    _ =>
+      kReleaseMode
+          ? TileRasterMode.automatic
+          : throw ArgumentError.value(
+              flag,
+              'TILE_RASTER',
+              'Unknown raster mode',
+            ),
   };
-  static int captures = 0;
+}
 
-  /// At most two or three style generations. A shadow-blur slider can ask for
-  /// eleven; without a bound those images would add up to hundreds of MB.
-  static const int maxEntries = 128;
+/// Session cache shared across pages; Flutter owns the rendered image handles.
+class TileRasterCache {
+  static TileRasterMode mode = tileRasterModeFromEnvironment();
 
-  static final LinkedHashMap<Object, TileRasterEntry> _entries =
-      LinkedHashMap<Object, TileRasterEntry>();
+  /// The mode a cell should use for this appearance. `automatic` keeps the
+  /// combined tile only when both icon and label are visible, and avoids sparse
+  /// raster work when the label is hidden (icons already use Flutter's decoded
+  /// cache). Tabs and headings stay cached whenever caching is enabled.
+  static TileRasterMode modeFor({
+    required bool iconsVisible,
+    required bool labelsVisible,
+  }) {
+    if (mode != TileRasterMode.automatic) return mode;
+    if (!labelsVisible) return TileRasterMode.none;
+    return iconsVisible ? TileRasterMode.combined : TileRasterMode.separate;
+  }
 
+  static RasterImageStore store = RasterImageStore();
+
+  /// Post-paint capture queue. Visible work uses it only when
+  /// [immediateVisibleCapture] is false; speculative work always does.
+  static RasterCaptureScheduler scheduler = RasterCaptureScheduler();
+  static bool immediateVisibleCapture = true;
   static bool get enabled => mode != TileRasterMode.none;
 
-  static TileRasterEntry? lookup(Object signature) {
-    if (!enabled) return null;
-    final entry = _entries.remove(signature);
-    if (entry == null) return null;
-    _entries[signature] = entry;
-    return entry;
+  /// Startup configuration; safe before widgets mount.
+  static void configure(RasterCacheConfig config) {
+    scheduler.dispose();
+    scheduler = RasterCaptureScheduler();
+    immediateVisibleCapture = !config.visibleScheduler;
+    // Release discoverable pixels from the previous store; displayed leases
+    // keep their images until released, so nothing under a live RawImage is
+    // disposed here.
+    store.clear();
+    store = RasterImageStore(
+      maximumBytes: config.maximumBytes,
+      maximumEntries: config.maximumEntries,
+      recentGenerations: config.recentGenerations,
+    );
+    mode = config.mode;
   }
 
-  static void store(
-    Object signature,
-    ui.Image image,
-    double pixelRatio,
-    Size size,
-  ) {
-    final previous = _entries.remove(signature);
-    if (previous != null) _retire(previous);
-    _entries[signature] = TileRasterEntry(image, pixelRatio, size);
-    captures++;
-    while (_entries.length > maxEntries) {
-      final oldest = _entries.keys.first;
-      final entry = _entries.remove(oldest)!;
-      _retire(entry);
-    }
-  }
+  static int get captures => store.statistics.captures;
+  static RasterCacheStats get statistics => store.statistics;
+  static void resetStatistics() => store.resetStatistics();
 
-  static void retain(TileRasterEntry entry) => entry.references++;
-
-  static void release(TileRasterEntry entry) {
-    entry.references--;
-    if (entry.references <= 0 && entry.retired) entry.image.dispose();
-  }
-
-  static void _retire(TileRasterEntry entry) {
-    entry.retired = true;
-    if (entry.references <= 0) entry.image.dispose();
-  }
-
-  /// Disable and free every cached image. Callers must let the tree rebuild
-  /// without raster tiles first, or a displayed image would be disposed under
-  /// a live [RawImage].
+  /// Drops unpinned pixels now and marks displayed ones for removal on release.
+  static void trimForMemoryPressure() => store.trimForMemoryPressure();
   static void reset() {
     mode = TileRasterMode.none;
-    captures = 0;
-    for (final entry in _entries.values) {
-      _retire(entry);
-    }
-    _entries.clear();
+    immediateVisibleCapture = true;
+    scheduler.dispose();
+    scheduler = RasterCaptureScheduler();
+    store.clear();
+    store.resetStatistics();
   }
 }
 
-class TileRasterEntry {
-  TileRasterEntry(this.image, this.pixelRatio, this.size);
-
-  final ui.Image image;
-  final double pixelRatio;
-  final Size size;
-  int references = 0;
-  bool retired = false;
+/// Supplies one store/generation to tabs, cells and headings. Does not own it.
+class RasterCacheScope extends InheritedWidget {
+  const RasterCacheScope({
+    super.key,
+    required this.store,
+    required this.generation,
+    required super.child,
+  });
+  final RasterImageStore store;
+  final Object generation;
+  static RasterCacheScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<RasterCacheScope>();
+  static Object generationOf(BuildContext context) =>
+      maybeOf(context)?.generation ??
+      TileRasterCache.store.currentGeneration ??
+      0;
+  @override
+  bool updateShouldNotify(RasterCacheScope oldWidget) =>
+      oldWidget.store != store || oldWidget.generation != generation;
 }
 
-/// Paints [child] once, then draws the captured image instead.
-///
-/// The gesture layer stays outside this widget, so taps and long presses keep
-/// working when the live text is gone.
+/// Paints [child] once, then draws the full-resolution captured image instead.
+/// Gestures and animated opacity remain outside the captured visual.
 class RasterTile extends StatefulWidget {
   const RasterTile({
     super.key,
-    required this.signature,
+    required this.cacheKey,
     required this.child,
     this.label,
-    this.cacheable = true,
+    this.captureReady = true,
+    this.store,
   });
-
-  final Object signature;
+  final RasterCacheKey cacheKey;
   final Widget child;
   final String? label;
 
-  /// False while an icon is still decoding: capturing now would freeze the
-  /// empty frame.
-  final bool cacheable;
-
+  /// Only gates new captures. A complete matching hit is already safe to show.
+  final bool captureReady;
+  final RasterImageStore? store;
   @override
   State<RasterTile> createState() => _RasterTileState();
 }
 
 class _RasterTileState extends State<RasterTile> {
-  final GlobalKey _boundaryKey = GlobalKey(debugLabel: 'rasterTile');
-  TileRasterEntry? _shown;
+  final _boundaryKey = GlobalKey(debugLabel: 'rasterTile');
+  RasterImageLease? _shown;
+  RasterImageStore? _shownStore;
   bool _captureScheduled = false;
 
   @override
   void dispose() {
-    _show(null);
+    TileRasterCache.scheduler.cancelOwner(this);
+    _show(null, null);
     super.dispose();
   }
 
-  void _show(TileRasterEntry? entry) {
-    if (identical(entry, _shown)) return;
+  void _show(RasterImageLease? lease, RasterImageStore? store) {
+    if (identical(lease, _shown)) return;
     final previous = _shown;
-    _shown = entry;
-    if (entry != null) TileRasterCache.retain(entry);
-    if (previous != null) TileRasterCache.release(previous);
+    _shown = lease;
+    _shownStore = store;
+    previous?.release();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!TileRasterCache.enabled || !widget.cacheable) {
-      _show(null);
+    final scope = RasterCacheScope.maybeOf(context);
+    final store = widget.store ?? scope?.store ?? TileRasterCache.store;
+    final key = widget.cacheKey;
+    if (!TileRasterCache.enabled) {
+      _show(null, null);
       return widget.child;
     }
-    final entry = TileRasterCache.lookup(widget.signature);
-    _show(entry);
-    if (entry != null) {
+    if (_shown?.key != key ||
+        !identical(_shownStore, store) ||
+        _shown!.retired) {
+      _show(store.acquire(key), store);
+    }
+    final shown = _shown;
+    if (shown != null) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final size = constraints.constrain(entry.size);
-          if (!size.width.isFinite ||
-              !size.height.isFinite ||
-              size.width <= 0 ||
-              size.height <= 0) {
-            _show(null);
+          final size = constraints.constrain(shown.logicalSize);
+          if (!size.width.isFinite || !size.height.isFinite || size.isEmpty) {
+            _show(null, null);
             return widget.child;
           }
           return SizedBox.fromSize(
@@ -169,8 +202,8 @@ class _RasterTileState extends State<RasterTile> {
             child: Semantics(
               label: widget.label,
               child: RawImage(
-                image: entry.image,
-                scale: entry.pixelRatio,
+                image: shown.image,
+                scale: shown.pixelRatio,
                 fit: BoxFit.fill,
                 filterQuality: FilterQuality.low,
               ),
@@ -179,31 +212,63 @@ class _RasterTileState extends State<RasterTile> {
         },
       );
     }
-    _scheduleCapture();
+    if (!widget.captureReady) return widget.child;
+    _scheduleCapture(store, key);
     return RepaintBoundary(key: _boundaryKey, child: widget.child);
   }
 
-  void _scheduleCapture() {
+  bool _isCurrent(RasterImageStore store, RasterCacheKey key) {
+    if (!mounted || !TileRasterCache.enabled || !widget.captureReady) {
+      return false;
+    }
+    final scope = RasterCacheScope.maybeOf(context);
+    return key == widget.cacheKey &&
+        identical(store, widget.store ?? scope?.store ?? TileRasterCache.store);
+  }
+
+  /// Captures the painted boundary and publishes it. Runs after paint, either
+  /// directly (immediate) or from the scheduler.
+  void _capture(RasterImageStore store, RasterCacheKey key) {
+    _captureScheduled = false;
+    if (!_isCurrent(store, key)) return;
+    if (store.contains(key)) {
+      setState(() {});
+      return;
+    }
+    final boundary =
+        _boundaryKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?;
+    if (boundary == null || boundary.size.isEmpty) return;
+    final size = boundary.size;
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+    final watch = Stopwatch()..start();
+    var failed = false;
+    try {
+      final image = boundary.toImageSync(pixelRatio: ratio);
+      _show(store.insertAndAcquire(key, image, ratio, size), store);
+    } catch (_) {
+      failed = true;
+    } finally {
+      store.recordCapture(
+        microseconds: watch.elapsedMicroseconds,
+        failed: failed,
+      );
+    }
+    if (mounted && !failed) setState(() {});
+  }
+
+  void _scheduleCapture(RasterImageStore store, RasterCacheKey key) {
     if (_captureScheduled) return;
     _captureScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _captureScheduled = false;
-      if (!mounted || !TileRasterCache.enabled || !widget.cacheable) return;
-      final signature = widget.signature;
-      if (TileRasterCache.lookup(signature) != null) return;
-      final boundary =
-          _boundaryKey.currentContext?.findRenderObject()
-              as RenderRepaintBoundary?;
-      if (boundary == null || boundary.size.isEmpty) return;
-      final size = boundary.size;
-      final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-      try {
-        final image = boundary.toImageSync(pixelRatio: pixelRatio);
-        TileRasterCache.store(signature, image, pixelRatio, size);
-      } catch (_) {
-        return;
-      }
-      if (mounted && signature == widget.signature) setState(() {});
-    });
+    if (TileRasterCache.immediateVisibleCapture) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _capture(store, key));
+      return;
+    }
+    TileRasterCache.scheduler.enqueueVisible(
+      owner: this,
+      key: key,
+      isCurrent: () => _isCurrent(store, key),
+      capture: () async => _capture(store, key),
+    );
   }
 }

@@ -81,7 +81,9 @@ void main() {
     );
   });
 
-  testWidgets('moving the first page down sends the next index', (tester) async {
+  testWidgets('moving the first page down sends the next index', (
+    tester,
+  ) async {
     await pumpEditor(tester);
 
     await tester.tap(find.byKey(GroupEditorScreen.downKey('apps')));
@@ -132,7 +134,9 @@ void main() {
     expect(fake.calls, contains('setGroupRole(tools,home)'));
   });
 
-  testWidgets('the role control is disabled for the Apps group', (tester) async {
+  testWidgets('the role control is disabled for the Apps group', (
+    tester,
+  ) async {
     await pumpEditor(tester);
     await openEdit(tester, 'apps');
 

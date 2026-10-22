@@ -7,6 +7,7 @@ import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
 import 'package:qlaunch/src/ui/grid_geometry.dart';
+import 'package:qlaunch/src/ui/raster_cache_identity.dart';
 import 'package:qlaunch/src/ui/scroll_edge_fade.dart';
 
 /// A list of items drawn as the launcher's grid of [AppCell]s.
@@ -76,12 +77,25 @@ class AppCells extends StatelessWidget {
     // The bridge takes physical pixels; the setting is in dp.
     final sizePx = (settings.iconSize * MediaQuery.devicePixelRatioOf(context))
         .round();
+    final labelHeight = gridLabelHeight(context, settings);
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final cellWidth = constraints.maxWidth / columns;
         final rowExtent = embedded
             ? constraints.maxHeight
-            : gridRowExtent(context, settings, constraints.maxWidth / columns);
+            : gridRowExtent(
+                context,
+                settings,
+                cellWidth,
+                measuredLabelHeight: labelHeight,
+              );
+        final geometry = appCellGeometry(
+          context,
+          settings,
+          BoxConstraints.tightFor(width: cellWidth, height: rowExtent),
+          measuredLabelHeight: labelHeight,
+        );
         final tileFade =
             !embedded && settings.scrollFade == ScrollFadeStyle.tile;
         Widget buildTile(BuildContext context, int i) {
@@ -117,6 +131,7 @@ class AppCells extends StatelessWidget {
             item: item,
             icon: icon,
             settings: settings,
+            geometry: geometry,
             onTap: () => (onItemTap ?? _launch)(item),
             onLongPress: onItemLongPress == null
                 ? null

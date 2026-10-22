@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/ui/app_cell.dart';
+import 'package:qlaunch/src/ui/raster_tile.dart';
 
 import 'fake_backend.dart';
 import 'snapshot_builders.dart';
@@ -429,6 +430,107 @@ void main() {
       await tester.longPress(find.byType(AppCell));
       await tester.tap(find.byType(AppCell));
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('cached mode', () {
+    late RasterImageStore store;
+
+    setUp(() {
+      store = RasterImageStore()..activateGeneration(0);
+      TileRasterCache.mode = TileRasterMode.combined;
+    });
+
+    tearDown(() {
+      store.clear();
+      TileRasterCache.reset();
+    });
+
+    Future<void> pumpCached(
+      WidgetTester tester, {
+      Item? item,
+      Uint8List? icon,
+      VoidCallback? onTap,
+      VoidCallback? onLongPress,
+      Settings? settings,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: RasterCacheScope(
+            store: store,
+            generation: 0,
+            child: Scaffold(
+              body: Center(
+                child: SizedBox.fromSize(
+                  size: const Size(100, 100),
+                  child: AppCell(
+                    item: item ?? _item(app: _app),
+                    icon: icon == null ? null : MemoryImage(icon),
+                    settings: settings ?? testSettings,
+                    onTap: onTap,
+                    onLongPress: onLongPress,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(RawImage), findsOneWidget);
+    }
+
+    testWidgets('a captured cell keeps its tap and long-press behaviour', (
+      tester,
+    ) async {
+      var taps = 0;
+      var longs = 0;
+      await pumpCached(
+        tester,
+        icon: _png,
+        onTap: () => taps++,
+        onLongPress: () => longs++,
+      );
+      await tester.tap(find.byType(AppCell));
+      expect(taps, 1);
+      await tester.longPress(find.byType(AppCell));
+      expect(longs, 1);
+    });
+
+    testWidgets('a captured label keeps its accessibility text', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await pumpCached(tester, icon: _png);
+      expect(find.bySemanticsLabel('Maps'), findsOneWidget);
+      expect(find.byType(RawImage), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets(
+      'a broken icon is captured as the placeholder, not an empty tile',
+      (tester) async {
+        await pumpCached(tester, icon: Uint8List.fromList([1, 2, 3, 4]));
+        expect(find.byType(RawImage), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('an uninstalled cell is still dimmed when captured', (
+      tester,
+    ) async {
+      await pumpCached(
+        tester,
+        item: _item(app: _app, uninstalled: true),
+        icon: _png,
+      );
+      final dim = tester.widget<Opacity>(
+        find.ancestor(
+          of: find.byType(RawImage),
+          matching: find.byType(Opacity),
+        ),
+      );
+      expect(dim.opacity, lessThan(1));
     });
   });
 }

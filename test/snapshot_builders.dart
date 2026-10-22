@@ -39,10 +39,11 @@ Item makeItem(
   ShortcutPayload? shortcut,
   bool uninstalled = false,
   String? iconOverride,
+  String? label,
 }) => Item(
   id: id,
   groupId: groupId,
-  label: id,
+  label: label ?? id,
   labelOverridden: false,
   app: app,
   shortcut: shortcut,

@@ -14,6 +14,8 @@ import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/group_scroller.dart';
 import 'package:qlaunch/src/ui/launcher_menu.dart';
+import 'package:qlaunch/src/ui/raster_cache_identity.dart';
+import 'package:qlaunch/src/ui/raster_tile.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
@@ -22,12 +24,21 @@ import 'package:qlaunch/src/ui/tab_strip.dart';
 /// It owns the [GroupPagerController], so this is the only place a page index
 /// exists; everything below it is handed a group id.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.state, this.iconWarmer});
+  const HomeScreen({
+    super.key,
+    required this.state,
+    this.iconWarmer,
+    this.rasterStore,
+  });
 
   final LauncherState state;
 
   /// Optional scheduler dependency; the screen owns and disposes the warmer.
   final IconWarmer? iconWarmer;
+
+  /// Optional raster store dependency for tests; the session store is used
+  /// when omitted.
+  final RasterImageStore? rasterStore;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -42,6 +53,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final IconWarmer _warmer;
   Object? _warmedSnapshot;
   int? _warmedSize;
+  Set<String> _owners = const {};
+
+  RasterImageStore get _rasterStore =>
+      widget.rasterStore ?? TileRasterCache.store;
   bool _foreground = true;
   bool _routeVisible = true;
   final _scrolling = <(Axis, int)>{};
@@ -77,15 +92,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _currentGroupId = _controller.currentGroupId(_controller.currentPage);
     _seenHomeRequests = widget.state.homeRequests;
     _seenBackRequests = widget.state.backRequests;
+    _syncOwners();
     widget.state.addListener(_onStateChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _warmIcons(_currentGroupId);
     });
   }
 
-  void _updateWarming() => _warmer.setEnabled(
-    _foreground && _routeVisible && !_searching && _scrolling.isEmpty,
-  );
+  void _updateWarming() {
+    final eligible =
+        _foreground && _routeVisible && !_searching && _scrolling.isEmpty;
+    _warmer.setEnabled(eligible);
+    TileRasterCache.scheduler.setSpeculationEnabled(eligible);
+  }
 
   /// Both caches have hard bounds. Stop speculating once either is full rather
   /// than evicting and reloading the working set for the whole pass.
@@ -105,6 +124,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ((settings?.iconSize ?? 0) * MediaQuery.devicePixelRatioOf(context))
             .round();
     if (size != _warmedSize) _warmIcons(_currentGroupId);
+  }
+
+  /// Drops raster owners that no longer exist in the model. Moving an item
+  /// keeps its identity, so a move alone does not invalidate its pixels.
+  void _syncOwners() {
+    final snapshot = widget.state.snapshot;
+    final owners = <String>{
+      if (snapshot != null) ...snapshot.items.map((item) => 'item:${item.id}'),
+      if (snapshot != null)
+        ...snapshot.groups.map((group) => 'group:${group.id}'),
+      ...widget.state.pageIds.map((id) => 'group:$id'),
+    };
+    for (final owner in _owners.difference(owners)) {
+      _rasterStore.invalidateOwner(owner);
+    }
+    _owners = owners;
   }
 
   /// Warm actual decoded images in page-priority order, bounded to one pass.
@@ -230,8 +265,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void didHaveMemoryPressure() {
     _warmer.cancel();
+    TileRasterCache.scheduler.cancelSpeculative();
+    _rasterStore.trimForMemoryPressure();
     widget.state.releaseIconSources();
     PaintingBinding.instance.imageCache.clear();
+    // Speculation does not restart here: the next foreground activity does.
   }
 
   void _onStateChanged() {
@@ -242,6 +280,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // A new snapshot (after `AppsChanged`, say) can change this page's items;
     // the cache dedups, so warming again is cheap.
     if (!identical(_warmedSnapshot, widget.state.snapshot)) {
+      _syncOwners();
       _warmIcons(_currentGroupId);
     }
   }
@@ -448,7 +487,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               settings.tabVisibility,
               MediaQuery.orientationOf(context),
             );
-        return Scaffold(
+        final generation = settings == null
+            ? null
+            : rasterGeneration(context, settings);
+        if (generation != null) {
+          _rasterStore.activateGeneration(generation);
+        }
+        final screen = Scaffold(
           // Transparent so the window's wallpaper shows behind the grid on
           // Android (§7.7); the base layer is the solid colour elsewhere. The
           // settings screen and dialogs paint their own surfaces.
@@ -560,6 +605,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ],
           ),
         );
+        return generation == null
+            ? screen
+            : RasterCacheScope(
+                store: _rasterStore,
+                generation: generation,
+                child: screen,
+              );
       },
     );
   }
