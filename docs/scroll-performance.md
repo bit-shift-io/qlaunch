@@ -45,6 +45,31 @@ pairs per sample. These are raster p99 times in milliseconds:
 | Continuous, icons only | 4.239 | 2.909 |
 | Continuous, neither | 6.450 | 7.558 |
 
+### Shadow blur setting
+
+Shadow blur is now a user setting (`label_shadow_blur`, 0-10, default 0) with a
+slider under Text. At 0 the shadow stays the sharp offset that measured well
+above. Raising it brings the old per-label GPU cost back for live text, so the
+slider is meant to be used with the whole-tile raster cache
+(`--dart-define=TILE_RASTER=combined` for a test build; the default remains
+live text). The cache key includes the blur value, so each new value captures
+the visible tiles once and then reuses the image.
+
+Tile caching was compared in all four icon/text combinations. With both on,
+build p99 fell from ~12.7 to ~9.7 ms while raster p99 stayed at ~8.6-9.3 ms
+with zero raster misses; sparse tiles got slower (empty cells raster average
+1.09 -> 3.01 ms, icons only 2.72 -> 3.91 ms), which is why combined caching is
+still opt-in. The cache waits for icon frames to decode before capturing (a
+capture taken during decoding freezes an empty icon), and keeps at most 128
+ref-counted entries so a blur slider cannot accumulate hundreds of MB.
+
+The tab strip and the continuous-scroll section headings use the same cache, so
+every visible label is covered. Tab fade is applied with `Opacity` outside the
+image, which keeps the animated alpha from triggering recaptures while paging.
+With labels only and blur 5, live text measured raster p99 113.2 ms (56 budget
+misses); separate and combined caching measured 5.8 ms and 6.9 ms with no
+misses. Captures for these fixed widgets all happen during warm-up.
+
 All eight post-fix samples had zero raster-budget misses. Minor differences in
 the empty/icon-only cases are run-to-run variation, not evidence that the shadow
 change speeds up content that has no label shadow to draw.

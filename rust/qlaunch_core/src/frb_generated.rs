@@ -1975,6 +1975,7 @@ impl SseDecode for crate::settings::Settings {
         let mut var_labelTypeface = <crate::settings::Typeface>::sse_decode(deserializer);
         let mut var_labelColour = <crate::settings::LabelColour>::sse_decode(deserializer);
         let mut var_labelShadow = <bool>::sse_decode(deserializer);
+        let mut var_labelShadowBlur = <i64>::sse_decode(deserializer);
         let mut var_orientation = <crate::settings::Orientation>::sse_decode(deserializer);
         return crate::settings::Settings {
             grid_columns_portrait: var_gridColumnsPortrait,
@@ -1993,6 +1994,7 @@ impl SseDecode for crate::settings::Settings {
             label_typeface: var_labelTypeface,
             label_colour: var_labelColour,
             label_shadow: var_labelShadow,
+            label_shadow_blur: var_labelShadowBlur,
             orientation: var_orientation,
         };
     }
@@ -2019,6 +2021,7 @@ impl SseDecode for crate::settings::SettingsPatch {
         let mut var_labelTypeface = <Option<crate::settings::Typeface>>::sse_decode(deserializer);
         let mut var_labelColour = <Option<crate::settings::LabelColour>>::sse_decode(deserializer);
         let mut var_labelShadow = <Option<bool>>::sse_decode(deserializer);
+        let mut var_labelShadowBlur = <Option<i64>>::sse_decode(deserializer);
         let mut var_orientation = <Option<crate::settings::Orientation>>::sse_decode(deserializer);
         return crate::settings::SettingsPatch {
             grid_columns_portrait: var_gridColumnsPortrait,
@@ -2037,6 +2040,7 @@ impl SseDecode for crate::settings::SettingsPatch {
             label_typeface: var_labelTypeface,
             label_colour: var_labelColour,
             label_shadow: var_labelShadow,
+            label_shadow_blur: var_labelShadowBlur,
             orientation: var_orientation,
         };
     }
@@ -2583,6 +2587,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::Settings {
             self.label_typeface.into_into_dart().into_dart(),
             self.label_colour.into_into_dart().into_dart(),
             self.label_shadow.into_into_dart().into_dart(),
+            self.label_shadow_blur.into_into_dart().into_dart(),
             self.orientation.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -2614,6 +2619,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::SettingsPatch {
             self.label_typeface.into_into_dart().into_dart(),
             self.label_colour.into_into_dart().into_dart(),
             self.label_shadow.into_into_dart().into_dart(),
+            self.label_shadow_blur.into_into_dart().into_dart(),
             self.orientation.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -3304,6 +3310,7 @@ impl SseEncode for crate::settings::Settings {
         <crate::settings::Typeface>::sse_encode(self.label_typeface, serializer);
         <crate::settings::LabelColour>::sse_encode(self.label_colour, serializer);
         <bool>::sse_encode(self.label_shadow, serializer);
+        <i64>::sse_encode(self.label_shadow_blur, serializer);
         <crate::settings::Orientation>::sse_encode(self.orientation, serializer);
     }
 }
@@ -3327,6 +3334,7 @@ impl SseEncode for crate::settings::SettingsPatch {
         <Option<crate::settings::Typeface>>::sse_encode(self.label_typeface, serializer);
         <Option<crate::settings::LabelColour>>::sse_encode(self.label_colour, serializer);
         <Option<bool>>::sse_encode(self.label_shadow, serializer);
+        <Option<i64>>::sse_encode(self.label_shadow_blur, serializer);
         <Option<crate::settings::Orientation>>::sse_encode(self.orientation, serializer);
     }
 }

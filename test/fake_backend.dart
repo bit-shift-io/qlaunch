@@ -291,6 +291,7 @@ Settings settingsWith({
   Typeface? labelTypeface,
   LabelColour? labelColour,
   bool? labelShadow,
+  int? labelShadowBlur,
   Orientation? orientation,
 }) => Settings(
   gridColumnsPortrait: gridColumnsPortrait ?? testSettings.gridColumnsPortrait,
@@ -310,6 +311,7 @@ Settings settingsWith({
   labelTypeface: labelTypeface ?? testSettings.labelTypeface,
   labelColour: labelColour ?? testSettings.labelColour,
   labelShadow: labelShadow ?? testSettings.labelShadow,
+  labelShadowBlur: labelShadowBlur ?? testSettings.labelShadowBlur,
   orientation: orientation ?? testSettings.orientation,
 );
 

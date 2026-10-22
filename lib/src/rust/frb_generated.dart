@@ -1738,8 +1738,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   Settings dco_decode_settings(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 17)
-      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
+    if (arr.length != 18)
+      throw Exception('unexpected arr length: expect 18 but see ${arr.length}');
     return Settings(
       gridColumnsPortrait: dco_decode_i_64(arr[0]),
       gridColumnsLandscape: dco_decode_i_64(arr[1]),
@@ -1757,7 +1757,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       labelTypeface: dco_decode_typeface(arr[13]),
       labelColour: dco_decode_label_colour(arr[14]),
       labelShadow: dco_decode_bool(arr[15]),
-      orientation: dco_decode_orientation(arr[16]),
+      labelShadowBlur: dco_decode_i_64(arr[16]),
+      orientation: dco_decode_orientation(arr[17]),
     );
   }
 
@@ -1765,8 +1766,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   SettingsPatch dco_decode_settings_patch(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 17)
-      throw Exception('unexpected arr length: expect 17 but see ${arr.length}');
+    if (arr.length != 18)
+      throw Exception('unexpected arr length: expect 18 but see ${arr.length}');
     return SettingsPatch(
       gridColumnsPortrait: dco_decode_opt_box_autoadd_i_64(arr[0]),
       gridColumnsLandscape: dco_decode_opt_box_autoadd_i_64(arr[1]),
@@ -1784,7 +1785,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       labelTypeface: dco_decode_opt_box_autoadd_typeface(arr[13]),
       labelColour: dco_decode_opt_box_autoadd_label_colour(arr[14]),
       labelShadow: dco_decode_opt_box_autoadd_bool(arr[15]),
-      orientation: dco_decode_opt_box_autoadd_orientation(arr[16]),
+      labelShadowBlur: dco_decode_opt_box_autoadd_i_64(arr[16]),
+      orientation: dco_decode_opt_box_autoadd_orientation(arr[17]),
     );
   }
 
@@ -2502,6 +2504,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_labelTypeface = sse_decode_typeface(deserializer);
     var var_labelColour = sse_decode_label_colour(deserializer);
     var var_labelShadow = sse_decode_bool(deserializer);
+    var var_labelShadowBlur = sse_decode_i_64(deserializer);
     var var_orientation = sse_decode_orientation(deserializer);
     return Settings(
       gridColumnsPortrait: var_gridColumnsPortrait,
@@ -2520,6 +2523,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       labelTypeface: var_labelTypeface,
       labelColour: var_labelColour,
       labelShadow: var_labelShadow,
+      labelShadowBlur: var_labelShadowBlur,
       orientation: var_orientation,
     );
   }
@@ -2549,6 +2553,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_labelTypeface = sse_decode_opt_box_autoadd_typeface(deserializer);
     var var_labelColour = sse_decode_opt_box_autoadd_label_colour(deserializer);
     var var_labelShadow = sse_decode_opt_box_autoadd_bool(deserializer);
+    var var_labelShadowBlur = sse_decode_opt_box_autoadd_i_64(deserializer);
     var var_orientation = sse_decode_opt_box_autoadd_orientation(deserializer);
     return SettingsPatch(
       gridColumnsPortrait: var_gridColumnsPortrait,
@@ -2567,6 +2572,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       labelTypeface: var_labelTypeface,
       labelColour: var_labelColour,
       labelShadow: var_labelShadow,
+      labelShadowBlur: var_labelShadowBlur,
       orientation: var_orientation,
     );
   }
@@ -3268,6 +3274,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_typeface(self.labelTypeface, serializer);
     sse_encode_label_colour(self.labelColour, serializer);
     sse_encode_bool(self.labelShadow, serializer);
+    sse_encode_i_64(self.labelShadowBlur, serializer);
     sse_encode_orientation(self.orientation, serializer);
   }
 
@@ -3290,6 +3297,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_opt_box_autoadd_typeface(self.labelTypeface, serializer);
     sse_encode_opt_box_autoadd_label_colour(self.labelColour, serializer);
     sse_encode_opt_box_autoadd_bool(self.labelShadow, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.labelShadowBlur, serializer);
     sse_encode_opt_box_autoadd_orientation(self.orientation, serializer);
   }
 

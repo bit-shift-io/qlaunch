@@ -24,6 +24,14 @@ void main() {
     expect(style.shadows!.single.color, Colors.white);
   });
 
+  test('uses the shadow blur from the settings', () {
+    final style = labelTextStyle(
+      settingsWith(labelShadow: true, labelShadowBlur: 4),
+    );
+
+    expect(style.shadows!.single.blurRadius, 4);
+  });
+
   test('drops the shadow when the setting is off', () {
     expect(labelTextStyle(settingsWith(labelShadow: false)).shadows, isNull);
   });
@@ -38,9 +46,8 @@ void main() {
       'sans-serif',
     );
     expect(
-      labelTextStyle(
-        settingsWith(labelTypeface: Typeface.monospace),
-      ).fontFamily,
+      labelTextStyle(settingsWith(labelTypeface: Typeface.monospace))
+          .fontFamily,
       'monospace',
     );
   });

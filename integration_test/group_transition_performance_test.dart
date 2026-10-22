@@ -16,6 +16,7 @@ import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/settings.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
+import 'package:qlaunch/src/ui/raster_tile.dart';
 import 'package:qlaunch/src/ui/tab_strip.dart';
 
 /// Count real bridge work, including cache misses, without mocking the backend.
@@ -82,6 +83,7 @@ void main() {
           iconsVisible: original.iconsVisible,
           labelsVisible: original.labelsVisible,
           labelShadow: original.labelShadow,
+          labelShadowBlur: original.labelShadowBlur,
           scrollFade: original.scrollFade,
         ),
       ),
@@ -95,11 +97,18 @@ void main() {
     Future<void> go(String id, String label) async {
       final tabs = tester.widget<TabStrip>(find.byType(TabStrip));
       if (tabs.currentGroupId == id) return;
-      final title = find
-          .descendant(of: find.byType(TabStrip), matching: find.text(label))
-          .hitTestable()
-          .first;
-      await tester.tap(title);
+      final base = tabs.pageIds.indexOf(tabs.currentGroupId);
+      final count = tabs.pageIds.length;
+      int? offset;
+      for (final candidate in count == 1 ? [0] : [-1, 0, 1, 2]) {
+        if (tabs.pageIds[(base + candidate) % count] == id) {
+          offset = candidate;
+          break;
+        }
+      }
+      expect(offset, isNotNull, reason: '$label is not in the tab strip');
+      final tab = find.byKey(TabStrip.tapKey(offset!)).hitTestable().first;
+      await tester.tap(tab);
       await tester.pumpAndSettle(const Duration(milliseconds: 16));
       expect(tester.widget<TabStrip>(find.byType(TabStrip)).currentGroupId, id);
     }
@@ -132,6 +141,7 @@ void main() {
               iconsVisible: visibility.$1,
               labelsVisible: visibility.$2,
               labelShadow: true,
+              labelShadowBlur: 0,
             ),
           );
           await tester.pumpAndSettle();
@@ -162,6 +172,7 @@ void main() {
           iconsVisible: true,
           labelsVisible: true,
           labelShadow: variant.$2,
+          labelShadowBlur: 0,
           scrollFade: variant.$3,
         ),
       );
@@ -183,6 +194,7 @@ void main() {
           iconsVisible: true,
           labelsVisible: true,
           labelShadow: original.labelShadow,
+          labelShadowBlur: 0,
           scrollFade: original.scrollFade,
         ),
       );
@@ -204,6 +216,7 @@ void main() {
         iconsVisible: false,
         labelsVisible: false,
         labelShadow: true,
+        labelShadowBlur: 0,
         scrollFade: original.scrollFade,
       ),
     );
@@ -223,7 +236,9 @@ void main() {
       'TRANSITION_COLD ${jsonEncode({'buildP99': cold['99th_percentile_frame_build_time_millis'], 'buildWorst': cold['worst_frame_build_time_millis'], 'rasterP99': cold['99th_percentile_frame_rasterizer_time_millis'], 'rasterWorst': cold['worst_frame_rasterizer_time_millis'], 'rasterMisses': cold['missed_frame_rasterizer_budget_count'], 'iconCalls': backend.icons, 'snapshotCalls': backend.snapshots, 'iconCallTotalMs': backend.iconMicros / 1000})}',
     );
 
-    await state.updateSettings(const SettingsPatch(labelsVisible: true));
+    await state.updateSettings(
+      const SettingsPatch(labelsVisible: true, labelShadowBlur: 0),
+    );
     await tester.pumpAndSettle();
     await go(apps.id, apps.label);
     backend.reset();
@@ -247,6 +262,97 @@ void main() {
     debugPrint(
       'TRANSITION_SWIPES ${jsonEncode({'buildP99': swipes['99th_percentile_frame_build_time_millis'], 'buildWorst': swipes['worst_frame_build_time_millis'], 'rasterP99': swipes['99th_percentile_frame_rasterizer_time_millis'], 'rasterWorst': swipes['worst_frame_rasterizer_time_millis'], 'rasterMisses': swipes['missed_frame_rasterizer_budget_count'], 'iconCalls': backend.icons, 'snapshotCalls': backend.snapshots})}',
     );
+    // Spike: live tiles vs pre-rendered parts vs one pre-rendered tile. The
+    // label shadow toggle only exists to force a rebuild that reads the mode.
+    Future<void> forceRebuild() async {
+      await state.updateSettings(const SettingsPatch(labelShadow: false));
+      await tester.pumpAndSettle();
+      await state.updateSettings(const SettingsPatch(labelShadow: true));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> measureTiles(
+      String name,
+      TileRasterMode mode,
+      bool icons,
+      bool labels,
+      int blur,
+    ) async {
+      TileRasterCache.mode = mode;
+      await forceRebuild();
+      if (mode != TileRasterMode.none) {
+        await go(apps.id, apps.label);
+        for (var i = 0; i < 3; i++) {
+          await go(games.id, games.label);
+          await go(apps.id, apps.label);
+        }
+        await tester.pumpAndSettle();
+      }
+      final capturesBefore = TileRasterCache.captures;
+      backend.reset();
+      await binding.watchPerformance(backAndForth, reportKey: name);
+      final data = binding.reportData![name] as Map;
+      debugPrint(
+        'TRANSITION_TILES ${jsonEncode({'case': name, 'mode': mode.name, 'icons': icons, 'labels': labels, 'blur': blur, 'captures': TileRasterCache.captures - capturesBefore, 'frames': data['frame_count'], 'buildAvg': data['average_frame_build_time_millis'], 'buildP90': data['90th_percentile_frame_build_time_millis'], 'buildP99': data['99th_percentile_frame_build_time_millis'], 'buildWorst': data['worst_frame_build_time_millis'], 'rasterAvg': data['average_frame_rasterizer_time_millis'], 'rasterP90': data['90th_percentile_frame_rasterizer_time_millis'], 'rasterP99': data['99th_percentile_frame_rasterizer_time_millis'], 'rasterWorst': data['worst_frame_rasterizer_time_millis'], 'buildMisses': data['missed_frame_build_budget_count'], 'rasterMisses': data['missed_frame_rasterizer_budget_count'], 'iconCalls': backend.icons, 'snapshotCalls': backend.snapshots})}',
+      );
+      if (mode != TileRasterMode.none) {
+        TileRasterCache.mode = TileRasterMode.none;
+        await forceRebuild();
+        TileRasterCache.reset();
+      }
+    }
+
+    Future<void> compareTiles(
+      String caseName,
+      bool icons,
+      bool labels, {
+      int blur = 0,
+    }) async {
+      await state.updateSettings(
+        SettingsPatch(
+          continuousScroll: false,
+          iconsVisible: icons,
+          labelsVisible: labels,
+          labelShadow: true,
+          labelShadowBlur: blur,
+          scrollFade: original.scrollFade,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await go(apps.id, apps.label);
+      await go(games.id, games.label);
+      await go(apps.id, apps.label);
+      final modes = icons && labels
+          ? [
+              TileRasterMode.none,
+              TileRasterMode.separate,
+              TileRasterMode.combined,
+              TileRasterMode.combined,
+              TileRasterMode.separate,
+              TileRasterMode.none,
+            ]
+          : [
+              TileRasterMode.none,
+              TileRasterMode.separate,
+              TileRasterMode.combined,
+            ];
+      for (var i = 0; i < modes.length; i++) {
+        await measureTiles(
+          '${caseName}_${modes[i].name}_$i',
+          modes[i],
+          icons,
+          labels,
+          blur,
+        );
+      }
+    }
+
+    await compareTiles('icons-true_labels-true', true, true);
+    await compareTiles('icons-false_labels-true', false, true);
+    await compareTiles('icons-true_labels-false', true, false);
+    await compareTiles('icons-false_labels-false', false, false);
+    await compareTiles('icons-false_labels-true_blur5', false, true, blur: 5);
+
     const maxRasterP99 = int.fromEnvironment(
       'MAX_TRANSITION_RASTER_P99_MS',
       defaultValue: 25,

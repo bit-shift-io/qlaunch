@@ -5,13 +5,14 @@ import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/ui/label_style.dart';
 import 'package:qlaunch/src/ui/grid_geometry.dart';
+import 'package:qlaunch/src/ui/raster_tile.dart';
 
 /// One app in the grid: an icon and a label laid out per `Settings.layout`.
 ///
 /// It takes plain values, not `LauncherState`, so it can be tested without a
 /// backend. The icon is whatever the caller resolved; `null` draws a
 /// placeholder.
-class AppCell extends StatelessWidget {
+class AppCell extends StatefulWidget {
   const AppCell({
     super.key,
     required this.item,
@@ -47,30 +48,73 @@ class AppCell extends StatelessWidget {
   // cannot be launched.
   static const _uninstalledOpacity = 0.4;
 
+  @override
+  State<AppCell> createState() => _AppCellState();
+}
+
+class _AppCellState extends State<AppCell> {
+  /// A cached tile must not be captured while an `Image` is still decoding:
+  /// the capture would freeze the empty frame, and the provider itself does
+  /// not change when the frame arrives.
+  bool _iconReady = false;
+  bool _readyScheduled = false;
+  ImageProvider? _readyFor;
+
+  Item get item => widget.item;
+  Settings get settings => widget.settings;
+
   bool get _launchable =>
       item.shortcut != null || (item.app != null && !item.uninstalled);
+
+  bool get _iconCacheable {
+    final provider = item.uninstalled ? null : widget.icon;
+    return provider == null || _iconReady;
+  }
+
+  @override
+  void didUpdateWidget(covariant AppCell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.icon, widget.icon)) {
+      _iconReady = false;
+      _readyFor = null;
+    }
+  }
+
+  void _markIconReady(ImageProvider provider) {
+    if (_iconReady && identical(_readyFor, provider)) return;
+    if (_readyScheduled) return;
+    _readyScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _readyScheduled = false;
+      if (!mounted || !identical(widget.icon, provider)) return;
+      setState(() {
+        _iconReady = true;
+        _readyFor = provider;
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     Widget cell = GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: _launchable ? onTap : null,
+      onTap: _launchable ? widget.onTap : null,
       // Always claim the long press, even when there is no handler. With only a
       // tap recogniser registered, a tap recognises a press held past its
       // deadline and fires `onTap` on release, so resting a finger on a cell
       // would launch it. Claiming the press makes holding inert, which is also
       // what Plan 3 wants when the press opens App Settings.
-      onLongPress: onLongPress ?? () {},
+      onLongPress: widget.onLongPress ?? () {},
       child: LayoutBuilder(builder: _content),
     );
-    if (onPointerDown != null) {
+    if (widget.onPointerDown != null) {
       cell = Listener(
-        onPointerDown: (event) => onPointerDown!(event.pointer),
+        onPointerDown: (event) => widget.onPointerDown!(event.pointer),
         child: cell,
       );
     }
     if (item.uninstalled) {
-      cell = Opacity(opacity: _uninstalledOpacity, child: cell);
+      cell = Opacity(opacity: AppCell._uninstalledOpacity, child: cell);
     }
     // One cell repainting (an icon fading in, say) must not repaint its
     // neighbours, so give the grid's scroll a cheap per-cell layer boundary.
@@ -94,8 +138,51 @@ class AppCell extends StatelessWidget {
       );
     }
 
-    final iconBox = settings.iconsVisible ? _icon(side) : null;
-    final label = settings.labelsVisible ? _label(list) : null;
+    final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+    final textScale = MediaQuery.textScalerOf(context)
+        .scale(settings.labelSize.toDouble());
+    final labelSignature = (
+      item.label,
+      width,
+      side,
+      list,
+      settings.labelSize,
+      settings.labelTypeface,
+      settings.labelColour,
+      settings.labelShadow,
+      settings.labelShadowBlur,
+      textScale,
+      devicePixelRatio,
+      constraints.hasBoundedHeight ? constraints.maxHeight : -1.0,
+    );
+    final iconSignature = (
+      item.id,
+      item.shortcut,
+      item.uninstalled,
+      widget.icon,
+      side,
+      settings.iconAlpha,
+      devicePixelRatio,
+    );
+
+    Widget? iconBox = settings.iconsVisible ? _icon(side) : null;
+    Widget? label = settings.labelsVisible ? _label(list) : null;
+    if (TileRasterCache.mode == TileRasterMode.separate) {
+      if (iconBox != null) {
+        iconBox = RasterTile(
+          signature: iconSignature,
+          cacheable: _iconCacheable,
+          child: iconBox,
+        );
+      }
+      if (label != null) {
+        label = RasterTile(
+          signature: labelSignature,
+          label: item.label,
+          child: label,
+        );
+      }
+    }
 
     final Widget body;
     if (list) {
@@ -121,7 +208,7 @@ class AppCell extends StatelessWidget {
       );
     }
 
-    return ClipRect(
+    final content = ClipRect(
       child: Padding(
         padding: list
             ? const EdgeInsets.all(5)
@@ -134,10 +221,26 @@ class AppCell extends StatelessWidget {
         ),
       ),
     );
+    if (TileRasterCache.mode != TileRasterMode.combined) return content;
+
+    // Includes every input that changes the painted tile, so a font, size,
+    // colour, shadow, text-scale or DPI change re-renders from the live widget.
+    return RasterTile(
+      signature: (
+        layout,
+        iconSignature,
+        labelSignature,
+        settings.iconsVisible,
+        settings.labelsVisible,
+      ),
+      cacheable: _iconCacheable,
+      label: item.label,
+      child: content,
+    );
   }
 
   Widget _icon(double side) {
-    final provider = item.uninstalled ? null : icon;
+    final provider = item.uninstalled ? null : widget.icon;
     final placeholder = _Placeholder(side: side, item: item);
     // `icon_alpha` is 0-100. Rust clamps it, and Opacity asserts its range, so
     // clamp here as well rather than trust the value to be sane.
@@ -148,17 +251,24 @@ class AppCell extends StatelessWidget {
             image: provider,
             fit: BoxFit.contain,
             gaplessPlayback: true,
-            errorBuilder: (context, error, stack) => placeholder,
+            frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+              if (frame != null) _markIconReady(provider);
+              return child;
+            },
+            errorBuilder: (context, error, stack) {
+              _markIconReady(provider);
+              return placeholder;
+            },
           );
     // At full opacity the layer would be a no-op saveLayer, so skip it.
     if (opacity < 1.0) image = Opacity(opacity: opacity, child: image);
-    return SizedBox.square(key: iconKey, dimension: side, child: image);
+    return SizedBox.square(key: AppCell.iconKey, dimension: side, child: image);
   }
 
   Widget _label(bool list) {
     return Text(
       item.label,
-      key: labelKey,
+      key: AppCell.labelKey,
       maxLines: 2,
       softWrap: true,
       overflow: TextOverflow.ellipsis,

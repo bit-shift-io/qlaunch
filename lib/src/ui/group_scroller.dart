@@ -7,6 +7,7 @@ import 'package:qlaunch/src/ui/app_cells.dart';
 import 'package:qlaunch/src/ui/grid_geometry.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/label_style.dart';
+import 'package:qlaunch/src/ui/raster_tile.dart';
 import 'package:qlaunch/src/ui/scroll_edge_fade.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 
@@ -169,26 +170,44 @@ class _GroupScrollerState extends State<GroupScroller> {
                 entry.groupId;
             return SizedBox(
               height: headingExtent,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(child: Divider(color: Colors.white24)),
-                    Expanded(
-                      flex: 2,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          label,
-                          textAlign: TextAlign.center,
-                          style: labelTextStyle(settings),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+              child: RasterTile(
+                signature: (
+                  'heading',
+                  label,
+                  constraints.maxWidth,
+                  headingExtent,
+                  settings.labelSize,
+                  settings.labelTypeface,
+                  settings.labelColour,
+                  settings.labelShadow,
+                  settings.labelShadowBlur,
+                  MediaQuery.textScalerOf(context).scale(
+                    settings.labelSize.toDouble(),
+                  ),
+                  MediaQuery.devicePixelRatioOf(context),
+                ),
+                label: label,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(child: Divider(color: Colors.white24)),
+                      Expanded(
+                        flex: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text(
+                            label,
+                            textAlign: TextAlign.center,
+                            style: labelTextStyle(settings),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
-                    ),
-                    Expanded(child: Divider(color: Colors.white24)),
-                  ],
+                      Expanded(child: Divider(color: Colors.white24)),
+                    ],
+                  ),
                 ),
               ),
             );

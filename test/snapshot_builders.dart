@@ -20,6 +20,7 @@ const testSettings = Settings(
   labelTypeface: Typeface.normal,
   labelColour: LabelColour.white,
   labelShadow: true,
+  labelShadowBlur: 0,
   orientation: Orientation.auto,
 );
 

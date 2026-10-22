@@ -18,7 +18,9 @@ TextStyle labelTextStyle(Settings settings) {
     fontSize: settings.labelSize.toDouble(),
     fontFamily: labelFontFamily(settings),
     color: colour,
-    shadows: settings.labelShadow ? [labelShadow(colour)] : null,
+    shadows: settings.labelShadow
+        ? [labelShadow(colour, blur: settings.labelShadowBlur.toDouble())]
+        : null,
   );
 }
 
@@ -30,13 +32,16 @@ String? labelFontFamily(Settings settings) => switch (settings.labelTypeface) {
   Typeface.monospace => 'monospace',
 };
 
-/// A contrasting offset shadow keeps text readable over wallpaper. Avoid a
-/// blurred glyph mask here: on Impeller/Vulkan it makes paging dozens of labels
-/// GPU-bound even with warm icons (100+ ms raster frames on the Android tablet).
-/// A sharp shadow preserves contrast without per-label blur passes.
-Shadow labelShadow(Color colour) => Shadow(
+/// A contrasting offset shadow keeps text readable over wallpaper.
+///
+/// `blur` is the user's Shadow blur setting. Blurred glyph masks are expensive
+/// on Impeller/Vulkan (100+ ms raster frames paging warm labels on the Android
+/// tablet), so it defaults to zero and only costs more when the user asks.
+/// Rendering a whole tile to an image makes that cost a one-off capture.
+Shadow labelShadow(Color colour, {double blur = 0}) => Shadow(
   color: colour == Colors.black ? Colors.white : Colors.black,
   offset: const Offset(1, 1),
+  blurRadius: blur,
 );
 
 /// The theme's text, sized to the user's Font size and typeface.

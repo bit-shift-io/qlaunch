@@ -69,6 +69,7 @@ pub struct Settings {
     pub label_typeface: Typeface,
     pub label_colour: LabelColour,
     pub label_shadow: bool,
+    pub label_shadow_blur: i64,
     pub orientation: Orientation,
 }
 
@@ -90,6 +91,7 @@ pub struct SettingsPatch {
     pub label_typeface: Option<Typeface>,
     pub label_colour: Option<LabelColour>,
     pub label_shadow: Option<bool>,
+    pub label_shadow_blur: Option<i64>,
     pub orientation: Option<Orientation>,
 }
 
@@ -112,6 +114,7 @@ impl Default for Settings {
             label_typeface: Typeface::Normal,
             label_colour: LabelColour::White,
             label_shadow: true,
+            label_shadow_blur: 0,
             orientation: Orientation::Auto,
         }
     }
@@ -127,6 +130,7 @@ impl Settings {
         self.icon_size = self.icon_size.clamp(0, 100);
         self.icon_alpha = self.icon_alpha.clamp(0, 100);
         self.label_size = self.label_size.clamp(0, 100);
+        self.label_shadow_blur = self.label_shadow_blur.clamp(0, 10);
     }
 
     /// Overwrites the fields the patch sets. Does not clamp; call
@@ -154,6 +158,7 @@ impl Settings {
             label_typeface,
             label_colour,
             label_shadow,
+            label_shadow_blur,
             orientation,
         );
     }

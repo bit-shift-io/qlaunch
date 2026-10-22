@@ -21,6 +21,7 @@ fn defaults_match_the_spec() {
     assert_eq!(s.label_typeface, Typeface::Normal);
     assert_eq!(s.label_colour, LabelColour::White);
     assert!(s.label_shadow);
+    assert_eq!(s.label_shadow_blur, 0);
     assert_eq!(s.orientation, Orientation::Auto);
 }
 
@@ -55,6 +56,7 @@ fn every_ranged_field_clamps_to_its_maximum() {
         icon_size: i64::MAX,
         icon_alpha: 255,
         label_size: i64::MAX,
+        label_shadow_blur: 99,
         ..Settings::default()
     };
     s.clamp();
@@ -62,6 +64,7 @@ fn every_ranged_field_clamps_to_its_maximum() {
     assert_eq!(s.icon_size, 100);
     assert_eq!(s.icon_alpha, 100);
     assert_eq!(s.label_size, 100);
+    assert_eq!(s.label_shadow_blur, 10);
 }
 
 #[test]
@@ -193,6 +196,7 @@ fn field_names_serialise_verbatim() {
             "icons_visible",
             "label_colour",
             "label_shadow",
+            "label_shadow_blur",
             "label_size",
             "label_typeface",
             "labels_visible",
@@ -217,6 +221,35 @@ fn continuous_scrolling_defaults_off_and_round_trips_when_enabled() {
     let saved = serde_json::to_string(&settings).unwrap();
     let restored: Settings = serde_json::from_str(&saved).unwrap();
     assert!(restored.continuous_scroll);
+}
+
+#[test]
+fn shadow_blur_clamps_to_zero_through_ten() {
+    let mut s = Settings::default();
+    s.apply(&SettingsPatch {
+        label_shadow_blur: Some(-1),
+        ..Default::default()
+    });
+    s.clamp();
+    assert_eq!(s.label_shadow_blur, 0);
+
+    s.apply(&SettingsPatch {
+        label_shadow_blur: Some(11),
+        ..Default::default()
+    });
+    s.clamp();
+    assert_eq!(s.label_shadow_blur, 10);
+}
+
+#[test]
+fn shadow_blur_round_trips() {
+    let mut s = Settings::default();
+    s.apply(&SettingsPatch {
+        label_shadow_blur: Some(4),
+        ..Default::default()
+    });
+    let restored: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+    assert_eq!(restored.label_shadow_blur, 4);
 }
 
 #[test]

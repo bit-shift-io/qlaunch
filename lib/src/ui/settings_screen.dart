@@ -58,6 +58,7 @@ enum SettingField {
   labelTypeface,
   labelColour,
   labelShadow,
+  labelShadowBlur,
   orientation,
 }
 
@@ -100,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _header('Display'),
                   _switch(
                     SettingField.continuousScroll,
-                    'Continuous scrolling (prototype)',
+                    'Continuous scrolling',
                     settings.continuousScroll,
                     (v) => SettingsPatch(continuousScroll: v),
                   ),
@@ -237,6 +238,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'Label shadow',
                     settings.labelShadow,
                     (v) => SettingsPatch(labelShadow: v),
+                  ),
+                  _number(
+                    SettingField.labelShadowBlur,
+                    'Shadow blur',
+                    settings.labelShadowBlur.toDouble(),
+                    0,
+                    10,
+                    (v) => SettingsPatch(labelShadowBlur: v.round()),
                   ),
 
                   _header('Groups'),

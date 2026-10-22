@@ -32,6 +32,7 @@ class Settings {
   final Typeface labelTypeface;
   final LabelColour labelColour;
   final bool labelShadow;
+  final PlatformInt64 labelShadowBlur;
   final Orientation orientation;
 
   const Settings({
@@ -51,6 +52,7 @@ class Settings {
     required this.labelTypeface,
     required this.labelColour,
     required this.labelShadow,
+    required this.labelShadowBlur,
     required this.orientation,
   });
 
@@ -72,6 +74,7 @@ class Settings {
       labelTypeface.hashCode ^
       labelColour.hashCode ^
       labelShadow.hashCode ^
+      labelShadowBlur.hashCode ^
       orientation.hashCode;
 
   @override
@@ -95,6 +98,7 @@ class Settings {
           labelTypeface == other.labelTypeface &&
           labelColour == other.labelColour &&
           labelShadow == other.labelShadow &&
+          labelShadowBlur == other.labelShadowBlur &&
           orientation == other.orientation;
 }
 
@@ -115,6 +119,7 @@ class SettingsPatch {
   final Typeface? labelTypeface;
   final LabelColour? labelColour;
   final bool? labelShadow;
+  final PlatformInt64? labelShadowBlur;
   final Orientation? orientation;
 
   const SettingsPatch({
@@ -134,6 +139,7 @@ class SettingsPatch {
     this.labelTypeface,
     this.labelColour,
     this.labelShadow,
+    this.labelShadowBlur,
     this.orientation,
   });
 
@@ -155,6 +161,7 @@ class SettingsPatch {
       labelTypeface.hashCode ^
       labelColour.hashCode ^
       labelShadow.hashCode ^
+      labelShadowBlur.hashCode ^
       orientation.hashCode;
 
   @override
@@ -178,6 +185,7 @@ class SettingsPatch {
           labelTypeface == other.labelTypeface &&
           labelColour == other.labelColour &&
           labelShadow == other.labelShadow &&
+          labelShadowBlur == other.labelShadowBlur &&
           orientation == other.orientation;
 }
 

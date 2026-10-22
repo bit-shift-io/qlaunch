@@ -55,8 +55,7 @@ void main() {
 
     testWidgets('every setting in the table has one', (tester) async {
       await pumpSettings(tester);
-      // The original settings plus the continuous-scrolling prototype.
-      expect(SettingField.values, hasLength(17));
+      expect(SettingField.values, hasLength(18));
       for (final field in SettingField.values) {
         expect(
           find.byKey(SettingsScreen.controlKey(field)),
@@ -65,6 +64,36 @@ void main() {
         );
       }
       expect(find.byKey(SettingsScreen.advancedKey), findsOneWidget);
+    });
+
+    testWidgets('continuous scrolling is no longer labelled a prototype', (
+      tester,
+    ) async {
+      await pumpSettings(tester);
+
+      expect(find.text('Continuous scrolling'), findsOneWidget);
+      expect(find.text('Continuous scrolling (prototype)'), findsNothing);
+    });
+
+    testWidgets('shadow blur sends only that setting and spans 0-10', (
+      tester,
+    ) async {
+      await pumpSettings(tester);
+      final control = find.byKey(
+        SettingsScreen.controlKey(SettingField.labelShadowBlur),
+      );
+      await tester.ensureVisible(control);
+      await tester.pump();
+      final slider = tester.widget<Slider>(control);
+      expect(slider.value, testSettings.labelShadowBlur.toDouble());
+      expect(slider.min, 0);
+      expect(slider.max, 10);
+
+      await tester.drag(control, const Offset(500, 0));
+      await tester.pumpAndSettle();
+
+      expect(fake.settingsPatches, hasLength(1));
+      expect(fake.settingsPatches.single.labelShadowBlur, 10);
     });
 
     testWidgets('the text size row is called "Font size"', (tester) async {
