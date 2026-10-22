@@ -42,8 +42,9 @@ class AppCell extends StatelessWidget {
   static const labelKey = ValueKey('appCell.label');
   static const placeholderKey = ValueKey('appCell.placeholder');
 
-  // An uninstalled item stays in the model so that reinstalling restores it
-  // to its group; it is drawn faded to say it cannot be launched.
+  // A legacy document can carry an uninstalled item until a successful app
+  // listing removes it; while it is still here, draw it faded to say it
+  // cannot be launched.
   static const _uninstalledOpacity = 0.4;
 
   bool get _launchable =>

@@ -9,9 +9,13 @@ use std::time::Duration;
 use flutter_rust_bridge::for_generated::futures::executor::block_on;
 use qlaunch_core::api::api::{self, ModelSnapshot};
 use qlaunch_core::api::events::{CoreEvent, EventBus};
+use qlaunch_core::model::ShortcutPayload;
 use qlaunch_core::model::{AppCategory, AppEntry, AppRef, GroupRole, IconImage, Item, Model};
 use qlaunch_core::platform::{AppSource, FakeSource, LaunchError, PlatformError, WatchHandle};
-use qlaunch_core::settings::SettingsPatch;
+use qlaunch_core::reconcile::reconcile;
+use qlaunch_core::settings::{Settings, SettingsPatch};
+use qlaunch_core::store::Store;
+use qlaunch_core::usage::Usage;
 use tempfile::tempdir;
 
 // The API keeps its state in a process-global, so tests that use it would race
@@ -408,14 +412,44 @@ fn a_failed_listing_does_not_mark_anything_uninstalled() {
 }
 
 #[test]
-fn a_successful_refresh_reconciles_and_announces_it() {
+fn a_successful_refresh_removes_uninstalled_apps_and_their_shortcuts() {
     let _guard = serial();
     let dir = tempdir().unwrap();
     let listing = Arc::new(Mutex::new(Ok(fixtures())));
-    api::init_with_source(
+    let first = api::init_with_source(
         Some(dir.path().to_path_buf()),
         Box::new(Switchable(listing.clone())),
         Vec::new(),
+    )
+    .unwrap();
+    let home = group_id(&first, GroupRole::Home);
+    let command = block_on(api::add_command_shortcut(
+        home.clone(),
+        "Command".into(),
+        "echo hi".into(),
+    ))
+    .unwrap();
+    let command_id = command
+        .items
+        .iter()
+        .find(|item| item.label == "Command")
+        .unwrap()
+        .id
+        .clone();
+    qlaunch_core::api::shortcuts::add(
+        &home,
+        "Beta shortcut",
+        ShortcutPayload::Android {
+            action: Some("android.intent.action.VIEW".into()),
+            data: None,
+            mime_type: None,
+            categories: Vec::new(),
+            package: Some("org.beta".into()),
+            component: None,
+            flags: 0,
+            extras: Vec::new(),
+        },
+        None,
     )
     .unwrap();
     let seen = record_events();
@@ -426,22 +460,148 @@ fn a_successful_refresh_reconciles_and_announces_it() {
     ]);
     let after = block_on(api::refresh_apps()).unwrap();
 
-    let uninstalled = |package: &str| {
+    assert!(
         after
             .items
             .iter()
-            .find(|i| i.app.as_ref() == Some(&app_ref(package)))
-            .map(|i| i.uninstalled)
-    };
-    assert_eq!(uninstalled("org.alpha"), Some(false));
-    assert_eq!(uninstalled("org.beta"), Some(true));
-    assert_eq!(uninstalled("org.new"), Some(false));
-    assert_eq!(*seen.lock().unwrap(), vec![CoreEvent::AppsChanged]);
-    assert!(
-        fs::read_to_string(dir.path().join("qlaunch.json"))
-            .unwrap()
-            .contains("org.new")
+            .all(|item| item.app.as_ref() != Some(&app_ref("org.beta"))),
+        "the uninstalled app is gone, not dimmed"
     );
+    assert!(
+        after.items.iter().all(|item| item.label != "Beta shortcut"),
+        "the shortcut that targeted it is gone too"
+    );
+    assert!(
+        after.items.iter().any(|item| item.id == command_id),
+        "an unrelated shortcut is kept"
+    );
+    assert!(
+        after
+            .items
+            .iter()
+            .any(|item| item.app.as_ref() == Some(&app_ref("org.alpha")))
+    );
+    assert!(
+        after
+            .items
+            .iter()
+            .any(|item| item.app.as_ref() == Some(&app_ref("org.new")))
+    );
+    assert_eq!(*seen.lock().unwrap(), vec![CoreEvent::AppsChanged]);
+    let document = fs::read_to_string(dir.path().join("qlaunch.json")).unwrap();
+    assert!(!document.contains("org.beta"), "{document}");
+    assert!(document.contains("org.new"), "{document}");
+    assert!(!document.contains("\"uninstalled\": true"), "{document}");
+}
+
+#[test]
+fn init_removes_apps_uninstalled_since_the_last_run() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let first = init_fake(dir.path());
+    let home = group_id(&first, GroupRole::Home);
+    qlaunch_core::api::shortcuts::add(
+        &home,
+        "Beta shortcut",
+        ShortcutPayload::Android {
+            action: Some("android.intent.action.VIEW".into()),
+            data: None,
+            mime_type: None,
+            categories: Vec::new(),
+            package: None,
+            component: Some("org.beta/.ShortcutActivity".into()),
+            flags: 0,
+            extras: Vec::new(),
+        },
+        None,
+    )
+    .unwrap();
+    api::reset_for_test();
+
+    let after = api::init_with_source(
+        Some(dir.path().to_path_buf()),
+        Box::new(FakeSource::new(vec![
+            entry("org.alpha", "Alpha", AppCategory::App),
+            entry("org.racer", "Racer", AppCategory::Game),
+        ])),
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert!(
+        after
+            .items
+            .iter()
+            .all(|item| item.app.as_ref() != Some(&app_ref("org.beta")))
+    );
+    assert!(after.items.iter().all(|item| item.label != "Beta shortcut"));
+    let document = fs::read_to_string(dir.path().join("qlaunch.json")).unwrap();
+    assert!(!document.contains("org.beta"), "{document}");
+}
+
+#[test]
+fn an_old_backup_is_restored_without_uninstalled_apps_or_their_shortcuts() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+
+    let mut backup_model = Model::new_default();
+    reconcile(&mut backup_model, &fixtures());
+    let home = backup_model
+        .role_holder(GroupRole::Home)
+        .unwrap()
+        .id
+        .clone();
+    backup_model.add_shortcut(
+        &home,
+        "Beta shortcut",
+        ShortcutPayload::Android {
+            action: Some("android.intent.action.VIEW".into()),
+            data: None,
+            mime_type: None,
+            categories: Vec::new(),
+            package: Some("org.beta".into()),
+            component: None,
+            flags: 0,
+            extras: Vec::new(),
+        },
+    );
+    backup_model.add_group("Holiday");
+    let name = "qlaunch-backup-2026-01-02-030405.json";
+    let bytes =
+        Store::document_bytes(&backup_model, &Settings::default(), &Usage::default()).unwrap();
+
+    api::init_with_source(
+        Some(dir.path().to_path_buf()),
+        Box::new(
+            FakeSource::new(vec![
+                entry("org.alpha", "Alpha", AppCategory::App),
+                entry("org.racer", "Racer", AppCategory::Game),
+            ])
+            .with_backup(name, bytes),
+        ),
+        Vec::new(),
+    )
+    .unwrap();
+    let restored = block_on(api::restore_config(name.into())).unwrap();
+
+    assert!(
+        restored
+            .items
+            .iter()
+            .all(|item| item.app.as_ref() != Some(&app_ref("org.beta")))
+    );
+    assert!(
+        restored
+            .items
+            .iter()
+            .all(|item| item.label != "Beta shortcut")
+    );
+    assert!(
+        restored.groups.iter().any(|group| group.label == "Holiday"),
+        "the rest of the backup is kept"
+    );
+    let document = fs::read_to_string(dir.path().join("qlaunch.json")).unwrap();
+    assert!(!document.contains("org.beta"), "{document}");
 }
 
 #[test]
@@ -1127,7 +1287,7 @@ impl AppSource for IconSource {
 }
 
 #[test]
-fn a_package_change_drops_the_disk_icon_cache() {
+fn a_package_change_preserves_unaffected_disk_icons() {
     let _guard = serial();
     let dir = tempdir().unwrap();
     let source = IconSource::new(fixtures(), vec![1, 2, 3]);
@@ -1149,7 +1309,7 @@ fn a_package_change_drops_the_disk_icon_cache() {
         "warming an icon writes a file"
     );
 
-    // Installing an app is a package change; the icon cache must be dropped.
+    // Installing one app must not invalidate unrelated, revision-keyed entries.
     apps.lock()
         .unwrap()
         .push(entry("org.new", "New", AppCategory::App));
@@ -1159,8 +1319,8 @@ fn a_package_change_drops_the_disk_icon_cache() {
         .map(|entries| entries.count())
         .unwrap_or(0);
     assert_eq!(
-        remaining, 0,
-        "the icon cache is cleared on an app-set change"
+        remaining, 1,
+        "unaffected cache files survive an app-set change"
     );
 }
 
@@ -1192,7 +1352,16 @@ fn an_app_update_refetches_the_icon() {
         }
     }
     *icon.lock().unwrap() = vec![4, 5, 6];
-    block_on(api::refresh_apps()).unwrap();
+    let updated = block_on(api::refresh_apps()).unwrap();
+    assert_eq!(
+        updated
+            .icon_revisions
+            .iter()
+            .find(|r| r.app == alpha)
+            .unwrap()
+            .revision,
+        99
+    );
 
     let second = block_on(api::icon_for(
         alpha.package.clone(),

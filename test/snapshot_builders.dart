@@ -1,4 +1,4 @@
-import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
+import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot, IconRevision;
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/settings.dart';
@@ -36,6 +36,7 @@ Item makeItem(
   AppRef? app,
   ShortcutPayload? shortcut,
   bool uninstalled = false,
+  String? iconOverride,
 }) => Item(
   id: id,
   groupId: groupId,
@@ -45,6 +46,7 @@ Item makeItem(
   shortcut: shortcut,
   uninstalled: uninstalled,
   order: order,
+  iconOverride: iconOverride,
 );
 
 /// `homeGroupId` is optional on [ModelSnapshot], so a snapshot built without
@@ -56,6 +58,7 @@ ModelSnapshot snapshotOf({
   List<Group> groups = const [],
   List<Item> items = const [],
   Settings settings = testSettings,
+  List<IconRevision> iconRevisions = const [],
 }) => ModelSnapshot(
   rootGroupId: rootGroupId,
   homeGroupId: homeGroupId,
@@ -64,4 +67,5 @@ ModelSnapshot snapshotOf({
   items: items,
   settings: settings,
   warnings: const [],
+  iconRevisions: iconRevisions,
 );

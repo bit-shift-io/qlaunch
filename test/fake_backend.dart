@@ -321,6 +321,7 @@ ModelSnapshot withSettings(ModelSnapshot snapshot, Settings settings) =>
       items: snapshot.items,
       settings: settings,
       warnings: snapshot.warnings,
+      iconRevisions: snapshot.iconRevisions,
     );
 
 /// Collects what `FlutterError.reportError` is given, for the rest of the test.

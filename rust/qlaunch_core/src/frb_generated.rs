@@ -28,7 +28,7 @@
 // Section: imports
 
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -1551,6 +1551,18 @@ impl SseDecode for crate::model::icon::IconImage {
     }
 }
 
+impl SseDecode for crate::api::api::IconRevision {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_app = <crate::model::AppRef>::sse_decode(deserializer);
+        let mut var_revision = <i64>::sse_decode(deserializer);
+        return crate::api::api::IconRevision {
+            app: var_app,
+            revision: var_revision,
+        };
+    }
+}
+
 impl SseDecode for crate::model::Item {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1634,6 +1646,18 @@ impl SseDecode for Vec<crate::model::Group> {
         let mut ans_ = Vec::with_capacity(len_ as usize);
         for idx_ in 0..len_ {
             ans_.push(<crate::model::Group>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
+impl SseDecode for Vec<crate::api::api::IconRevision> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = Vec::with_capacity(len_ as usize);
+        for idx_ in 0..len_ {
+            ans_.push(<crate::api::api::IconRevision>::sse_decode(deserializer));
         }
         return ans_;
     }
@@ -1724,6 +1748,7 @@ impl SseDecode for crate::api::api::ModelSnapshot {
         let mut var_items = <Vec<crate::model::Item>>::sse_decode(deserializer);
         let mut var_settings = <crate::settings::Settings>::sse_decode(deserializer);
         let mut var_warnings = <Vec<String>>::sse_decode(deserializer);
+        let mut var_iconRevisions = <Vec<crate::api::api::IconRevision>>::sse_decode(deserializer);
         return crate::api::api::ModelSnapshot {
             root_group_id: var_rootGroupId,
             home_group_id: var_homeGroupId,
@@ -1732,6 +1757,7 @@ impl SseDecode for crate::api::api::ModelSnapshot {
             items: var_items,
             settings: var_settings,
             warnings: var_warnings,
+            icon_revisions: var_iconRevisions,
         };
     }
 }
@@ -2353,6 +2379,24 @@ impl flutter_rust_bridge::IntoIntoDart<crate::model::icon::IconImage>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::api::IconRevision {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.app.into_into_dart().into_dart(),
+            self.revision.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive for crate::api::api::IconRevision {}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::api::IconRevision>
+    for crate::api::api::IconRevision
+{
+    fn into_into_dart(self) -> crate::api::api::IconRevision {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::model::Item {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
@@ -2441,6 +2485,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::api::ModelSnapshot {
             self.items.into_into_dart().into_dart(),
             self.settings.into_into_dart().into_dart(),
             self.warnings.into_into_dart().into_dart(),
+            self.icon_revisions.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -2873,6 +2918,14 @@ impl SseEncode for crate::model::icon::IconImage {
     }
 }
 
+impl SseEncode for crate::api::api::IconRevision {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <crate::model::AppRef>::sse_encode(self.app, serializer);
+        <i64>::sse_encode(self.revision, serializer);
+    }
+}
+
 impl SseEncode for crate::model::Item {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2948,6 +3001,16 @@ impl SseEncode for Vec<crate::model::Group> {
         <i32>::sse_encode(self.len() as _, serializer);
         for item in self {
             <crate::model::Group>::sse_encode(item, serializer);
+        }
+    }
+}
+
+impl SseEncode for Vec<crate::api::api::IconRevision> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <crate::api::api::IconRevision>::sse_encode(item, serializer);
         }
     }
 }
@@ -3029,6 +3092,7 @@ impl SseEncode for crate::api::api::ModelSnapshot {
         <Vec<crate::model::Item>>::sse_encode(self.items, serializer);
         <crate::settings::Settings>::sse_encode(self.settings, serializer);
         <Vec<String>>::sse_encode(self.warnings, serializer);
+        <Vec<crate::api::api::IconRevision>>::sse_encode(self.icon_revisions, serializer);
     }
 }
 
@@ -3379,7 +3443,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -3403,7 +3467,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate

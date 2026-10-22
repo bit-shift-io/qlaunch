@@ -118,3 +118,47 @@ fn over_the_cap_evicts_oldest_first() {
     assert!(cache.get(&app("b"), 48, 0).is_some());
     assert!(cache.get(&app("c"), 48, 0).is_some());
 }
+
+#[test]
+fn replacement_and_restart_account_for_existing_bytes() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = IconDiskCache::new(dir.path().to_path_buf(), 100);
+    for _ in 0..10 {
+        cache.put(&app("a"), 48, 0, &rgba(2, 2, 7));
+    }
+    cache.put(&app("b"), 48, 0, &rgba(2, 2, 8));
+    assert_eq!(bin_files(dir.path()).len(), 2);
+    let restarted = IconDiskCache::new(dir.path().to_path_buf(), 100);
+    restarted.put(&app("c"), 48, 0, &rgba(2, 2, 9));
+    let total: u64 = bin_files(dir.path())
+        .iter()
+        .map(|p| std::fs::metadata(p).unwrap().len())
+        .sum();
+    assert!(total <= 100);
+    assert!(restarted.get(&app("c"), 48, 0).is_some());
+}
+
+#[test]
+fn cloned_caches_serialize_writes_and_invalidation() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = IconDiskCache::new(dir.path().to_path_buf(), 4096);
+    let threads: Vec<_> = (0..12)
+        .map(|i| {
+            let cache = cache.clone();
+            std::thread::spawn(move || {
+                for n in 0..30 {
+                    cache.put(&app("shared"), 48, 0, &rgba(2, 2, i));
+                    cache.put(&app(&format!("app{i}")), 48, 0, &rgba(2, 2, n));
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    assert!(cache.get(&app("shared"), 48, 0).is_some());
+    let old = cache.generation();
+    cache.clear();
+    cache.put_if(old, &app("shared"), 48, 0, &rgba(2, 2, 0));
+    assert!(bin_files(dir.path()).is_empty());
+}

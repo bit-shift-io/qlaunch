@@ -11,7 +11,7 @@ use crate::settings::Settings;
 use crate::store::{Store, StoreError};
 use crate::usage::{Usage, UsageHit};
 
-use super::api::ModelSnapshot;
+use super::api::{IconRevision, ModelSnapshot};
 use super::events::{CoreEvent, EventBus};
 
 /// How much the on-disk icon cache may hold before its oldest entries go.
@@ -145,6 +145,19 @@ pub(crate) fn snapshot_of(app: &App) -> ModelSnapshot {
     warnings.extend(app.save_problem.clone());
     warnings.extend(app.platform_problem.clone());
     warnings.extend(app.watch_problem.clone());
+    let mut icon_revisions: Vec<_> = app
+        .icon_tokens
+        .iter()
+        .map(|((package, activity), revision)| IconRevision {
+            app: AppRef {
+                package: package.clone(),
+                activity: activity.clone(),
+            },
+            revision: *revision,
+        })
+        .collect();
+    icon_revisions
+        .sort_by(|a, b| (&a.app.package, &a.app.activity).cmp(&(&b.app.package, &b.app.activity)));
     ModelSnapshot {
         root_group_id: app.model.root_group_id.clone(),
         home_group_id: app.model.home_group_id(),
@@ -153,6 +166,7 @@ pub(crate) fn snapshot_of(app: &App) -> ModelSnapshot {
         items: items_in_display_order(&app.model),
         settings: app.settings.clone(),
         warnings,
+        icon_revisions,
     }
 }
 
@@ -296,8 +310,8 @@ pub(crate) fn install(
         ),
     };
 
-    // A failed listing must not reach `reconcile`: an empty list would mark
-    // every item uninstalled.
+    // A failed listing must not reach `reconcile`: an empty list would remove
+    // every app item.
     let mut icon_tokens = HashMap::new();
     let platform_problem = match source.list_apps() {
         Ok(entries) => {
@@ -579,21 +593,15 @@ pub(crate) fn refresh_apps_now() -> Result<ModelSnapshot, String> {
 
                 let mut next = app.model.clone();
                 let outcome = reconcile(&mut next, &entries);
-                let set_changed = !(outcome.added.is_empty()
-                    && outcome.marked_uninstalled.is_empty()
-                    && outcome.restored.is_empty());
+                let set_changed = !(outcome.added.is_empty() && outcome.removed.is_empty());
                 if set_changed {
                     let problem = persist(app.store.as_ref(), &next, &app.settings, &app.usage)?;
                     app.model = next;
                     app.save_problem = problem;
                 }
-                // An install or removal changes the set; an update keeps it but
-                // changes an app's update time. Either can change an icon, so
-                // the persisted cache is dropped and Dart is told to refetch.
+                // Disk keys already contain update times. Preserve unaffected
+                // icons; Dart compares snapshot revisions to invalidate selectively.
                 if set_changed || icons_changed {
-                    if let Some(cache) = &app.icon_cache {
-                        cache.clear();
-                    }
                     bus.emit(&CoreEvent::AppsChanged);
                 }
             }

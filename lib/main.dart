@@ -10,6 +10,9 @@ import 'package:qlaunch/src/ui/settings_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 1000
+    ..maximumSizeBytes = 64 << 20;
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   await RustLib.init();
   runApp(const QLaunchApp());

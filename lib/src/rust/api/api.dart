@@ -17,7 +17,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'shortcuts.dart';
 
 // These functions are ignored because they are not marked as `pub`: `apply_display_settings`, `choose_root`, `platform_config_root`, `platform_source`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `eq`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `eq`, `eq`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `emit_for_test`, `init_with_source`, `reset_for_test`, `subscribe_for_test`
 
 Future<String> version() => RustLib.instance.api.crateApiApiVersion();
@@ -206,6 +206,24 @@ Stream<CoreEvent> events() => RustLib.instance.api.crateApiApiEvents();
 /// must not recompute it. `items` is in display order within each group (see
 /// the field). `warnings` is what is wrong right now (for example
 /// that changes are not being saved), and does not grow from call to call.
+class IconRevision {
+  final AppRef app;
+  final PlatformInt64 revision;
+
+  const IconRevision({required this.app, required this.revision});
+
+  @override
+  int get hashCode => app.hashCode ^ revision.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is IconRevision &&
+          runtimeType == other.runtimeType &&
+          app == other.app &&
+          revision == other.revision;
+}
+
 class ModelSnapshot {
   final String rootGroupId;
 
@@ -224,6 +242,7 @@ class ModelSnapshot {
   final List<Item> items;
   final Settings settings;
   final List<String> warnings;
+  final List<IconRevision> iconRevisions;
 
   const ModelSnapshot({
     required this.rootGroupId,
@@ -233,6 +252,7 @@ class ModelSnapshot {
     required this.items,
     required this.settings,
     required this.warnings,
+    required this.iconRevisions,
   });
 
   @override
@@ -243,7 +263,8 @@ class ModelSnapshot {
       groups.hashCode ^
       items.hashCode ^
       settings.hashCode ^
-      warnings.hashCode;
+      warnings.hashCode ^
+      iconRevisions.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -256,5 +277,6 @@ class ModelSnapshot {
           groups == other.groups &&
           items == other.items &&
           settings == other.settings &&
-          warnings == other.warnings;
+          warnings == other.warnings &&
+          iconRevisions == other.iconRevisions;
 }

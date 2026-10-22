@@ -1,56 +1,119 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:qlaunch/src/rust/model/icon.dart';
 import 'package:qlaunch/src/state/launcher_backend.dart';
 import 'package:qlaunch/src/ui/raw_rgba_image.dart';
 
-/// A cache of icon [ImageProvider]s, one per `(package, activity, size_px)`,
-/// that lives for the whole session.
-///
-/// It sits above the widgets on purpose: the grid's pages are disposed and
-/// rebuilt as the user pages through the launcher, and a per-widget cache loses
-/// its icons every time it is thrown away. Flutter's own `ImageCache` caches the
-/// decoded image behind each provider, so a provider resolved once is decoded
-/// once per session.
+/// Session-scoped source cache. Decoded images have a separate Flutter budget.
 class IconCache {
-  IconCache(this._backend);
+  IconCache(
+    this._backend, {
+    this.maximumBytes = 32 << 20,
+    this.maximumEntries = 1000,
+  });
 
   final LauncherBackend _backend;
-  final Map<_Key, Future<ImageProvider?>> _providers = {};
+  final int maximumBytes;
+  final int maximumEntries;
+  final Map<_Key, _Entry> _entries = <_Key, _Entry>{};
+  final _pending = <_Key, Future<ImageProvider?>>{};
+  int _retainedBytes = 0;
 
-  /// The provider for an app's icon at [sizePx], or `null` if the app has none.
-  ///
-  /// Concurrent and repeated calls for one key share a single backend call. A
-  /// failed call is not cached, so the next resolve tries the backend again.
-  Future<ImageProvider?> resolve(String package, String activity, int sizePx) {
-    final key = (package: package, activity: activity, sizePx: sizePx);
-    return _providers.putIfAbsent(key, () async {
-      try {
-        return await _load(package, activity, sizePx);
-      } catch (_) {
-        _providers.remove(key);
-        rethrow;
-      }
-    });
+  int get retainedBytes => _retainedBytes;
+  int get entryCount => _entries.length;
+
+  _Entry? _touch(_Key key) {
+    final entry = _entries.remove(key);
+    if (entry != null) _entries[key] = entry;
+    return entry;
   }
 
-  Future<ImageProvider?> _load(
+  ImageProvider? peek(String package, String activity, int sizePx) =>
+      _touch(('app', package, activity, sizePx))?.provider;
+
+  ImageProvider? peekItem(String id, String reference, int sizePx) =>
+      _touch(('item', id, reference, sizePx))?.provider;
+
+  Future<ImageProvider?> resolve(
     String package,
     String activity,
     int sizePx,
-  ) async {
+  ) => _resolve(('app', package, activity, sizePx), () async {
     final image = await _backend.iconFor(package, activity, sizePx);
-    if (image == null) return null;
-    return switch (image.format) {
-      // A PNG is decoded at display size rather than at its intrinsic size.
+    if (image == null) return const _Entry(null, 0);
+    final ImageProvider provider = switch (image.format) {
       IconFormat.png => ResizeImage(MemoryImage(image.bytes), width: sizePx),
-      // Raw pixels are already the size requested; decode them as-is.
       IconFormat.rgba => RawRgbaImage(image.bytes, image.width, image.height),
     };
+    return _Entry(provider, image.bytes.lengthInBytes);
+  });
+
+  Future<ImageProvider?> resolveItem(String id, String reference, int sizePx) =>
+      _resolve(('item', id, reference, sizePx), () async {
+        final bytes = await _backend.itemIcon(id);
+        if (bytes == null) return const _Entry(null, 0);
+        final data = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+        return _Entry(
+          ResizeImage(MemoryImage(data), width: sizePx),
+          data.length,
+        );
+      });
+
+  Future<ImageProvider?> _resolve(_Key key, Future<_Entry> Function() load) {
+    final entry = _touch(key);
+    if (entry != null) return SynchronousFuture(entry.provider);
+    return _pending.putIfAbsent(key, () {
+      // Identity, rather than a global generation, permits selective invalidation.
+      late final Future<ImageProvider?> future;
+      future = Future<_Entry>.sync(load)
+          .then((entry) {
+            if (identical(_pending[key], future)) {
+              if (entry.bytes <= maximumBytes && maximumEntries > 0) {
+                _entries[key] = entry;
+                _retainedBytes += entry.bytes;
+                while (_entries.length > maximumEntries ||
+                    _retainedBytes > maximumBytes) {
+                  _retainedBytes -= _entries.remove(_entries.keys.first)!.bytes;
+                }
+              }
+            }
+            return entry.provider;
+          })
+          .whenComplete(() {
+            if (identical(_pending[key], future)) _pending.remove(key);
+          });
+      return future;
+    });
   }
 
-  /// Drops every cached provider, so the next resolve asks the backend again.
-  /// Called when the installed apps change, since their icons may have too.
-  void clear() => _providers.clear();
+  void invalidateApp(String package, String activity) => _invalidate(
+    (key) => key.$1 == 'app' && key.$2 == package && key.$3 == activity,
+  );
+
+  void invalidateItem(String id) =>
+      _invalidate((key) => key.$1 == 'item' && key.$2 == id);
+
+  /// Only the current physical size is useful after an icon-size/DPR change.
+  void retainSize(int sizePx) => _invalidate((key) => key.$4 != sizePx);
+
+  void _invalidate(bool Function(_Key) matches) {
+    for (final key in _entries.keys.where(matches).toList()) {
+      _retainedBytes -= _entries.remove(key)!.bytes;
+    }
+    _pending.removeWhere((key, _) => matches(key));
+  }
+
+  void clear() {
+    _entries.clear();
+    _pending.clear();
+    _retainedBytes = 0;
+  }
 }
 
-typedef _Key = ({String package, String activity, int sizePx});
+typedef _Key = (String, String, String, int);
+
+class _Entry {
+  const _Entry(this.provider, this.bytes);
+  final ImageProvider? provider;
+  final int bytes;
+}

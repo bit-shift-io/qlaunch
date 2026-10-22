@@ -1499,6 +1499,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  IconRevision dco_decode_icon_revision(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return IconRevision(
+      app: dco_decode_app_ref(arr[0]),
+      revision: dco_decode_i_64(arr[1]),
+    );
+  }
+
+  @protected
   Item dco_decode_item(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -1548,6 +1560,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<IconRevision> dco_decode_list_icon_revision(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_icon_revision).toList();
+  }
+
+  @protected
   List<Item> dco_decode_list_item(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_item).toList();
@@ -1593,8 +1611,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ModelSnapshot dco_decode_model_snapshot(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
     return ModelSnapshot(
       rootGroupId: dco_decode_String(arr[0]),
       homeGroupId: dco_decode_opt_String(arr[1]),
@@ -1603,6 +1621,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       items: dco_decode_list_item(arr[4]),
       settings: dco_decode_settings(arr[5]),
       warnings: dco_decode_list_String(arr[6]),
+      iconRevisions: dco_decode_list_icon_revision(arr[7]),
     );
   }
 
@@ -2077,6 +2096,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  IconRevision sse_decode_icon_revision(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_app = sse_decode_app_ref(deserializer);
+    var var_revision = sse_decode_i_64(deserializer);
+    return IconRevision(app: var_app, revision: var_revision);
+  }
+
+  @protected
   Item sse_decode_item(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_id = sse_decode_String(deserializer);
@@ -2149,6 +2176,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <Group>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_group(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<IconRevision> sse_decode_list_icon_revision(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <IconRevision>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_icon_revision(deserializer));
     }
     return ans_;
   }
@@ -2234,6 +2275,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_items = sse_decode_list_item(deserializer);
     var var_settings = sse_decode_settings(deserializer);
     var var_warnings = sse_decode_list_String(deserializer);
+    var var_iconRevisions = sse_decode_list_icon_revision(deserializer);
     return ModelSnapshot(
       rootGroupId: var_rootGroupId,
       homeGroupId: var_homeGroupId,
@@ -2242,6 +2284,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       items: var_items,
       settings: var_settings,
       warnings: var_warnings,
+      iconRevisions: var_iconRevisions,
     );
   }
 
@@ -2844,6 +2887,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_icon_revision(IconRevision self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_app_ref(self.app, serializer);
+    sse_encode_i_64(self.revision, serializer);
+  }
+
+  @protected
   void sse_encode_item(Item self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.id, serializer);
@@ -2893,6 +2943,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_group(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_icon_revision(
+    List<IconRevision> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_icon_revision(item, serializer);
     }
   }
 
@@ -2979,6 +3041,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_list_item(self.items, serializer);
     sse_encode_settings(self.settings, serializer);
     sse_encode_list_String(self.warnings, serializer);
+    sse_encode_list_icon_revision(self.iconRevisions, serializer);
   }
 
   @protected

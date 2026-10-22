@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/events.dart';
@@ -5,6 +7,7 @@ import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/state/icon_warmer.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
 import 'package:qlaunch/src/ui/app_search.dart';
@@ -63,8 +66,16 @@ void main() {
     await state.load();
   }
 
-  Future<void> pumpHome(WidgetTester tester) async {
-    await tester.pumpWidget(MaterialApp(home: HomeScreen(state: state)));
+  Future<void> pumpHome(WidgetTester tester, {IconWarmer? warmer}) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          state: state,
+          iconWarmer:
+              warmer ?? IconWarmer(schedule: (task) => scheduleMicrotask(task)),
+        ),
+      ),
+    );
     await tester.pump();
     await tester.pump();
   }
@@ -645,6 +656,164 @@ void main() {
   });
 
   group('icon prefetch', () {
+    testWidgets('mounting while already paused does not start warming', (
+      tester,
+    ) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+      final scheduled = <Future<void> Function()>[];
+      final warmer = IconWarmer(schedule: scheduled.add);
+      setSurface(tester, const Size(400, 300));
+      await load(pageIds: ['home', 'apps', 'games', 'office', 'chat']);
+      await pumpHome(tester, warmer: warmer);
+      while (scheduled.isNotEmpty) {
+        await scheduled.removeAt(0)();
+      }
+      expect(fake.calls, isNot(contains('iconFor(pkg.item-office,Main,48)')));
+    });
+
+    testWidgets('many tiny shortcuts are all warmed', (tester) async {
+      final scheduled = <Future<void> Function()>[];
+      final warmer = IconWarmer(schedule: scheduled.add);
+      setSurface(tester, const Size(400, 300));
+      final items = [
+        for (var i = 0; i < 17; i++)
+          makeItem('shortcut$i', 'chat', iconOverride: 'icon$i.png'),
+        for (final group in ['home', 'apps', 'games'])
+          launchable('item-$group', group),
+      ];
+      await load(pageIds: ['home', 'apps', 'games', 'chat'], items: items);
+      await pumpHome(tester, warmer: warmer);
+      while (scheduled.isNotEmpty) {
+        await scheduled.removeAt(0)();
+      }
+      expect(
+        fake.calls.where((call) => call.startsWith('itemIcon(')),
+        hasLength(17),
+      );
+    });
+
+    testWidgets('scrolling pauses speculative loads until it ends', (
+      tester,
+    ) async {
+      final scheduled = <Future<void> Function()>[];
+      final warmer = IconWarmer(schedule: scheduled.add);
+      setSurface(tester, const Size(400, 300));
+      await load(pageIds: ['home', 'apps', 'games', 'office', 'chat']);
+      await pumpHome(tester, warmer: warmer);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(GroupPager)),
+      );
+      await gesture.moveBy(const Offset(-120, 0));
+      await tester.pump();
+      while (scheduled.isNotEmpty) {
+        await scheduled.removeAt(0)();
+      }
+      expect(fake.calls, isNot(contains('iconFor(pkg.item-office,Main,48)')));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      while (scheduled.isNotEmpty) {
+        await scheduled.removeAt(0)();
+      }
+      expect(fake.calls, contains('iconFor(pkg.item-office,Main,48)'));
+    });
+
+    testWidgets('memory pressure stops an in-flight warm pass', (tester) async {
+      final scheduled = <Future<void> Function()>[];
+      final decoding = Completer<void>();
+      final warmer = IconWarmer(
+        schedule: scheduled.add,
+        warm: (_) => decoding.future,
+      );
+      setSurface(tester, const Size(400, 300));
+      await load(pageIds: ['home', 'apps', 'games', 'office', 'chat']);
+      await pumpHome(tester, warmer: warmer);
+
+      final first = scheduled.removeAt(0)();
+      await tester.pump();
+      final loaded = fake.iconCalls;
+      tester.binding.handleMemoryPressure();
+      decoding.complete();
+      await first;
+      while (scheduled.isNotEmpty) {
+        await scheduled.removeAt(0)();
+      }
+      expect(fake.iconCalls, loaded);
+    });
+
+    testWidgets(
+      'background, search and covered routes pause speculative loads',
+      (tester) async {
+        final scheduled = <Future<void> Function()>[];
+        final warmer = IconWarmer(schedule: scheduled.add);
+        setSurface(tester, const Size(400, 300));
+        await load(pageIds: ['home', 'apps', 'games', 'office', 'chat']);
+        await pumpHome(tester, warmer: warmer);
+        final initial = fake.iconCalls;
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await scheduled.removeAt(0)();
+        expect(fake.iconCalls, initial);
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+        unawaited(
+          navigator.push(
+            MaterialPageRoute<void>(
+              builder: (_) => const Scaffold(body: Text('cover')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await scheduled.removeAt(0)();
+        expect(fake.iconCalls, initial);
+        navigator.pop();
+        await tester.pumpAndSettle();
+        fake.emit(const CoreEvent.homePressed());
+        await tester.pumpAndSettle();
+        await scheduled.removeAt(0)();
+        expect(fake.calls, isNot(contains('iconFor(pkg.item-office,Main,48)')));
+        fake.emit(const CoreEvent.backPressed());
+        await tester.pumpAndSettle();
+        while (scheduled.isNotEmpty) {
+          await scheduled.removeAt(0)();
+        }
+        expect(fake.calls, contains('iconFor(pkg.item-office,Main,48)'));
+      },
+    );
+
+    Future<void> drainIdle(WidgetTester tester) async {
+      // Widget-test fake time does not run the real scheduler's idle event loop.
+      for (var i = 0; i < 160; i++) {
+        tester.binding.handleEventLoopCallback();
+        await tester.pump();
+      }
+    }
+
+    testWidgets(
+      'idle warming reaches non-neighbouring pages without Home-triggered refills',
+      (tester) async {
+        setSurface(tester, const Size(400, 300));
+        await load(pageIds: ['home', 'apps', 'games', 'office', 'chat']);
+        await pumpHome(tester);
+        await drainIdle(tester);
+        expect(fake.calls, contains('iconFor(pkg.item-games,Main,48)'));
+        expect(fake.calls, contains('iconFor(pkg.item-office,Main,48)'));
+        final before = fake.iconCalls;
+        tester.binding.handleMemoryPressure();
+        fake.emit(const CoreEvent.backPressed());
+        await tester.pump();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 30)),
+        );
+        expect(fake.iconCalls, before);
+      },
+    );
+
     testWidgets('opening a page warms every icon on it, not just the visible '
         'cells', (tester) async {
       setSurface(tester, const Size(400, 300));
@@ -654,6 +823,7 @@ void main() {
       expect(fake.iconCalls, 0);
       await pumpHome(tester);
       await tester.pumpAndSettle();
+      await drainIdle(tester);
       expect(fake.iconCalls, 120);
     });
 
@@ -668,6 +838,7 @@ void main() {
       await load(pageIds: ['home', 'apps', 'games'], items: items);
       await pumpHome(tester);
       await tester.pumpAndSettle();
+      await drainIdle(tester);
       expect(fake.iconCalls, 30);
     });
 

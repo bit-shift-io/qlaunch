@@ -43,6 +43,12 @@ pub fn version() -> String {
 /// the field). `warnings` is what is wrong right now (for example
 /// that changes are not being saved), and does not grow from call to call.
 #[derive(Debug, Clone, PartialEq)]
+pub struct IconRevision {
+    pub app: AppRef,
+    pub revision: i64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ModelSnapshot {
     pub root_group_id: Id,
     /// The group holding the Home role, or `None` if no group does. Dart must
@@ -59,6 +65,7 @@ pub struct ModelSnapshot {
     pub items: Vec<Item>,
     pub settings: Settings,
     pub warnings: Vec<String>,
+    pub icon_revisions: Vec<IconRevision>,
 }
 
 /// Starts the core: loads the saved layout (or creates it), reconciles it with

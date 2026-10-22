@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
-import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
+import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot, IconRevision;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/rust/model.dart';
@@ -26,10 +26,13 @@ class LauncherState extends ChangeNotifier {
 
   StreamSubscription<CoreEvent>? _sub;
   ModelSnapshot? _snapshot;
+  Map<String, List<Item>> _itemsByGroup = {};
   String? _error;
   int _homeRequests = 0;
   int _backRequests = 0;
   bool _disposed = false;
+  bool _refreshRunning = false;
+  bool _refreshPending = false;
 
   // Generations only move forward. A fetch's result is dropped only when a
   // newer one has already been adopted, so a late older result can never
@@ -59,10 +62,11 @@ class LauncherState extends ChangeNotifier {
 
   /// A filter only: the snapshot's items are already in display order.
   List<Item> itemsIn(String groupId) {
-    final s = _snapshot;
-    if (s == null) return const [];
-    return s.items.where((i) => i.groupId == groupId).toList();
+    return _itemsByGroup[groupId] ?? const [];
   }
+
+  void releaseIconSources() => _icons.clear();
+  void retainIconSize(int sizePx) => _icons.retainSize(sizePx);
 
   Group? get homeGroup {
     final s = _snapshot;
@@ -107,12 +111,10 @@ class LauncherState extends ChangeNotifier {
   void _onEvent(CoreEvent event) {
     switch (event) {
       case CoreEvent_ModelChanged():
-        unawaited(_fetch(_backend.snapshot));
+        _requestRefresh();
       case CoreEvent_AppsChanged():
-        // An app may have been installed, removed or updated, so any icon we
-        // cached for it could be stale.
-        _icons.clear();
-        unawaited(_fetch(_backend.snapshot));
+        // Revisions in the adopted snapshot identify exactly which icons changed.
+        _requestRefresh();
       case CoreEvent_Error(:final field0):
         _error = field0;
         _notify();
@@ -132,10 +134,29 @@ class LauncherState extends ChangeNotifier {
     }
   }
 
+  void _requestRefresh() {
+    if (_disposed) return;
+    _refreshPending = true;
+    if (!_refreshRunning) unawaited(_drainRefreshes());
+  }
+
+  Future<void> _drainRefreshes() async {
+    _refreshRunning = true;
+    try {
+      while (_refreshPending && !_disposed) {
+        _refreshPending = false;
+        await _fetch(_backend.snapshot);
+      }
+    } finally {
+      _refreshRunning = false;
+    }
+  }
+
   Future<void> _fetch(Future<ModelSnapshot> Function() fetch) async {
     final gen = ++_started;
     try {
       final snapshot = await fetch();
+      if (_disposed) return;
       if (gen < _adopted) return;
       _adopted = gen;
       _adopt(snapshot);
@@ -152,18 +173,26 @@ class LauncherState extends ChangeNotifier {
   /// A throw from the backend is a bug rather than a missing icon, so it is
   /// reported like any other failure, but it still yields `null` and leaves
   /// [error] alone.
-  Future<ImageProvider?> iconFor(
-    String package,
-    String activity,
-    int sizePx,
-  ) async {
-    try {
-      return await _icons.resolve(package, activity, sizePx);
-    } catch (e, st) {
-      _report(e, st);
-      return null;
-    }
-  }
+  Future<ImageProvider?> iconFor(String package, String activity, int sizePx) =>
+      _icons
+          .resolve(package, activity, sizePx)
+          .then<ImageProvider?>(
+            (provider) => provider,
+            onError: (Object e, StackTrace st) {
+              _report(e, st);
+              return null as ImageProvider?;
+            },
+          );
+
+  ImageProvider? cachedIcon(String package, String activity, int sizePx) =>
+      _icons.peek(package, activity, sizePx);
+
+  /// Source bytes retained by the provider cache, and its hard bound.
+  int get iconCacheBytes => _icons.retainedBytes;
+  int get iconCacheMaximumBytes => _icons.maximumBytes;
+
+  ImageProvider? cachedItemIcon(String id, String reference, int sizePx) =>
+      _icons.peekItem(id, reference, sizePx);
 
   /// Launches an app. A failure is reported through [error], not thrown.
   Future<void> launchApp(String package, String activity) async {
@@ -220,7 +249,10 @@ class LauncherState extends ChangeNotifier {
   Future<void> updateSettings(SettingsPatch patch) =>
       _fetch(() => _backend.updateSettings(patch));
 
-  Future<void> factoryReset() => _fetch(_backend.factoryReset);
+  Future<void> factoryReset() {
+    _icons.clear();
+    return _fetch(_backend.factoryReset);
+  }
 
   /// Writes the layout to a dated backup in Downloads and returns its file
   /// name, or `null` when the write failed (reported through [error]).
@@ -246,8 +278,10 @@ class LauncherState extends ChangeNotifier {
 
   /// Replaces everything with the named backup. A failure arrives as [error],
   /// never as a throw, and changes nothing.
-  Future<void> restoreConfig(String fileName) =>
-      _fetch(() => _backend.restoreConfig(fileName));
+  Future<void> restoreConfig(String fileName) {
+    _icons.clear();
+    return _fetch(() => _backend.restoreConfig(fileName));
+  }
 
   Future<void> addLockShortcut(String targetGroupId) =>
       _fetch(() => _backend.addLockShortcut(targetGroupId));
@@ -296,13 +330,28 @@ class LauncherState extends ChangeNotifier {
   }
 
   /// A shortcut's stored icon bytes, or `null` when it has none.
-  Future<ImageProvider?> itemIcon(String id) async {
+  Future<ImageProvider?> itemIcon(
+    String id, {
+    String reference = '',
+    int sizePx = 128,
+  }) => _icons
+      .resolveItem(id, reference, sizePx)
+      .then<ImageProvider?>(
+        (provider) => provider,
+        onError: (Object e, StackTrace st) {
+          _report(e, st);
+          return null as ImageProvider?;
+        },
+      );
+
+  Future<void> setItemIcon(String id, List<int> png) async {
+    _icons.invalidateItem(id);
     try {
-      final bytes = await _backend.itemIcon(id);
-      return bytes == null ? null : MemoryImage(Uint8List.fromList(bytes));
-    } catch (e, st) {
-      _report(e, st);
-      return null;
+      await _fetch(() => _backend.setItemIcon(id, png));
+    } finally {
+      // A rebuild while the write was in flight can have reloaded the old
+      // bytes under the same file name. The completed write owns the truth.
+      _icons.invalidateItem(id);
     }
   }
 
@@ -371,7 +420,32 @@ class LauncherState extends ChangeNotifier {
   }
 
   void _adopt(ModelSnapshot snapshot) {
+    final revisions = {
+      for (final revision in snapshot.iconRevisions)
+        revision.app: revision.revision,
+    };
+    for (final revision in _snapshot?.iconRevisions ?? <IconRevision>[]) {
+      if (revisions[revision.app] != revision.revision) {
+        _icons.invalidateApp(revision.app.package, revision.app.activity);
+      }
+    }
+    final references = {
+      for (final item in snapshot.items) item.id: item.iconOverride,
+    };
+    for (final item in _snapshot?.items ?? <Item>[]) {
+      if (!references.containsKey(item.id) ||
+          references[item.id] != item.iconOverride) {
+        _icons.invalidateItem(item.id);
+      }
+    }
     _snapshot = snapshot;
+    final indexed = <String, List<Item>>{};
+    for (final item in snapshot.items) {
+      (indexed[item.groupId] ??= []).add(item);
+    }
+    _itemsByGroup = indexed.map(
+      (id, items) => MapEntry(id, List.unmodifiable(items)),
+    );
     _error = null;
     _notify();
   }
@@ -383,6 +457,7 @@ class LauncherState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _icons.clear();
     // Not awaited: cancelling an `events()` stream does not complete until the
     // next event arrives, which may be never.
     unawaited(_sub?.cancel());

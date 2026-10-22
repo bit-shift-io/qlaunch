@@ -94,11 +94,26 @@ class AppCells extends StatelessWidget {
             // a stored icon has bytes to read. Everything else draws the
             // placeholder. A hidden or zero-sized icon is not worth a request.
             Future<ImageProvider?>? icon;
+            ImageProvider? cached;
             if (settings.iconsVisible && sizePx > 0) {
               if (app != null && !item.uninstalled) {
-                icon = state.iconFor(app.package, app.activity, sizePx);
+                cached = state.cachedIcon(app.package, app.activity, sizePx);
+                if (cached == null) {
+                  icon = state.iconFor(app.package, app.activity, sizePx);
+                }
               } else if (item.iconOverride != null) {
-                icon = state.itemIcon(item.id);
+                cached = state.cachedItemIcon(
+                  item.id,
+                  item.iconOverride!,
+                  sizePx,
+                );
+                if (cached == null) {
+                  icon = state.itemIcon(
+                    item.id,
+                    reference: item.iconOverride!,
+                    sizePx: sizePx,
+                  );
+                }
               }
             }
             Widget cell(ImageProvider? icon) => AppCell(
@@ -113,7 +128,7 @@ class AppCells extends StatelessWidget {
             );
             final Widget tile;
             if (icon == null) {
-              tile = KeyedSubtree(key: ValueKey(item.id), child: cell(null));
+              tile = KeyedSubtree(key: ValueKey(item.id), child: cell(cached));
             } else {
               tile = FutureBuilder<ImageProvider?>(
                 key: ValueKey(item.id),

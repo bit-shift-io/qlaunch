@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/state/icon_warmer.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
 import 'package:qlaunch/src/ui/app_search.dart';
 import 'package:qlaunch/src/ui/app_settings_dialog.dart';
@@ -20,9 +21,12 @@ import 'package:qlaunch/src/ui/tab_strip.dart';
 /// It owns the [GroupPagerController], so this is the only place a page index
 /// exists; everything below it is handed a group id.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.state});
+  const HomeScreen({super.key, required this.state, this.iconWarmer});
 
   final LauncherState state;
+
+  /// Optional scheduler dependency; the screen owns and disposes the warmer.
+  final IconWarmer? iconWarmer;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -34,6 +38,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late int _seenHomeRequests;
   late int _seenBackRequests;
   String? _shownError;
+  late final IconWarmer _warmer;
+  Object? _warmedSnapshot;
+  int? _warmedSize;
+  bool _foreground = true;
+  bool _routeVisible = true;
+  final _scrolling = <(Axis, int)>{};
 
   /// Whether search replaces the main launcher's foreground.
   bool _searching = false;
@@ -52,6 +62,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    _warmer = widget.iconWarmer ?? IconWarmer();
+    // Observers only see future transitions: a screen mounted while the app
+    // is already backgrounded must not warm until it is resumed.
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _foreground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
     WidgetsBinding.instance.addObserver(this);
     _controller = GroupPagerController(pageIds: widget.state.pageIds);
     // Open on the Home group, or the first page if no group holds it (§8.2):
@@ -67,22 +82,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  /// Requests the icons for every app on [groupId] and its neighbouring pages,
-  /// so the cells hit the session cache before a swipe builds them.
-  ///
-  /// The grid builds lazily, so without this the off-screen icons on a page are
-  /// only fetched once the user scrolls onto them, which is exactly where a
-  /// hitch is most visible. One page either side matches the pager's practical
-  /// reach during a swipe; fetching every group would waste work on large
-  /// layouts.
+  void _updateWarming() => _warmer.setEnabled(
+    _foreground && _routeVisible && !_searching && _scrolling.isEmpty,
+  );
+
+  /// Both caches have hard bounds. Stop speculating once either is full rather
+  /// than evicting and reloading the working set for the whole pass.
+  bool _hasIconRoom() {
+    final images = PaintingBinding.instance.imageCache;
+    return widget.state.iconCacheBytes < widget.state.iconCacheMaximumBytes &&
+        images.currentSizeBytes < images.maximumSizeBytes;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _routeVisible = ModalRoute.of(context)?.isCurrent ?? true;
+    _updateWarming();
+    final settings = widget.state.snapshot?.settings;
+    final size =
+        ((settings?.iconSize ?? 0) * MediaQuery.devicePixelRatioOf(context))
+            .round();
+    if (size != _warmedSize) _warmIcons(_currentGroupId);
+  }
+
+  /// Warm actual decoded images in page-priority order, bounded to one pass.
   void _warmIcons(String groupId) {
     final snapshot = widget.state.snapshot;
     if (snapshot == null) return;
     final settings = snapshot.settings;
-    if (!settings.iconsVisible) return;
+    _warmedSnapshot = snapshot;
     final sizePx = (settings.iconSize * MediaQuery.devicePixelRatioOf(context))
         .round();
-    if (sizePx <= 0) return;
+    _warmedSize = sizePx;
+    _warmer.cancel();
+    widget.state.retainIconSize(sizePx);
+    if (!settings.iconsVisible || sizePx <= 0) return;
 
     final pageIds = widget.state.pageIds;
     final index = pageIds.indexOf(groupId);
@@ -92,14 +127,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         pageIds[(index + 1) % pageIds.length],
       if (index >= 0 && pageIds.length > 2)
         pageIds[(index - 1 + pageIds.length) % pageIds.length],
+      ...pageIds,
     };
+    final requests = <IconWarmRequest>[];
     for (final group in groups) {
       for (final item in widget.state.itemsIn(group)) {
         final app = item.app;
-        if (app == null || item.uninstalled) continue;
-        unawaited(widget.state.iconFor(app.package, app.activity, sizePx));
+        if (item.uninstalled) continue;
+        if (app != null) {
+          requests.add(
+            IconWarmRequest(
+              key: (app.package, app.activity, sizePx),
+              estimatedBytes: sizePx * sizePx * 4,
+              load: () =>
+                  widget.state.iconFor(app.package, app.activity, sizePx),
+            ),
+          );
+        } else if (item.iconOverride != null) {
+          requests.add(
+            IconWarmRequest(
+              key: (item.id, item.iconOverride, sizePx),
+              // The decoded image dominates for the small PNGs a shortcut
+              // stores. Actual source bytes are accounted by the cache bounds.
+              estimatedBytes: sizePx * sizePx * 4,
+              load: () => widget.state.itemIcon(
+                item.id,
+                reference: item.iconOverride!,
+                sizePx: sizePx,
+              ),
+            ),
+          );
+        }
       }
     }
+    _updateWarming();
+    final images = PaintingBinding.instance.imageCache;
+    _warmer.replaceQueue(
+      requests,
+      maximumBytes: images.maximumSizeBytes,
+      maximumEntries: images.maximumSize.clamp(0, 1000),
+      hasRoom: _hasIconRoom,
+    );
   }
 
   /// Moves the controller to the group the Home button would go to: the group
@@ -141,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _warmer.dispose();
     WidgetsBinding.instance.removeObserver(this);
     widget.state.removeListener(_onStateChanged);
     _controller.dispose();
@@ -149,9 +218,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    _updateWarming();
     // Returning from another app always reveals the main tab, never search.
     // Inactive alone also covers the keyboard/system UI and must not close it.
     if (state == AppLifecycleState.paused && _searching) _closeSearch();
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    _warmer.cancel();
+    widget.state.releaseIconSources();
+    PaintingBinding.instance.imageCache.clear();
   }
 
   void _onStateChanged() {
@@ -161,7 +239,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _reportNewError();
     // A new snapshot (after `AppsChanged`, say) can change this page's items;
     // the cache dedups, so warming again is cheap.
-    _warmIcons(_currentGroupId);
+    if (!identical(_warmedSnapshot, widget.state.snapshot)) {
+      _warmIcons(_currentGroupId);
+    }
   }
 
   /// What the system Back button does. On the launcher it does nothing
@@ -220,9 +300,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _openSearch();
   }
 
-  void _openSearch() => setState(() => _searching = true);
+  void _openSearch() {
+    setState(() => _searching = true);
+    _updateWarming();
+  }
 
-  void _closeSearch() => setState(() => _searching = false);
+  void _closeSearch() {
+    setState(() => _searching = false);
+    _updateWarming();
+  }
 
   /// Opens the launcher settings, the destination §8.2 gives a long press on
   /// blank space. Pushed directly rather than by route name: this screen holds
@@ -404,24 +490,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             child: GestureDetector(
                               behavior: HitTestBehavior.opaque,
                               onLongPress: _openLauncherMenu,
-                              child: GroupPager(
-                                controller: _controller,
-                                columns:
-                                    (MediaQuery.orientationOf(context) ==
-                                                Orientation.portrait
-                                            ? settings?.gridColumnsPortrait
-                                            : settings?.gridColumnsLandscape)
-                                        ?.toInt() ??
-                                    4,
-                                onGroupChanged: _onGroupChanged,
-                                // Each page is built with the group the controller
-                                // puts at that index, so nothing here converts an
-                                // index itself.
-                                gridFor: (context, groupId) => AppGrid(
-                                  state: widget.state,
-                                  groupId: groupId,
-                                  onItemLongPress: _openAppSettings,
-                                  onItemPointerDown: _onItemPointerDown,
+                              child: NotificationListener<ScrollNotification>(
+                                onNotification: (notification) {
+                                  final key = (
+                                    notification.metrics.axis,
+                                    notification.depth,
+                                  );
+                                  if (notification is ScrollStartNotification) {
+                                    _scrolling.add(key);
+                                  }
+                                  if (notification is ScrollEndNotification) {
+                                    _scrolling.remove(key);
+                                  }
+                                  _updateWarming();
+                                  return false;
+                                },
+                                child: GroupPager(
+                                  controller: _controller,
+                                  columns:
+                                      (MediaQuery.orientationOf(context) ==
+                                                  Orientation.portrait
+                                              ? settings?.gridColumnsPortrait
+                                              : settings?.gridColumnsLandscape)
+                                          ?.toInt() ??
+                                      4,
+                                  onGroupChanged: _onGroupChanged,
+                                  // Each page is built with the group the controller
+                                  // puts at that index, so nothing here converts an
+                                  // index itself.
+                                  gridFor: (context, groupId) => AppGrid(
+                                    state: widget.state,
+                                    groupId: groupId,
+                                    onItemLongPress: _openAppSettings,
+                                    onItemPointerDown: _onItemPointerDown,
+                                  ),
                                 ),
                               ),
                             ),

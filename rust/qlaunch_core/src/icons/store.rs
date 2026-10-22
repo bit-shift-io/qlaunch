@@ -1,7 +1,7 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use crate::model::{AppRef, IconFormat, IconImage};
@@ -24,7 +24,17 @@ pub struct IconDiskCache {
     /// Bumped by [`clear`](Self::clear). A fetch captures it before asking the
     /// platform and only writes back if it is unchanged, so an icon that was
     /// already in flight when the apps changed cannot resurrect a stale entry.
-    generation: Arc<AtomicU64>,
+    state: Arc<Mutex<CacheState>>,
+}
+
+#[derive(Default)]
+struct CacheState {
+    generation: u64,
+    scanned: bool,
+    files: HashMap<PathBuf, (SystemTime, u64)>,
+    bytes: u64,
+    #[cfg(test)]
+    scans: usize,
 }
 
 impl IconDiskCache {
@@ -32,14 +42,17 @@ impl IconDiskCache {
         Self {
             dir,
             cap_bytes,
-            generation: Arc::new(AtomicU64::new(0)),
+            state: Arc::new(Mutex::new(CacheState::default())),
         }
     }
 
     /// The current generation, to pass to [`put_if`](Self::put_if) after a
     /// platform fetch.
     pub fn generation(&self) -> u64 {
-        self.generation.load(Ordering::SeqCst)
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .generation
     }
 
     /// The cached image for `app` at `size_px` produced by an app whose
@@ -52,7 +65,7 @@ impl IconDiskCache {
 
     /// Stores `image` for `app` at `size_px`. A failed write is ignored.
     pub fn put(&self, app: &AppRef, size_px: u32, update_time: i64, image: &IconImage) {
-        self.write(app, size_px, update_time, image);
+        self.write(None, app, size_px, update_time, image);
     }
 
     /// [`put`](Self::put), but only if the cache has not been cleared since
@@ -65,12 +78,17 @@ impl IconDiskCache {
         update_time: i64,
         image: &IconImage,
     ) {
-        if self.generation() == generation {
-            self.write(app, size_px, update_time, image);
-        }
+        self.write(Some(generation), app, size_px, update_time, image);
     }
 
-    fn write(&self, app: &AppRef, size_px: u32, update_time: i64, image: &IconImage) {
+    fn write(
+        &self,
+        generation: Option<u64>,
+        app: &AppRef,
+        size_px: u32,
+        update_time: i64,
+        image: &IconImage,
+    ) {
         let key = key_of(app, size_px, update_time);
         let mut data = Vec::with_capacity(HEADER_LEN + key.len() + image.bytes.len());
         data.extend_from_slice(MAGIC);
@@ -82,30 +100,50 @@ impl IconDiskCache {
         data.extend_from_slice(key.as_bytes());
         data.extend_from_slice(&image.bytes);
 
+        if data.len() as u64 > self.cap_bytes {
+            return;
+        }
+        // The generation check and write commit share clear's lock. A clear
+        // cannot interleave between validation and rename and resurrect a file.
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if generation.is_some_and(|generation| generation != state.generation) {
+            return;
+        }
+        self.scan(&mut state);
+
         if fs::create_dir_all(&self.dir).is_err() {
             return;
         }
         // Write-then-rename: a crash or a full disk leaves either the old file
         // or the new one, never a header with a truncated payload.
         let name = file_name(&key);
-        let temp = self.dir.join(format!("{name}.{}.tmp", std::process::id()));
+        let temp = self
+            .dir
+            .join(format!("{name}.{}.tmp", uuid::Uuid::new_v4().simple()));
         if fs::write(&temp, &data).is_err() {
             let _ = fs::remove_file(&temp);
             return;
         }
-        if fs::rename(&temp, self.dir.join(name)).is_err() {
+        let path = self.dir.join(name);
+        if fs::rename(&temp, &path).is_err() {
             let _ = fs::remove_file(&temp);
             return;
         }
-        self.trim();
+        if let Some((_, bytes)) = state
+            .files
+            .insert(path, (SystemTime::now(), data.len() as u64))
+        {
+            state.bytes = state.bytes.saturating_sub(bytes);
+        }
+        state.bytes += data.len() as u64;
+        self.trim(&mut state);
     }
 
     /// Removes every cached file and invalidates any fetch already in flight.
     /// Called when the installed apps change, since their icons may have too.
     pub fn clear(&self) {
-        // Bump before removing: a `put_if` that already read the old generation
-        // will then decline to write.
-        self.generation.fetch_add(1, Ordering::SeqCst);
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.generation += 1;
         let Ok(entries) = fs::read_dir(&self.dir) else {
             return;
         };
@@ -114,34 +152,63 @@ impl IconDiskCache {
                 let _ = fs::remove_file(entry.path());
             }
         }
+        state.scanned = false;
+        state.files.clear();
+        state.bytes = 0;
     }
 
-    /// Deletes the oldest files until the directory is at or under the cap.
-    fn trim(&self) {
-        let Ok(entries) = fs::read_dir(&self.dir) else {
-            return;
-        };
-        let mut files: Vec<(SystemTime, u64, PathBuf)> = entries
-            .flatten()
-            .filter(|entry| is_bin(&entry.path()))
-            .filter_map(|entry| {
-                let meta = entry.metadata().ok()?;
-                Some((meta.modified().ok()?, meta.len(), entry.path()))
-            })
-            .collect();
-        let mut total: u64 = files.iter().map(|(_, len, _)| len).sum();
-        if total <= self.cap_bytes {
+    fn scan(&self, state: &mut CacheState) {
+        if state.scanned {
             return;
         }
-        let oldest_first =
-            |a: &(SystemTime, u64, PathBuf), b: &(SystemTime, u64, PathBuf)| a.0.cmp(&b.0);
-        files.sort_by(oldest_first);
-        for (_, len, path) in files {
-            if total <= self.cap_bytes {
+        #[cfg(test)]
+        {
+            state.scans += 1;
+        }
+        state.files.clear();
+        state.bytes = 0;
+        if let Ok(entries) = fs::read_dir(&self.dir) {
+            for entry in entries.flatten().filter(|entry| is_bin(&entry.path())) {
+                if let Ok(meta) = entry.metadata() {
+                    state.files.insert(
+                        entry.path(),
+                        (
+                            meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+                            meta.len(),
+                        ),
+                    );
+                    state.bytes += meta.len();
+                }
+            }
+        }
+        state.scanned = true;
+    }
+
+    /// No directory scan on ordinary writes: accounting is shared by clones.
+    fn trim(&self, state: &mut CacheState) {
+        if state.bytes <= self.cap_bytes {
+            return;
+        }
+        let mut files: Vec<_> = state
+            .files
+            .iter()
+            .map(|(path, (time, bytes))| (*time, *bytes, path.clone()))
+            .collect();
+        files.sort_by_key(|(time, _, _)| *time);
+        for (_, bytes, path) in files {
+            if state.bytes <= self.cap_bytes {
                 break;
             }
-            if fs::remove_file(&path).is_ok() {
-                total = total.saturating_sub(len);
+            match fs::remove_file(&path) {
+                Ok(()) => {
+                    state.files.remove(&path);
+                    state.bytes = state.bytes.saturating_sub(bytes);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    state.files.remove(&path);
+                    state.bytes = state.bytes.saturating_sub(bytes);
+                }
+                Err(_) => {}
             }
         }
     }
@@ -217,4 +284,27 @@ fn decode(data: &[u8], expected_key: &str) -> Option<IconImage> {
         height,
         bytes,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_batch_scans_the_directory_only_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = IconDiskCache::new(dir.path().to_path_buf(), 1 << 20);
+        for i in 0..20 {
+            cache.put(
+                &AppRef {
+                    package: format!("p{i}"),
+                    activity: "Main".into(),
+                },
+                48,
+                0,
+                &IconImage::png(vec![1]),
+            );
+        }
+        assert_eq!(cache.state.lock().unwrap().scans, 1);
+    }
 }

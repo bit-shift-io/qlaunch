@@ -112,6 +112,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   IconImage dco_decode_icon_image(dynamic raw);
 
   @protected
+  IconRevision dco_decode_icon_revision(dynamic raw);
+
+  @protected
   Item dco_decode_item(dynamic raw);
 
   @protected
@@ -128,6 +131,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Group> dco_decode_list_group(dynamic raw);
+
+  @protected
+  List<IconRevision> dco_decode_list_icon_revision(dynamic raw);
 
   @protected
   List<Item> dco_decode_list_item(dynamic raw);
@@ -326,6 +332,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   IconImage sse_decode_icon_image(SseDeserializer deserializer);
 
   @protected
+  IconRevision sse_decode_icon_revision(SseDeserializer deserializer);
+
+  @protected
   Item sse_decode_item(SseDeserializer deserializer);
 
   @protected
@@ -342,6 +351,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Group> sse_decode_list_group(SseDeserializer deserializer);
+
+  @protected
+  List<IconRevision> sse_decode_list_icon_revision(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<Item> sse_decode_list_item(SseDeserializer deserializer);
@@ -584,6 +598,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_icon_image(IconImage self, SseSerializer serializer);
 
   @protected
+  void sse_encode_icon_revision(IconRevision self, SseSerializer serializer);
+
+  @protected
   void sse_encode_item(Item self, SseSerializer serializer);
 
   @protected
@@ -600,6 +617,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_group(List<Group> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_icon_revision(
+    List<IconRevision> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_item(List<Item> self, SseSerializer serializer);

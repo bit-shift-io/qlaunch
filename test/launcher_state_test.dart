@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/events.dart';
+import 'package:qlaunch/src/rust/api/api.dart';
+import 'package:qlaunch/src/rust/model/icon.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/usage.dart';
@@ -11,6 +13,49 @@ import 'fake_backend.dart';
 import 'snapshot_builders.dart';
 
 void main() {
+  test(
+    'app revisions preserve unchanged providers and invalidate updated apps',
+    () async {
+      final backend = FakeBackend();
+      final launcher = LauncherState(backend);
+      const a = AppRef(package: 'a', activity: 'Main');
+      const b = AppRef(package: 'b', activity: 'Main');
+      backend.icons[(package: 'a', activity: 'Main')] = IconImage(
+        format: IconFormat.rgba,
+        width: 1,
+        height: 1,
+        bytes: Uint8List(4),
+      );
+      backend.icons[(package: 'b', activity: 'Main')] = IconImage(
+        format: IconFormat.rgba,
+        width: 1,
+        height: 1,
+        bytes: Uint8List(4),
+      );
+      backend.current = snapshotOf(
+        iconRevisions: [
+          const IconRevision(app: a, revision: 0),
+          const IconRevision(app: b, revision: 0),
+        ],
+      );
+      await launcher.load();
+      final firstA = await launcher.iconFor('a', 'Main', 48);
+      final firstB = await launcher.iconFor('b', 'Main', 48);
+      backend.current = snapshotOf(
+        iconRevisions: [
+          const IconRevision(app: a, revision: 1),
+          const IconRevision(app: b, revision: 0),
+        ],
+      );
+      backend.emit(const CoreEvent.appsChanged());
+      await Future<void>.delayed(Duration.zero);
+      expect(await launcher.iconFor('b', 'Main', 48), same(firstB));
+      expect(await launcher.iconFor('a', 'Main', 48), isNot(same(firstA)));
+      expect(backend.iconCalls, 3);
+      launcher.dispose();
+      await backend.close();
+    },
+  );
   late FakeBackend fake;
   late LauncherState state;
   late int notifications;
@@ -101,6 +146,29 @@ void main() {
   });
 
   group('events', () {
+    test(
+      'a burst while fetching has one active snapshot and one follow-up',
+      () async {
+        await state.load();
+        fake.holdSnapshots = true;
+        fake.emit(const CoreEvent.modelChanged());
+        await pumpEventQueue();
+        for (var i = 0; i < 20; i++) {
+          fake.emit(const CoreEvent.appsChanged());
+        }
+        await pumpEventQueue();
+        expect(fake.snapshotCalls, 1);
+        fake.current = snapshotOf(groups: [makeGroup('external')]);
+        fake.held.first.complete();
+        await pumpEventQueue();
+        expect(fake.snapshotCalls, 2);
+        fake.held.last.complete();
+        await pumpEventQueue();
+        expect(state.groups.single.id, 'external');
+        expect(fake.snapshotCalls, 2);
+      },
+    );
+
     test(
       'ModelChanged re-fetches, adopts the new snapshot and notifies',
       () async {
@@ -261,7 +329,10 @@ void main() {
     test('pass the limit through and answer with the backend result', () async {
       await state.load();
       fake.frequentAppsResults = (limit) => [
-        UsageHit(app: AppRef(package: 'p', activity: 'Main'), label: 'P'),
+        UsageHit(
+          app: AppRef(package: 'p', activity: 'Main'),
+          label: 'P',
+        ),
       ];
 
       final hits = await state.frequentApps(24);
@@ -401,6 +472,44 @@ void main() {
     );
   });
 
+  group('shortcut icons', () {
+    test(
+      'a reload during a held write cannot survive the replacement',
+      () async {
+        fake.current = snapshotOf(
+          pageIds: ['home'],
+          groups: [makeGroup('home')],
+          items: [makeItem('shortcut', 'home', iconOverride: 'icon.png')],
+        );
+        await state.load();
+        fake.itemIcons['shortcut'] = [1, 2, 3];
+        final first = await state.itemIcon(
+          'shortcut',
+          reference: 'icon.png',
+          sizePx: 48,
+        );
+        expect(first, isNotNull);
+
+        fake.holdSnapshots = true;
+        final write = state.setItemIcon('shortcut', [9, 9, 9]);
+        await pumpEventQueue();
+        expect(fake.held, hasLength(1));
+
+        // A rebuild during the held write loads and caches the old bytes.
+        final during = await state.itemIcon(
+          'shortcut',
+          reference: 'icon.png',
+          sizePx: 48,
+        );
+        expect(state.cachedItemIcon('shortcut', 'icon.png', 48), same(during));
+
+        fake.held.single.complete();
+        await write;
+        expect(state.cachedItemIcon('shortcut', 'icon.png', 48), isNull);
+      },
+    );
+  });
+
   group('overlapping fetches', () {
     test(
       'a newer snapshot is not overwritten by an older fetch finishing later',
@@ -411,12 +520,13 @@ void main() {
         fake.emit(const CoreEvent.modelChanged());
         await pumpEventQueue();
         fake.current = snapshotOf(groups: [makeGroup('new')]);
-        fake.emit(const CoreEvent.modelChanged());
+        final newer = state.updateSettings(const SettingsPatch(iconSize: 48));
         await pumpEventQueue();
         expect(fake.held, hasLength(2));
         final before = notifications;
 
         fake.held[1].complete();
+        await newer;
         await pumpEventQueue();
         expect(state.groups.map((g) => g.id), ['new']);
 
@@ -435,10 +545,11 @@ void main() {
       await pumpEventQueue();
       fake.failure = null;
       fake.current = snapshotOf(groups: [makeGroup('new')]);
-      fake.emit(const CoreEvent.modelChanged());
+      final newer = state.updateSettings(const SettingsPatch(iconSize: 48));
       await pumpEventQueue();
 
       fake.held[1].complete();
+      await newer;
       fake.held[0].complete();
       await pumpEventQueue();
 

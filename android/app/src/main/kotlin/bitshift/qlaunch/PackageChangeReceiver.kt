@@ -4,6 +4,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import android.os.SystemClock
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+
+/// Android reports an in-place package update as a removal with
+/// `EXTRA_REPLACING` set, then an addition. Treating that removal as an
+/// uninstall would delete the app's items and shortcuts before the addition
+/// arrives.
+internal fun isReplacingRemoval(action: String?, replacing: Boolean): Boolean =
+    action == "android.intent.action.PACKAGE_REMOVED" && replacing
 
 /// Tells the core an app was installed, removed or changed, so the launcher
 /// updates without a restart.
@@ -14,29 +24,44 @@ import android.util.Log
 /// it is dead.
 class PackageChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        // The scan and the store write are blocking; keep them off the main
-        // thread so a large package set cannot jank or ANR the launcher.
+        if (isReplacingRemoval(
+                intent.action,
+                intent.getBooleanExtra(Intent.EXTRA_REPLACING, false),
+            )
+        ) {
+            return
+        }
         val appContext = context.applicationContext
         val pending = goAsync()
-        Thread {
-            try {
-                // A package change can start this process on its own, before
-                // MainActivity has ever run, so load the library and install
-                // the bridge here too. Both are no-ops when already up.
-                System.loadLibrary("qlaunch_core")
-                QLaunchBridge.install(appContext)
-                onPackagesChanged()
-            } catch (t: Throwable) {
-                Log.w(TAG, "package change refresh failed", t)
-            } finally {
-                pending.finish()
-            }
-        }.start()
+        QLaunchBridge.install(appContext)
+        coalescer.enqueue { pending.finish() }
     }
 
     private external fun onPackagesChanged()
 
     private companion object {
         const val TAG = "QLaunch"
+        // One worker for all receiver instances; no periodic jobs, and the
+        // worker thread expires when idle rather than keeping a polling loop.
+        val executor = ScheduledThreadPoolExecutor(1) { task ->
+            Thread(task, "qlaunch-package-refresh").apply { isDaemon = true }
+        }.apply {
+            removeOnCancelPolicy = true
+            setKeepAliveTime(30, TimeUnit.SECONDS)
+            allowCoreThreadTimeOut(true)
+        }
+        val coalescer = PackageRefreshCoalescer(
+            SystemClock::uptimeMillis,
+            { delay, task ->
+                val future = executor.schedule({ task() }, delay, TimeUnit.MILLISECONDS)
+                val cancel: () -> Unit = { future.cancel(false); Unit }
+                cancel
+            },
+            {
+                System.loadLibrary("qlaunch_core")
+                PackageChangeReceiver().onPackagesChanged()
+            },
+            { error -> Log.w(TAG, "package change refresh failed", error) },
+        )
     }
 }
