@@ -30,11 +30,12 @@ String? labelFontFamily(Settings settings) => switch (settings.labelTypeface) {
   Typeface.monospace => 'monospace',
 };
 
-/// The halo that keeps text readable over a wallpaper; black text gets a light
-/// one, since a dark halo would only smudge it.
+/// A contrasting offset shadow keeps text readable over wallpaper. Avoid a
+/// blurred glyph mask here: on Impeller/Vulkan it makes paging dozens of labels
+/// GPU-bound even with warm icons (100+ ms raster frames on the Android tablet).
+/// A sharp shadow preserves contrast without per-label blur passes.
 Shadow labelShadow(Color colour) => Shadow(
   color: colour == Colors.black ? Colors.white : Colors.black,
-  blurRadius: 2,
   offset: const Offset(1, 1),
 );
 
@@ -57,7 +58,11 @@ ThemeData themeWithFontSettings(ThemeData base, Settings settings) {
 /// Applies [themeWithFontSettings] to a subtree: the lists, the search panel
 /// and the dialogs. A null [settings] (still loading) leaves the theme alone.
 class LauncherFontScope extends StatelessWidget {
-  const LauncherFontScope({super.key, required this.settings, required this.child});
+  const LauncherFontScope({
+    super.key,
+    required this.settings,
+    required this.child,
+  });
 
   final Settings? settings;
   final Widget child;
