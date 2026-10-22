@@ -373,14 +373,14 @@ fn clamp_index(index: i32, len: usize) -> usize {
 }
 
 #[derive(PartialEq, Eq)]
-struct SortKey {
+pub(crate) struct SortKey {
     folded: String,
     lower: String,
     raw: String,
 }
 
 impl SortKey {
-    fn new(label: &str) -> Self {
+    pub(crate) fn new(label: &str) -> Self {
         let lower = label.to_lowercase();
         let folded = lower.nfd().filter(|c| !is_combining_mark(*c)).collect();
         SortKey {

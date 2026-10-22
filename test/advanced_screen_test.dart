@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qlaunch/src/state/all_files_access.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/advanced_screen.dart';
 
@@ -9,8 +11,27 @@ import 'snapshot_builders.dart';
 void main() {
   late FakeBackend fake;
   late LauncherState state;
+  late bool storageGranted;
+  late bool requestGrants;
+
+  void mockStorage() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(AllFilesAccess.channel, (call) async {
+          switch (call.method) {
+            case 'hasAllFilesAccess':
+              return storageGranted;
+            case 'requestAllFilesAccess':
+              storageGranted = requestGrants;
+              return null;
+          }
+          return null;
+        });
+  }
 
   setUp(() async {
+    storageGranted = true;
+    requestGrants = true;
+    mockStorage();
     fake = FakeBackend(
       snapshot: snapshotOf(pageIds: ['home'], groups: [makeGroup('home')]),
     );
@@ -19,6 +40,8 @@ void main() {
   });
 
   tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(AllFilesAccess.channel, null);
     state.dispose();
     await fake.close();
   });
@@ -89,6 +112,31 @@ void main() {
 
     expect(find.text('No backups found in Downloads.'), findsOneWidget);
     expect(fake.calls.where((c) => c.startsWith('restoreConfig')), isEmpty);
+  });
+
+  testWidgets('Restore asks for All files access when denied', (tester) async {
+    storageGranted = false;
+    requestGrants = false;
+    fake.backups = ['qlaunch-backup-2026-10-21-140530.json'];
+    await pumpAdvanced(tester);
+
+    await tapControl(tester, find.byKey(AdvancedScreen.restoreKey));
+
+    expect(find.textContaining('All files access'), findsOneWidget);
+    expect(fake.calls.where((c) => c == 'listBackups'), isEmpty);
+    expect(fake.calls.where((c) => c.startsWith('restoreConfig')), isEmpty);
+  });
+
+  testWidgets('Restore lists backups once access is granted', (tester) async {
+    storageGranted = false;
+    fake.backups = ['qlaunch-backup-2026-10-21-140530.json'];
+    await pumpAdvanced(tester);
+
+    // The request handler flips granted=true, as granting in Settings would.
+    await tapControl(tester, find.byKey(AdvancedScreen.restoreKey));
+
+    expect(find.text('qlaunch-backup-2026-10-21-140530.json'), findsOneWidget);
+    expect(fake.calls, contains('listBackups'));
   });
 
   testWidgets('Restore lists backups and restores the chosen one', (

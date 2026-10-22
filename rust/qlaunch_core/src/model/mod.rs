@@ -1,7 +1,7 @@
 mod error;
 pub mod icon;
 mod ids;
-mod mutate;
+pub(crate) mod mutate;
 pub mod roles;
 
 use std::collections::HashSet;

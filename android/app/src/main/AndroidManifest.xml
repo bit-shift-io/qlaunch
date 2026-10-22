@@ -1,8 +1,15 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Uninstalling from the app settings popup sends ACTION_DELETE; without
          this the system's uninstaller refuses the request. A normal permission,
          granted at install time. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES"/>
+    <!-- Backups in Downloads written by an earlier install are owned by that
+         install, so the scoped MediaStore query cannot see them. All files
+         access is what lets Restore list every qlaunch-backup-* file. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage"/>
     <!-- Required on API 30+: without this, queryIntentActivities(MAIN+LAUNCHER)
          returns an empty list and the launcher looks empty. -->
     <queries>

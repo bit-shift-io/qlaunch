@@ -5,13 +5,49 @@ import android.content.ComponentName
 import android.app.Activity
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var shortcutGroup: String? = null
     private var wasStopped = false
+
+    override fun configureFlutterEngine(engine: FlutterEngine) {
+        super.configureFlutterEngine(engine)
+        // "All files access" is a special app-op, not a runtime permission, so
+        // it is checked and requested through Settings rather than a dialog.
+        MethodChannel(engine.dartExecutor.binaryMessenger, STORAGE_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "hasAllFilesAccess" -> result.success(Environment.isExternalStorageManager())
+                    "requestAllFilesAccess" -> {
+                        try {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                    Uri.parse("package:$packageName"),
+                                ),
+                            )
+                            result.success(null)
+                        } catch (error: Exception) {
+                            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                            result.success(null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private companion object {
+        const val STORAGE_CHANNEL = "bitshift.qlaunch/storage"
+    }
 
     @Suppress("DEPRECATION")
     fun beginShortcut(provider: String, group: String) {

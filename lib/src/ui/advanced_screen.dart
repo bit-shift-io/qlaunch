@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:qlaunch/src/state/all_files_access.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
 
 /// The less-used, mostly destructive actions, kept a screen away from the
@@ -33,6 +34,20 @@ class _AdvancedScreenState extends State<AdvancedScreen> {
   }
 
   Future<void> _restore() async {
+    // Downloads backups written by an earlier install belong to another owner,
+    // so Android hides them from the scoped MediaStore query unless this app
+    // holds All files access.
+    if (!await AllFilesAccess.isGranted()) {
+      await AllFilesAccess.request();
+      if (!mounted) return;
+      if (!await AllFilesAccess.isGranted()) {
+        _say(
+          'QLaunch needs "All files access" to read backups from Downloads. '
+          'Enable it for QLaunch, then press Restore again.',
+        );
+        return;
+      }
+    }
     final backups = await widget.state.listBackups();
     if (!mounted) return;
     if (backups.isEmpty) {

@@ -774,12 +774,20 @@ fn a_snapshot_lists_each_groups_items_in_display_order() {
     };
     let check = |snap: &ModelSnapshot, reference: &Model| {
         for group in [&apps, &games] {
-            let expected: Vec<Item> = reference.items_in(group).into_iter().cloned().collect();
+            let mut expected: Vec<Item> =
+                reference.items_in(group).into_iter().cloned().collect();
+            expected.sort_by_key(|i| i.label.to_lowercase());
             assert_eq!(items_of(snap, group), expected);
         }
         assert_eq!(snap.items.len(), reference.items.len());
     };
     check(&first, &reference);
+    let label_of = |snap: &ModelSnapshot, group: &str| -> Vec<String> {
+        items_of(snap, group).into_iter().map(|i| i.label).collect()
+    };
+    // The snapshot is alphabetical regardless of insertion or stored order.
+    assert_eq!(label_of(&first, &apps), ["Alpha", "Mid", "Zed"]);
+    assert_eq!(label_of(&first, &games), ["Kart", "Racer"]);
 
     // Move a game to the front of the apps, and an app to the middle of games.
     let snap = block_on(api::move_item(id_of("org.racer"), apps.clone(), 0)).unwrap();

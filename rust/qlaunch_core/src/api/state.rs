@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::icons::IconDiskCache;
+use crate::model::mutate::SortKey;
 use crate::model::{AppEntry, AppRef, Item, Model, ModelError};
 use crate::platform::backup::{backup_name, is_backup_name};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
@@ -123,14 +124,20 @@ pub(crate) fn launch_error(e: &LaunchError) -> String {
     format!("{tag}: {e}")
 }
 
-/// Every item, ordered by `(group_id, order)`. The sort is stable, so items
-/// with equal `order` keep their `Vec` order, which is exactly how
-/// `Model::items_in` breaks ties. Filtering the result by a group id therefore
-/// gives `items_in(group)`. The model's own `Vec` is not in display order,
-/// because the mutations rewrite `order` and never move anything.
+/// Every item, grouped by `group_id` and then in alphabetical label order
+/// (case- and accent-insensitive), matching `Model::items_in`. Filtering the
+/// result by a group id therefore gives `items_in(group)`. The stored `order`
+/// is kept only as a stable tie-breaker; the launcher always presents items
+/// alphabetically.
 fn items_in_display_order(model: &Model) -> Vec<Item> {
     let mut items = model.items.clone();
-    items.sort_by(|a, b| a.group_id.cmp(&b.group_id).then(a.order.cmp(&b.order)));
+    items.sort_by(|a, b| {
+        a.group_id
+            .cmp(&b.group_id)
+            .then(SortKey::new(&a.label).cmp(&SortKey::new(&b.label)))
+            .then(a.order.cmp(&b.order))
+            .then(a.id.cmp(&b.id))
+    });
     items
 }
 
