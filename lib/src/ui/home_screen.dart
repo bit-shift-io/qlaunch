@@ -285,9 +285,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  /// What the system Back button does. On the launcher it does nothing
-  /// (§8.2); the one thing it does is close the open search, which otherwise
-  /// traps the user behind a full-screen panel with only a close button.
+  /// Back closes pushed routes and search first, then cycles one visible tab
+  /// left, wrapping indefinitely without leaving the launcher.
   ///
   /// A pushed screen (the settings, from the gear or a long press) is what the
   /// user is looking at, so Back leaves it first — returning to the panel with
@@ -304,7 +303,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    if (_searching) _closeSearch();
+    if (_searching) {
+      _closeSearch();
+      return;
+    }
+    _step(-1);
   }
 
   /// What the system Home button does, in order: leave a pushed screen; close
@@ -563,6 +566,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                       )
                                     : GroupPager(
                                         controller: _controller,
+                                        transitionDuration: Duration(
+                                          milliseconds:
+                                              settings?.pageTransitionMs
+                                                  .toInt() ??
+                                              300,
+                                        ),
                                         columns:
                                             (MediaQuery.orientationOf(
                                                           context,

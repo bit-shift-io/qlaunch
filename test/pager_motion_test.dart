@@ -3,6 +3,62 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 
 void main() {
+  for (final milliseconds in [100, 800]) {
+    testWidgets('swipe release follows configured ${milliseconds}ms duration', (
+      tester,
+    ) async {
+      final controller = GroupPagerController(pageIds: ['a', 'b', 'c']);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GroupPager(
+            controller: controller,
+            transitionDuration: Duration(milliseconds: milliseconds),
+            gridFor: (_, id) => SizedBox.expand(key: ValueKey('grid.$id')),
+          ),
+        ),
+      );
+      final start = controller.position.value;
+      final gesture = await tester.startGesture(const Offset(700, 300));
+      await gesture.moveBy(const Offset(-30, 0));
+      await gesture.moveBy(const Offset(-450, 0));
+      await tester.pump();
+      final dragged = controller.position.value;
+      expect(dragged, allOf(greaterThan(start), lessThan(start + 1)));
+      await gesture.up();
+      await tester.pump();
+      await tester.pump(Duration(milliseconds: milliseconds ~/ 2));
+      expect(
+        controller.position.value,
+        allOf(greaterThan(dragged), lessThan(start + 1)),
+      );
+      await tester.pump(
+        Duration(milliseconds: milliseconds - milliseconds ~/ 2),
+      );
+      expect(controller.position.value, start + 1);
+      await tester.pumpAndSettle();
+    });
+  }
+
+  testWidgets('reduced motion jumps explicit navigation without animation', (
+    tester,
+  ) async {
+    final controller = GroupPagerController(pageIds: ['a', 'b']);
+    Widget host() => MaterialApp(
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: true),
+        child: child!,
+      ),
+      home: GroupPager(controller: controller, gridFor: (_, id) => Text(id)),
+    );
+    await tester.pumpWidget(host());
+    controller.step(-1);
+    await tester.pumpWidget(host());
+    await tester.pump();
+    expect(controller.position.value, controller.initialPage - 1);
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(controller.position.value, controller.initialPage - 1);
+  });
+
   testWidgets(
     'grids crossfade with one column of travel and recover on release',
     (tester) async {
@@ -41,7 +97,9 @@ void main() {
     },
   );
 
-  testWidgets('explicit navigation settles within 160ms', (tester) async {
+  testWidgets('default explicit navigation takes 300ms instead of jumping', (
+    tester,
+  ) async {
     final controller = GroupPagerController(pageIds: ['a', 'b', 'c']);
     await tester.pumpWidget(
       MaterialApp(
@@ -58,6 +116,7 @@ void main() {
       ),
     );
     controller.goToGroup('b');
+    final start = controller.initialPage.toDouble();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -74,6 +133,11 @@ void main() {
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 160));
+    expect(
+      tester.widget<PageView>(find.byType(PageView)).controller!.page,
+      allOf(greaterThan(start), lessThan(start + 1)),
+    );
+    await tester.pump(const Duration(milliseconds: 140));
     expect(
       tester.widget<PageView>(find.byType(PageView)).controller!.page,
       controller.currentPage.toDouble(),

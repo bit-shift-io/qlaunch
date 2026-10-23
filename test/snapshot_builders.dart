@@ -10,6 +10,7 @@ const testSettings = Settings(
   tabVisibility: TabVisibility.always,
   scrollFade: ScrollFadeStyle.gradient,
   continuousScroll: false,
+  pageTransitionMs: 300,
   wallpaperAlpha: 0,
   statusBarVisible: true,
   iconsVisible: true,

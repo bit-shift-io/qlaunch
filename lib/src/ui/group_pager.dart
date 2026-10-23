@@ -17,6 +17,7 @@ class GroupPagerController {
 
   List<String> _pageIds;
   late int _currentPage;
+  int? _navigationTarget;
   final ValueNotifier<double> position = ValueNotifier(0);
   int _revision = 0;
   int _command = 0;
@@ -29,7 +30,8 @@ class GroupPagerController {
 
   void step(int direction) {
     if (_pageIds.length < 2) return;
-    _currentPage += direction;
+    _currentPage = (_navigationTarget ?? _currentPage) + direction;
+    _navigationTarget = _currentPage;
     _command++;
   }
 
@@ -53,6 +55,7 @@ class GroupPagerController {
     _pageIds = List.of(value);
     final position = remembered == null ? -1 : _pageIds.indexOf(remembered);
     _currentPage = position < 0 ? initialPage : initialPage + position;
+    _navigationTarget = null;
     _revision++;
   }
 
@@ -60,9 +63,16 @@ class GroupPagerController {
   /// sync by the widget reporting movement through [onPageChanged].
   int get currentPage => _currentPage;
 
+  /// Intermediate page reports must not lose commands queued during animation.
+  int get navigationTarget => _navigationTarget ?? _currentPage;
+
+  /// Direct manipulation takes over from any unfinished navigation command.
+  void cancelNavigation() => _navigationTarget = null;
+
   /// Called by the pager when the user moves to [page].
   void onPageChanged(int page) {
     _currentPage = page;
+    if (_navigationTarget == page) _navigationTarget = null;
   }
 
   /// A large index in the middle of the virtual range whose group is
@@ -110,8 +120,10 @@ class GroupPagerController {
     final index = virtualIndexFor(groupId);
     if (index < 0) return false;
     final length = _pageIds.length;
-    final forward = (index - _currentPage) % length;
-    _currentPage += forward > length / 2 ? forward - length : forward;
+    final from = _navigationTarget ?? _currentPage;
+    final forward = (index - from) % length;
+    _currentPage = from + (forward > length / 2 ? forward - length : forward);
+    _navigationTarget = _currentPage;
     _command++;
     return true;
   }
@@ -135,10 +147,14 @@ class GroupPager extends StatefulWidget {
     required this.gridFor,
     this.onGroupChanged,
     this.columns = 4,
+    this.transitionDuration = const Duration(milliseconds: 300),
   });
 
   final GroupPagerController controller;
   final int columns;
+
+  /// Shared by swipe release and explicit tab/Home/Back navigation.
+  final Duration transitionDuration;
 
   /// Builds the content for a group. Receives `''` when there are no pages.
   final Widget Function(BuildContext context, String groupId) gridFor;
@@ -161,6 +177,7 @@ class _GroupPagerState extends State<GroupPager> {
 
   void _dragUpdate(DragUpdateDetails details) {
     if (!_pageController.hasClients) return;
+    widget.controller.cancelNavigation();
     final position = _pageController.position;
     _pageController.jumpTo(
       (position.pixels - details.delta.dx).clamp(
@@ -168,6 +185,7 @@ class _GroupPagerState extends State<GroupPager> {
         position.maxScrollExtent,
       ),
     );
+    widget.controller.onPageChanged(_pageController.page!.round());
   }
 
   void _settleDrag([double velocity = 0]) {
@@ -183,7 +201,7 @@ class _GroupPagerState extends State<GroupPager> {
     } else {
       _pageController.animateToPage(
         target,
-        duration: const Duration(milliseconds: 150),
+        duration: widget.transitionDuration,
         curve: Curves.easeOutCubic,
       );
     }
@@ -193,8 +211,9 @@ class _GroupPagerState extends State<GroupPager> {
   // endless scroll through nothing. One page lets the caller draw an empty
   // state. In that case this is deliberately 0 while the controller's
   // currentPage is still the anchor, so the two diverge on purpose.
-  int get _targetPage =>
-      widget.controller.pageIds.isEmpty ? 0 : widget.controller.currentPage;
+  int get _targetPage => widget.controller.pageIds.isEmpty
+      ? 0
+      : widget.controller.navigationTarget;
 
   @override
   void initState() {
@@ -238,7 +257,7 @@ class _GroupPagerState extends State<GroupPager> {
         } else {
           _pageController.animateToPage(
             target,
-            duration: const Duration(milliseconds: 150),
+            duration: widget.transitionDuration,
             curve: Curves.easeOutCubic,
           );
         }

@@ -22,6 +22,7 @@ class Settings {
   final TabVisibility tabVisibility;
   final ScrollFadeStyle scrollFade;
   final bool continuousScroll;
+  final PlatformInt64 pageTransitionMs;
   final PlatformInt64 wallpaperAlpha;
   final bool statusBarVisible;
   final bool iconsVisible;
@@ -42,6 +43,7 @@ class Settings {
     required this.tabVisibility,
     required this.scrollFade,
     required this.continuousScroll,
+    required this.pageTransitionMs,
     required this.wallpaperAlpha,
     required this.statusBarVisible,
     required this.iconsVisible,
@@ -64,6 +66,7 @@ class Settings {
       tabVisibility.hashCode ^
       scrollFade.hashCode ^
       continuousScroll.hashCode ^
+      pageTransitionMs.hashCode ^
       wallpaperAlpha.hashCode ^
       statusBarVisible.hashCode ^
       iconsVisible.hashCode ^
@@ -88,6 +91,7 @@ class Settings {
           tabVisibility == other.tabVisibility &&
           scrollFade == other.scrollFade &&
           continuousScroll == other.continuousScroll &&
+          pageTransitionMs == other.pageTransitionMs &&
           wallpaperAlpha == other.wallpaperAlpha &&
           statusBarVisible == other.statusBarVisible &&
           iconsVisible == other.iconsVisible &&
@@ -109,6 +113,7 @@ class SettingsPatch {
   final TabVisibility? tabVisibility;
   final ScrollFadeStyle? scrollFade;
   final bool? continuousScroll;
+  final PlatformInt64? pageTransitionMs;
   final PlatformInt64? wallpaperAlpha;
   final bool? statusBarVisible;
   final bool? iconsVisible;
@@ -129,6 +134,7 @@ class SettingsPatch {
     this.tabVisibility,
     this.scrollFade,
     this.continuousScroll,
+    this.pageTransitionMs,
     this.wallpaperAlpha,
     this.statusBarVisible,
     this.iconsVisible,
@@ -151,6 +157,7 @@ class SettingsPatch {
       tabVisibility.hashCode ^
       scrollFade.hashCode ^
       continuousScroll.hashCode ^
+      pageTransitionMs.hashCode ^
       wallpaperAlpha.hashCode ^
       statusBarVisible.hashCode ^
       iconsVisible.hashCode ^
@@ -175,6 +182,7 @@ class SettingsPatch {
           tabVisibility == other.tabVisibility &&
           scrollFade == other.scrollFade &&
           continuousScroll == other.continuousScroll &&
+          pageTransitionMs == other.pageTransitionMs &&
           wallpaperAlpha == other.wallpaperAlpha &&
           statusBarVisible == other.statusBarVisible &&
           iconsVisible == other.iconsVisible &&

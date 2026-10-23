@@ -48,6 +48,7 @@ enum SettingField {
   tabVisibility,
   scrollFade,
   continuousScroll,
+  pageTransitionMs,
   wallpaperAlpha,
   statusBarVisible,
   iconsVisible,
@@ -104,6 +105,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     'Continuous scrolling',
                     settings.continuousScroll,
                     (v) => SettingsPatch(continuousScroll: v),
+                  ),
+                  _number(
+                    SettingField.pageTransitionMs,
+                    'Page transition duration',
+                    settings.pageTransitionMs.toDouble(),
+                    100,
+                    800,
+                    (v) => SettingsPatch(pageTransitionMs: v.round()),
+                    unit: ' ms',
                   ),
                   _number(
                     SettingField.gridColumnsPortrait,
@@ -316,20 +326,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     double value,
     double min,
     double max,
-    SettingsPatch Function(double) patch,
-  ) {
+    SettingsPatch Function(double) patch, {
+    String unit = '',
+  }) {
     final shown = (_dragging[field] ?? value).clamp(min, max);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _label(label, '${shown.round()}'),
+        _label(label, '${shown.round()}$unit'),
         Slider(
           key: SettingsScreen.controlKey(field),
           value: shown,
           min: min,
           max: max,
           divisions: (max - min).round(),
-          label: '${shown.round()}',
+          label: '${shown.round()}$unit',
           onChanged: (v) => setState(() => _dragging[field] = v),
           // One request per gesture rather than one per pixel.
           onChangeEnd: (v) => _patch(patch(v), dragging: field),

@@ -202,6 +202,7 @@ fn field_names_serialise_verbatim() {
             "labels_visible",
             "layout",
             "orientation",
+            "page_transition_ms",
             "scroll_fade",
             "status_bar_visible",
             "tab_visibility",
@@ -296,6 +297,42 @@ fn missing_keys_fill_in_from_the_defaults() {
     );
     let empty: Settings = serde_json::from_str("{}").unwrap();
     assert_eq!(empty, Settings::default());
+}
+
+#[test]
+fn page_transition_duration_defaults_for_old_configs_and_clamps_loaded_values() {
+    for (json, expected) in [
+        ("{}", 300),
+        (r#"{"page_transition_ms":1}"#, 100),
+        (r#"{"page_transition_ms":999}"#, 800),
+        (r#"{"page_transition_ms":550}"#, 550),
+    ] {
+        let mut settings: Settings = serde_json::from_str(json).unwrap();
+        settings.clamp();
+        let saved = serde_json::to_value(&settings).unwrap();
+        assert_eq!(saved["page_transition_ms"], expected);
+        let restored: Settings = serde_json::from_value(saved).unwrap();
+        assert_eq!(restored, settings);
+    }
+}
+
+#[test]
+fn page_transition_patch_preserves_other_settings_and_round_trips() {
+    let mut settings = Settings::default();
+    settings.apply(&SettingsPatch {
+        page_transition_ms: Some(650),
+        ..Default::default()
+    });
+    let restored: Settings =
+        serde_json::from_str(&serde_json::to_string(&settings).unwrap()).unwrap();
+    assert_eq!(restored.page_transition_ms, 650);
+    assert_eq!(
+        Settings {
+            page_transition_ms: 300,
+            ..restored
+        },
+        Settings::default()
+    );
 }
 
 #[test]

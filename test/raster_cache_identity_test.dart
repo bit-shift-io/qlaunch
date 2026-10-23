@@ -63,6 +63,10 @@ void main() {
         await generation(settings: settingsWith(continuousScroll: true)),
         baseline,
       );
+      expect(
+        await generation(settings: settingsWith(pageTransitionMs: 800)),
+        baseline,
+      );
       for (final settings in [
         settingsWith(labelShadowBlur: 5),
         settingsWith(labelSize: 20),

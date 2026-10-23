@@ -40,6 +40,27 @@ void main() {
   }
 
   group('controls', () {
+    testWidgets(
+      'transition duration slider saves only milliseconds in range 100-800',
+      (tester) async {
+        await pumpSettings(tester);
+        final control = find.byKey(
+          const ValueKey('setting.pageTransitionMs.control'),
+        );
+        expect(control, findsOneWidget);
+        await tester.ensureVisible(control);
+        final slider = tester.widget<Slider>(control);
+        expect(slider.min, 100);
+        expect(slider.max, 800);
+        expect(slider.value, 300);
+        slider.onChanged!(650);
+        slider.onChangeEnd!(650);
+        await tester.pumpAndSettle();
+        expect(fake.settingsPatches, [
+          const SettingsPatch(pageTransitionMs: 650),
+        ]);
+      },
+    );
     testWidgets('continuous scrolling sends only its mode setting', (
       tester,
     ) async {
@@ -55,7 +76,7 @@ void main() {
 
     testWidgets('every setting in the table has one', (tester) async {
       await pumpSettings(tester);
-      expect(SettingField.values, hasLength(18));
+      expect(SettingField.values, hasLength(19));
       for (final field in SettingField.values) {
         expect(
           find.byKey(SettingsScreen.controlKey(field)),

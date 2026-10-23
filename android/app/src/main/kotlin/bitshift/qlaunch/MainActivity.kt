@@ -132,6 +132,13 @@ class MainActivity : FlutterActivity() {
         super.onStop()
     }
 
+    override fun onTrimMemory(level: Int) {
+        // Flutter's onStop/onResume still handle renderer lifecycle cleanup.
+        // Keep the bounded working set on app switches; forward actual pressure
+        // (and all other levels) through the usual engine/plugin path.
+        if (shouldForwardMemoryTrim(level)) super.onTrimMemory(level)
+    }
+
     override fun onResume() {
         super.onResume()
         wasStopped = false
@@ -149,7 +156,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /// Back does nothing on the launcher: the old app swallowed it too. The
+    /// Dart closes navigation history/search or cycles left through tabs. The
     /// manifest opts out of predictive back, so this is always the path.
     @Suppress("DEPRECATION")
     override fun onBackPressed() {

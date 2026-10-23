@@ -549,7 +549,100 @@ void main() {
     });
   });
 
+  testWidgets(
+    'tab clicks animate with saved duration and survive parent rebuilds',
+    (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(
+        pageIds: ['home', 'apps', 'games'],
+        settings: settingsWith(pageTransitionMs: 800),
+      );
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+      final start = pagerPage(tester)!;
+      await tester.tap(find.byKey(TabStrip.tapKey(1)).hitTestable().first);
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(pagerPage(tester), allOf(greaterThan(start), lessThan(start + 1)));
+      // A model notification during the transition must not jump to its endpoint.
+      await state.load();
+      await tester.pump();
+      expect(pagerPage(tester), allOf(greaterThan(start), lessThan(start + 1)));
+      await tester.pumpAndSettle();
+      expect(pagerPage(tester), start + 1);
+    },
+  );
+
   group('the system Back button', () {
+    for (final ids in [
+      <String>[],
+      ['home'],
+    ]) {
+      testWidgets('does not move with ${ids.length} visible pages', (
+        tester,
+      ) async {
+        await load(pageIds: ids);
+        await pumpHome(tester);
+        await tester.pumpAndSettle();
+        final before = pagerPage(tester);
+        fake.emit(const CoreEvent.backPressed());
+        await tester.pumpAndSettle();
+        expect(pagerPage(tester), before);
+        expect(find.byType(AppSearch), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('can interrupt a left transition with another left step', (
+      tester,
+    ) async {
+      await load(
+        pageIds: ['home', 'apps', 'games'],
+        settings: settingsWith(pageTransitionMs: 800),
+      );
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+      final start = pagerPage(tester)!;
+      fake.emit(const CoreEvent.backPressed());
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      fake.emit(const CoreEvent.backPressed());
+      await tester.pumpAndSettle();
+      expect(pagerPage(tester), start - 2);
+      expect(
+        tester.widget<TabStrip>(find.byType(TabStrip)).currentGroupId,
+        'apps',
+      );
+    });
+
+    testWidgets('three rapid Back presses retain every requested left step', (
+      tester,
+    ) async {
+      await load(
+        pageIds: ['home', 'apps', 'games'],
+        settings: settingsWith(pageTransitionMs: 800),
+      );
+      await pumpHome(tester);
+      await tester.pumpAndSettle();
+      final start = pagerPage(tester)!;
+      Future<void> back() async {
+        fake.emit(const CoreEvent.backPressed());
+        await tester.pump();
+        await tester.pump();
+      }
+
+      await back();
+      await tester.pump(const Duration(milliseconds: 50));
+      await back();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(pagerPage(tester), lessThan(start - .5));
+      await back();
+      await tester.pumpAndSettle();
+      expect(pagerPage(tester), start - 3);
+    });
+
     testWidgets('closes the open search', (tester) async {
       setSurface(tester, const Size(400, 800));
       await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
@@ -564,6 +657,10 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byType(AppSearch), findsNothing);
+      expect(
+        tester.widget<TabStrip>(find.byType(TabStrip)).currentGroupId,
+        'home',
+      );
     });
 
     testWidgets('while the settings screen is open, leaves it and keeps the '
@@ -588,20 +685,23 @@ void main() {
       expect(find.byType(AppSearch), findsOneWidget);
     });
 
-    testWidgets('with no search open does nothing', (tester) async {
+    testWidgets('with no history cycles left through visible tabs and wraps', (
+      tester,
+    ) async {
       setSurface(tester, const Size(400, 800));
-      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await load(pageIds: ['home', 'apps', 'games'], homeGroupId: 'home');
       await pumpHome(tester);
       expect(find.byType(AppSearch), findsNothing);
 
-      fake.emit(const CoreEvent.backPressed());
-      await tester.pump();
-      await tester.pump();
-
-      // The launcher is still there; Back never opens the search or changes
-      // the group.
+      for (final expected in ['games', 'apps', 'home', 'games']) {
+        fake.emit(const CoreEvent.backPressed());
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TabStrip>(find.byType(TabStrip)).currentGroupId,
+          expected,
+        );
+      }
       expect(find.byType(AppSearch), findsNothing);
-      expect(find.byType(AppGrid), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

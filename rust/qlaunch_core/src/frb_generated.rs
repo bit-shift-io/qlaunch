@@ -1965,6 +1965,7 @@ impl SseDecode for crate::settings::Settings {
         let mut var_tabVisibility = <crate::settings::TabVisibility>::sse_decode(deserializer);
         let mut var_scrollFade = <crate::settings::ScrollFadeStyle>::sse_decode(deserializer);
         let mut var_continuousScroll = <bool>::sse_decode(deserializer);
+        let mut var_pageTransitionMs = <i64>::sse_decode(deserializer);
         let mut var_wallpaperAlpha = <i64>::sse_decode(deserializer);
         let mut var_statusBarVisible = <bool>::sse_decode(deserializer);
         let mut var_iconsVisible = <bool>::sse_decode(deserializer);
@@ -1984,6 +1985,7 @@ impl SseDecode for crate::settings::Settings {
             tab_visibility: var_tabVisibility,
             scroll_fade: var_scrollFade,
             continuous_scroll: var_continuousScroll,
+            page_transition_ms: var_pageTransitionMs,
             wallpaper_alpha: var_wallpaperAlpha,
             status_bar_visible: var_statusBarVisible,
             icons_visible: var_iconsVisible,
@@ -2011,6 +2013,7 @@ impl SseDecode for crate::settings::SettingsPatch {
         let mut var_scrollFade =
             <Option<crate::settings::ScrollFadeStyle>>::sse_decode(deserializer);
         let mut var_continuousScroll = <Option<bool>>::sse_decode(deserializer);
+        let mut var_pageTransitionMs = <Option<i64>>::sse_decode(deserializer);
         let mut var_wallpaperAlpha = <Option<i64>>::sse_decode(deserializer);
         let mut var_statusBarVisible = <Option<bool>>::sse_decode(deserializer);
         let mut var_iconsVisible = <Option<bool>>::sse_decode(deserializer);
@@ -2030,6 +2033,7 @@ impl SseDecode for crate::settings::SettingsPatch {
             tab_visibility: var_tabVisibility,
             scroll_fade: var_scrollFade,
             continuous_scroll: var_continuousScroll,
+            page_transition_ms: var_pageTransitionMs,
             wallpaper_alpha: var_wallpaperAlpha,
             status_bar_visible: var_statusBarVisible,
             icons_visible: var_iconsVisible,
@@ -2577,6 +2581,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::Settings {
             self.tab_visibility.into_into_dart().into_dart(),
             self.scroll_fade.into_into_dart().into_dart(),
             self.continuous_scroll.into_into_dart().into_dart(),
+            self.page_transition_ms.into_into_dart().into_dart(),
             self.wallpaper_alpha.into_into_dart().into_dart(),
             self.status_bar_visible.into_into_dart().into_dart(),
             self.icons_visible.into_into_dart().into_dart(),
@@ -2609,6 +2614,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::SettingsPatch {
             self.tab_visibility.into_into_dart().into_dart(),
             self.scroll_fade.into_into_dart().into_dart(),
             self.continuous_scroll.into_into_dart().into_dart(),
+            self.page_transition_ms.into_into_dart().into_dart(),
             self.wallpaper_alpha.into_into_dart().into_dart(),
             self.status_bar_visible.into_into_dart().into_dart(),
             self.icons_visible.into_into_dart().into_dart(),
@@ -3300,6 +3306,7 @@ impl SseEncode for crate::settings::Settings {
         <crate::settings::TabVisibility>::sse_encode(self.tab_visibility, serializer);
         <crate::settings::ScrollFadeStyle>::sse_encode(self.scroll_fade, serializer);
         <bool>::sse_encode(self.continuous_scroll, serializer);
+        <i64>::sse_encode(self.page_transition_ms, serializer);
         <i64>::sse_encode(self.wallpaper_alpha, serializer);
         <bool>::sse_encode(self.status_bar_visible, serializer);
         <bool>::sse_encode(self.icons_visible, serializer);
@@ -3324,6 +3331,7 @@ impl SseEncode for crate::settings::SettingsPatch {
         <Option<crate::settings::TabVisibility>>::sse_encode(self.tab_visibility, serializer);
         <Option<crate::settings::ScrollFadeStyle>>::sse_encode(self.scroll_fade, serializer);
         <Option<bool>>::sse_encode(self.continuous_scroll, serializer);
+        <Option<i64>>::sse_encode(self.page_transition_ms, serializer);
         <Option<i64>>::sse_encode(self.wallpaper_alpha, serializer);
         <Option<bool>>::sse_encode(self.status_bar_visible, serializer);
         <Option<bool>>::sse_encode(self.icons_visible, serializer);

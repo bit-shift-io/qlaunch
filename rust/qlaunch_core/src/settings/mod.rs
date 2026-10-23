@@ -59,6 +59,7 @@ pub struct Settings {
     pub tab_visibility: TabVisibility,
     pub scroll_fade: ScrollFadeStyle,
     pub continuous_scroll: bool,
+    pub page_transition_ms: i64,
     pub wallpaper_alpha: i64,
     pub status_bar_visible: bool,
     pub icons_visible: bool,
@@ -81,6 +82,7 @@ pub struct SettingsPatch {
     pub tab_visibility: Option<TabVisibility>,
     pub scroll_fade: Option<ScrollFadeStyle>,
     pub continuous_scroll: Option<bool>,
+    pub page_transition_ms: Option<i64>,
     pub wallpaper_alpha: Option<i64>,
     pub status_bar_visible: Option<bool>,
     pub icons_visible: Option<bool>,
@@ -104,6 +106,7 @@ impl Default for Settings {
             tab_visibility: TabVisibility::Always,
             scroll_fade: ScrollFadeStyle::Gradient,
             continuous_scroll: false,
+            page_transition_ms: 300,
             wallpaper_alpha: 0,
             status_bar_visible: true,
             icons_visible: true,
@@ -131,6 +134,7 @@ impl Settings {
         self.icon_alpha = self.icon_alpha.clamp(0, 100);
         self.label_size = self.label_size.clamp(0, 100);
         self.label_shadow_blur = self.label_shadow_blur.clamp(0, 10);
+        self.page_transition_ms = self.page_transition_ms.clamp(100, 800);
     }
 
     /// Overwrites the fields the patch sets. Does not clamp; call
@@ -148,6 +152,7 @@ impl Settings {
             tab_visibility,
             scroll_fade,
             continuous_scroll,
+            page_transition_ms,
             wallpaper_alpha,
             status_bar_visible,
             icons_visible,
