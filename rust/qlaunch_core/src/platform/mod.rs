@@ -37,6 +37,19 @@ pub trait AppSource: Send + Sync {
     fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError>;
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError>;
 
+    /// The PNG bytes for an icon named by a platform reference, such as an
+    /// Android resource. Used when a shortcut's icon is not stored as a file.
+    fn icon_reference(
+        &self,
+        reference: &str,
+        size_px: u32,
+    ) -> Result<Option<Vec<u8>>, PlatformError> {
+        let _ = (reference, size_px);
+        Err(PlatformError::Unsupported(
+            "icon references are not supported on this platform".into(),
+        ))
+    }
+
     /// Calls `on_change` after the installed apps change, once per burst of
     /// changes, until the returned handle is dropped. The callback only says
     /// "something changed": the caller re-reads `list_apps`.

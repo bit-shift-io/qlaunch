@@ -30,6 +30,7 @@ abstract class LauncherBackend {
   Future<List<String>> listBackups();
   Future<ModelSnapshot> restoreConfig(String fileName);
   Future<ModelSnapshot> addLockShortcut(String targetGroupId);
+  Future<ModelSnapshot> addNotificationsShortcut(String targetGroupId);
   Future<ModelSnapshot> addCommandShortcut(
     String targetGroupId,
     String label,
@@ -39,6 +40,7 @@ abstract class LauncherBackend {
   Future<void> beginShortcut(String provider, String targetGroupId);
   Future<void> launchShortcut(String id);
   Future<void> lockScreen();
+  Future<void> openNotifications();
   Future<List<int>?> itemIcon(String id);
   Future<ModelSnapshot> updateSettings(SettingsPatch patch);
   Future<String?> homeGroupId();
@@ -124,6 +126,10 @@ class RustBackend implements LauncherBackend {
       rust.addLockShortcut(targetGroupId: targetGroupId);
 
   @override
+  Future<ModelSnapshot> addNotificationsShortcut(String targetGroupId) =>
+      rust.addNotificationsShortcut(targetGroupId: targetGroupId);
+
+  @override
   Future<ModelSnapshot> addCommandShortcut(
     String targetGroupId,
     String label,
@@ -147,6 +153,9 @@ class RustBackend implements LauncherBackend {
 
   @override
   Future<void> lockScreen() => rust.lockScreen();
+
+  @override
+  Future<void> openNotifications() => rust.openNotifications();
 
   @override
   Future<List<int>?> itemIcon(String id) => rust.itemIcon(id: id);

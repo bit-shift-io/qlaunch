@@ -8,11 +8,13 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.provider.MediaStore
+import android.util.Base64
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 
 /// Everything the Rust core asks the OS for. Rust owns all data and logic; this
@@ -20,6 +22,7 @@ import kotlin.math.roundToInt
 /// so Rust finds them as static methods on `bitshift/qlaunch/QLaunchBridge`.
 object QLaunchBridge {
     @JvmStatic fun lockScreen() = LauncherActions.lockScreen()
+    @JvmStatic fun openNotifications() = LauncherActions.openNotifications()
     @JvmStatic fun shortcutProvidersJson(): String = LauncherActions.providersJson()
     @JvmStatic fun beginShortcut(provider: String, group: String) =
         LauncherActions.onMain { it.beginShortcut(provider, group) }
@@ -153,6 +156,43 @@ object QLaunchBridge {
             .put("selfPackage", context.packageName)
             .put("activities", activities)
             .toString()
+    }
+
+    private const val ICON_REF_PREFIX = "android-res://"
+
+    /// A stable reference to a drawable another app supplied as a shortcut icon.
+    @JvmStatic
+    fun iconRefFor(resource: Intent.ShortcutIconResource): String? {
+        if (resource.packageName.isBlank() || resource.resourceName.isBlank()) return null
+        return ICON_REF_PREFIX + resource.packageName + "/" + resource.resourceName
+    }
+
+    /// Draws the drawable named by `reference` and returns it as base64 PNG.
+    /// Returns null if the app or resource is gone.
+    @JvmStatic
+    fun resourceIconPng(reference: String, sizePx: Int): String? {
+        if (!reference.startsWith(ICON_REF_PREFIX)) return null
+        val rest = reference.removePrefix(ICON_REF_PREFIX)
+        val slash = rest.indexOf('/')
+        if (slash <= 0 || slash == rest.length - 1) return null
+        val packageName = rest.substring(0, slash)
+        val resourceName = rest.substring(slash + 1)
+        return try {
+            val resources = getAppContext().packageManager
+                .getResourcesForApplication(packageName)
+            val id = if (resourceName.contains(':')) {
+                resources.getIdentifier(resourceName, null, null)
+            } else {
+                resources.getIdentifier(resourceName, null, packageName)
+            }
+            if (id == 0) return null
+            val bitmap = drawableToBitmap(resources.getDrawable(id, null), sizePx)
+            val bytes = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
+            Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /// The activity's icon as raw pixels, or null if it cannot be had.

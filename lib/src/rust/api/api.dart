@@ -94,6 +94,12 @@ Future<ModelSnapshot> addLockShortcut({required String targetGroupId}) =>
       targetGroupId: targetGroupId,
     );
 
+Future<ModelSnapshot> addNotificationsShortcut({
+  required String targetGroupId,
+}) => RustLib.instance.api.crateApiApiAddNotificationsShortcut(
+  targetGroupId: targetGroupId,
+);
+
 Future<ModelSnapshot> addCommandShortcut({
   required String targetGroupId,
   required String label,
@@ -119,6 +125,9 @@ Future<void> launchShortcut({required String id}) =>
     RustLib.instance.api.crateApiApiLaunchShortcut(id: id);
 
 Future<void> lockScreen() => RustLib.instance.api.crateApiApiLockScreen();
+
+Future<void> openNotifications() =>
+    RustLib.instance.api.crateApiApiOpenNotifications();
 
 Future<Uint8List?> itemIcon({required String id}) =>
     RustLib.instance.api.crateApiApiItemIcon(id: id);

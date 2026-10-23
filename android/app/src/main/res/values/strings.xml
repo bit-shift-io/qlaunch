@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="screen_lock_service_label">QLaunch screen lock</string>
-    <string name="screen_lock_service_description">Allows double-tap and the Lock Screen shortcut to lock the screen while keeping fingerprint and face unlock available. QLaunch does not read screen content.</string>
-    <string name="screen_lock_service_enable">Enable QLaunch screen lock, then return and try locking again.</string>
+    <string name="screen_lock_service_label">QLaunch system actions</string>
+    <string name="screen_lock_service_description">Allows the Lock Screen shortcut, double-tap and a downward pull to lock the screen or open notifications while keeping fingerprint and face unlock available. QLaunch does not read screen content.</string>
+    <string name="screen_lock_service_enable">Enable QLaunch system actions, then return and try again.</string>
 </resources>

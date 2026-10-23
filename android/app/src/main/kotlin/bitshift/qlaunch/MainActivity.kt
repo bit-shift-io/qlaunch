@@ -148,11 +148,16 @@ class MainActivity : FlutterActivity() {
     /// remembered tab. Android also pauses a foreground activity before
     /// onNewIntent, so onPause cannot distinguish that from a repeated Home;
     /// onStop can. Returning via Back resets this state in onResume as well.
+    ///
+    /// While the notification shade (or another system overlay) is open this
+    /// window does not have focus, and the Home press is what dismisses the
+    /// overlay. Dart is told so separately: that press returns to the
+    /// launcher but never advances to the search.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         if (intent.action == Intent.ACTION_MAIN &&
             intent.hasCategory(Intent.CATEGORY_HOME) && !wasStopped) {
-            onHomePressed()
+            if (hasWindowFocus()) onHomePressed() else onHomePressedFromOverlay()
         }
     }
 
@@ -164,6 +169,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private external fun onHomePressed()
+
+    private external fun onHomePressedFromOverlay()
 
     private external fun onBackPressedEvent()
 }

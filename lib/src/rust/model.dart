@@ -151,6 +151,7 @@ sealed class ShortcutPayload with _$ShortcutPayload {
   const ShortcutPayload._();
 
   const factory ShortcutPayload.lockScreen() = ShortcutPayload_LockScreen;
+  const factory ShortcutPayload.notifications() = ShortcutPayload_Notifications;
   const factory ShortcutPayload.android({
     String? action,
     String? data,

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
@@ -96,6 +97,7 @@ class AddShortcutDialog extends StatefulWidget {
   final String targetGroupId;
 
   static const lockKey = ValueKey('addShortcut.lock');
+  static const notificationsKey = ValueKey('addShortcut.notifications');
   static const commandKey = ValueKey('addShortcut.command');
   static const commandLabelKey = ValueKey('addShortcut.commandLabel');
   static const commandTextKey = ValueKey('addShortcut.commandText');
@@ -166,6 +168,18 @@ class _AddShortcutDialogState extends State<AddShortcutDialog> {
                     () => widget.state.addLockShortcut(widget.targetGroupId),
                   ),
                 ),
+                if (defaultTargetPlatform == TargetPlatform.android)
+                  ListTile(
+                    key: AddShortcutDialog.notificationsKey,
+                    leading: const Icon(Icons.notifications_none),
+                    title: const Text('Notifications'),
+                    enabled: !_busy,
+                    onTap: () => _run(
+                      () => widget.state.addNotificationsShortcut(
+                        widget.targetGroupId,
+                      ),
+                    ),
+                  ),
                 for (final provider in providers)
                   ListTile(
                     key: provider.id == 'command'

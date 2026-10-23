@@ -29,6 +29,7 @@ class LauncherState extends ChangeNotifier {
   Map<String, List<Item>> _itemsByGroup = {};
   String? _error;
   int _homeRequests = 0;
+  int _overlayHomeRequests = 0;
   int _backRequests = 0;
   bool _disposed = false;
   bool _refreshRunning = false;
@@ -50,6 +51,11 @@ class LauncherState extends ChangeNotifier {
   /// started. A counter rather than a flag: a listener compares it against the
   /// value it last saw, so it reacts to every press and never to a rebuild.
   int get homeRequests => _homeRequests;
+
+  /// How many times Home was pressed while a system overlay had focus. Unlike
+  /// [homeRequests], these presses dismiss that overlay and return to the
+  /// launcher without opening the search.
+  int get overlayHomeRequests => _overlayHomeRequests;
 
   /// How many times the system Back button has been pressed since the launcher
   /// started. A counter, like [homeRequests], so a listener reacts to each
@@ -120,6 +126,9 @@ class LauncherState extends ChangeNotifier {
         _notify();
       case CoreEvent_HomePressed():
         _homeRequests++;
+        _notify();
+      case CoreEvent_HomePressedFromOverlay():
+        _overlayHomeRequests++;
         _notify();
       case CoreEvent_BackPressed():
         _backRequests++;
@@ -286,6 +295,9 @@ class LauncherState extends ChangeNotifier {
   Future<void> addLockShortcut(String targetGroupId) =>
       _fetch(() => _backend.addLockShortcut(targetGroupId));
 
+  Future<void> addNotificationsShortcut(String targetGroupId) =>
+      _fetch(() => _backend.addNotificationsShortcut(targetGroupId));
+
   Future<void> addCommandShortcut(
     String targetGroupId,
     String label,
@@ -324,6 +336,14 @@ class LauncherState extends ChangeNotifier {
   Future<void> lockScreen() async {
     try {
       await _backend.lockScreen();
+    } catch (e, st) {
+      _fail(e, st);
+    }
+  }
+
+  Future<void> openNotifications() async {
+    try {
+      await _backend.openNotifications();
     } catch (e, st) {
       _fail(e, st);
     }

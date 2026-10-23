@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/shortcuts.dart';
@@ -54,6 +55,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fake.calls, contains('addLockShortcut(home)'));
+  });
+
+  testWidgets('the notifications action targets the page it was opened from', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await pumpDialog(tester);
+
+      await tester.tap(find.byKey(AddShortcutDialog.notificationsKey));
+      await tester.pumpAndSettle();
+
+      expect(fake.calls, contains('addNotificationsShortcut(home)'));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('the notifications action is hidden off Android', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    try {
+      await pumpDialog(tester);
+
+      expect(find.byKey(AddShortcutDialog.notificationsKey), findsNothing);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
   });
 
   testWidgets('a command shortcut sends its name and command', (tester) async {

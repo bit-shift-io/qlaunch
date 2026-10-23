@@ -19,29 +19,34 @@ Implemented: paged groups with a Java-style title strip, content-sized tiles/lis
 centred layouts with two-line labels, Home-button search with frequent and recent
 apps, Android and Linux shortcuts, system wallpaper with dimming, display settings
 applied at runtime, scroll fading (none, edge gradient, or whole-cell), accessibility
-screen lock, and a confirmed factory reset. The blank-space long-press menu replaces
+screen lock and notification shade opening, and a confirmed factory reset. The blank-space long-press menu replaces
 the old side drawers.
 
 Double-tap on blank space and the Lock Screen shortcut use Android's accessibility
 lock action so fingerprint/face unlock remains available under normal Android
-security rules. The first lock attempt opens Settings: enable **QLaunch screen
-lock**, return to the launcher, and try again. This service does not read screen
-content. The old device-admin permission is revoked on the next lock attempt
-after upgrading.
+security rules. The first lock or notification attempt opens Settings: enable
+**QLaunch system actions**, return to the launcher, and try again. This service
+does not read screen content. The old device-admin permission is revoked on the
+next lock attempt after upgrading.
 
 An **Advanced** page (a single row in Settings) holds the destructive actions —
 Restart Launcher, Backup config, Restore config and Factory Reset. Backup writes the
-whole document to the Downloads folder as a dated `qlaunch-backup-….json`; Restore
-lists those backups newest-first, confirms the chosen file, validates it, keeps a
-pre-restore copy, then replaces and reconciles the layout.
+whole document to the Downloads folder as a dated `qlaunch-backup-….json`, including
+shortcut icons that cannot be looked up again; Restore lists those backups
+newest-first, confirms the chosen file, validates it, keeps a pre-restore copy, then
+replaces and reconciles the layout. Shortcut icons supplied as Android resource
+references are re-read from the providing app instead of being stored in the backup.
 
 Search shares the launcher's wallpaper and styling while hiding its main grid.
 Frequent and Recent are swipeable history pages, each limited to three rows.
 Home from another app restores the last tab; subsequent presses go to Home,
-open search, then close search.
+open search, then close search. A Home press that dismisses the notification
+shade returns to Home without opening search.
 
-Deferred: the notification-shade toggle (§8.2), custom app-icon picker, notification
-expansion, quick-settings tile and widget scaffolding.
+The notification shade opens from a downward pull at the top of a page or from a
+Notifications shortcut; both use the same accessibility service as screen lock.
+Deferred: custom app-icon picker, notification expansion, quick-settings tile and
+widget scaffolding.
 
 ## Documents
 

@@ -39,7 +39,7 @@ void main() {
     });
   }
 
-  testWidgets('reduced motion jumps explicit navigation without animation', (
+  testWidgets('reduced motion still animates explicit navigation', (
     tester,
   ) async {
     final controller = GroupPagerController(pageIds: ['a', 'b']);
@@ -52,11 +52,16 @@ void main() {
     );
     await tester.pumpWidget(host());
     controller.step(-1);
+    final target = (controller.initialPage - 1).toDouble();
     await tester.pumpWidget(host());
     await tester.pump();
-    expect(controller.position.value, controller.initialPage - 1);
     await tester.pump(const Duration(milliseconds: 150));
-    expect(controller.position.value, controller.initialPage - 1);
+    expect(
+      controller.position.value,
+      allOf(greaterThan(target), lessThan(controller.initialPage.toDouble())),
+    );
+    await tester.pumpAndSettle();
+    expect(controller.position.value, target);
   });
 
   testWidgets(

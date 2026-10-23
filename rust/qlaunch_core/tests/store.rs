@@ -1340,3 +1340,62 @@ fn a_pre_restore_copy_is_written_beside_the_document() {
         b"old bytes"
     );
 }
+
+#[test]
+fn a_backup_carries_custom_icons_and_parses_them_back() {
+    let m = Model::new_default();
+    let icon = b"\x89PNG fake icon".to_vec();
+    let mut icons = std::collections::BTreeMap::new();
+    icons.insert("item.png".to_string(), icon.clone());
+
+    let bytes = Store::backup_bytes(&m, &Settings::default(), &Usage::default(), &icons).unwrap();
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(value.get("icons").is_some());
+
+    let (loaded, parsed) = Store::parse_backup(&bytes).unwrap();
+    assert_eq!(parsed, icons);
+    assert_eq!(loaded.model, m);
+}
+
+#[test]
+fn a_backup_without_icons_still_parses() {
+    let m = Model::new_default();
+    let bytes = Store::backup_bytes(
+        &m,
+        &Settings::default(),
+        &Usage::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    let value: Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(value.get("icons").is_none());
+
+    let (loaded, icons) = Store::parse_backup(&bytes).unwrap();
+    assert!(icons.is_empty());
+    assert_eq!(loaded.model, m);
+}
+
+#[test]
+fn a_malformed_icons_map_is_refused_instead_of_ignored() {
+    let m = Model::new_default();
+    let bytes = Store::backup_bytes(
+        &m,
+        &Settings::default(),
+        &Usage::default(),
+        &Default::default(),
+    )
+    .unwrap();
+    for icons in [
+        json!([1, 2]),
+        json!("nope"),
+        json!({"item.png": 3}),
+        json!({"item.png": "***"}),
+    ] {
+        let mut value: Value = serde_json::from_slice(&bytes).unwrap();
+        value.as_object_mut().unwrap().insert("icons".into(), icons);
+        assert!(matches!(
+            Store::parse_backup(&serde_json::to_vec(&value).unwrap()),
+            Err(StoreError::InvalidBackupIcon(_))
+        ));
+    }
+}

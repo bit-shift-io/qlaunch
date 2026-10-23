@@ -150,6 +150,7 @@ class AppCellPlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     final icon = switch (item.shortcut) {
       ShortcutPayload_LockScreen() => Icons.lock_outline,
+      ShortcutPayload_Notifications() => Icons.notifications_none,
       ShortcutPayload_Command() => Icons.terminal,
       ShortcutPayload_Android() => Icons.link,
       null => Icons.apps,

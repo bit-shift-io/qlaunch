@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
@@ -29,6 +30,7 @@ class AppCells extends StatelessWidget {
     this.onItemTap,
     this.onItemLongPress,
     this.onItemPointerDown,
+    this.onPullDownNotifications,
     this.embedded = false,
   });
 
@@ -51,6 +53,10 @@ class AppCells extends StatelessWidget {
   /// Reports the pointer that lands on a cell, before an ancestor listener
   /// sees the same down event.
   final ValueChanged<int>? onItemPointerDown;
+
+  /// Called when the grid is already at its top and the user pulls down far
+  /// enough. Null disables the gesture.
+  final VoidCallback? onPullDownNotifications;
 
   /// A non-scrolling row inside the continuous group scroller.
   final bool embedded;
@@ -174,7 +180,13 @@ class AppCells extends StatelessWidget {
             ],
           );
         }
+        final pullDown = onPullDownNotifications;
         final grid = GridView.builder(
+          physics: pullDown == null
+              ? null
+              : const AlwaysScrollableScrollPhysics(
+                  parent: ClampingScrollPhysics(),
+                ),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             mainAxisExtent: rowExtent,
@@ -182,10 +194,62 @@ class AppCells extends StatelessWidget {
           itemCount: items.length,
           itemBuilder: buildTile,
         );
+        final pullable = pullDown == null
+            ? grid
+            : _PullDownNotifications(onTriggered: pullDown, child: grid);
         return !embedded && settings.scrollFade == ScrollFadeStyle.gradient
-            ? ScrollEdgeFade(child: grid)
-            : grid;
+            ? ScrollEdgeFade(child: pullable)
+            : pullable;
       },
+    );
+  }
+}
+
+class _PullDownNotifications extends StatefulWidget {
+  const _PullDownNotifications({
+    required this.onTriggered,
+    required this.child,
+  });
+
+  static const triggerExtent = 48.0;
+
+  final VoidCallback onTriggered;
+  final Widget child;
+
+  @override
+  State<_PullDownNotifications> createState() => _PullDownNotificationsState();
+}
+
+class _PullDownNotificationsState extends State<_PullDownNotifications> {
+  double _pulled = 0;
+  bool _triggered = false;
+
+  bool _onNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification) {
+      _pulled = 0;
+      _triggered = false;
+    } else if (notification is OverscrollNotification &&
+        !_triggered &&
+        notification.dragDetails != null &&
+        notification.overscroll < 0) {
+      _pulled -= notification.overscroll;
+      if (_pulled >= _PullDownNotifications.triggerExtent) {
+        _triggered = true;
+        HapticFeedback.lightImpact();
+        widget.onTriggered();
+      }
+    } else if (notification is ScrollEndNotification) {
+      _pulled = 0;
+      _triggered = false;
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onNotification,
+      child: widget.child,
     );
   }
 }

@@ -15,4 +15,5 @@ pub mod usage;
 pub use crate::platform::android::jni_host::{
     JNI_OnLoad, Java_bitshift_qlaunch_MainActivity_onBackPressedEvent,
     Java_bitshift_qlaunch_MainActivity_onHomePressed,
+    Java_bitshift_qlaunch_MainActivity_onHomePressedFromOverlay,
 };

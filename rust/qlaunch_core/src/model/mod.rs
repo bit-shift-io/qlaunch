@@ -56,6 +56,7 @@ pub struct Extra {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ShortcutPayload {
     LockScreen,
+    Notifications,
     Android {
         action: Option<String>,
         data: Option<String>,

@@ -17,6 +17,7 @@ class AppGrid extends StatelessWidget {
     this.onItemTap,
     this.onItemLongPress,
     this.onItemPointerDown,
+    this.onPullDownNotifications,
   });
 
   final LauncherState state;
@@ -36,6 +37,10 @@ class AppGrid extends StatelessWidget {
   /// tap from one that belongs to an item.
   final ValueChanged<int>? onItemPointerDown;
 
+  /// Called when the grid is already at its top and the user pulls down far
+  /// enough. Null disables the gesture.
+  final VoidCallback? onPullDownNotifications;
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -50,6 +55,7 @@ class AppGrid extends StatelessWidget {
           onItemTap: onItemTap,
           onItemLongPress: onItemLongPress,
           onItemPointerDown: onItemPointerDown,
+          onPullDownNotifications: onPullDownNotifications,
         );
       },
     );

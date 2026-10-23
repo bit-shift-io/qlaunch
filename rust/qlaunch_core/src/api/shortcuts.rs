@@ -14,6 +14,8 @@ struct ShortcutResult {
     label: String,
     payload: ShortcutPayload,
     icon: Option<Vec<u8>>,
+    #[serde(default)]
+    icon_ref: Option<String>,
 }
 
 #[frb(ignore)]
@@ -38,9 +40,15 @@ pub fn add(
     label: &str,
     payload: ShortcutPayload,
     icon: Option<&[u8]>,
+    icon_ref: Option<&str>,
 ) -> Result<ModelSnapshot, String> {
     if label.trim().is_empty() {
         return Err("A shortcut needs a name".into());
+    }
+    if icon_ref
+        .is_some_and(|reference| crate::platform::android::parse_icon_ref(reference).is_none())
+    {
+        return Err("Invalid shortcut icon reference".into());
     }
     validate(&payload)?;
     state::with_app(|app, bus| {
@@ -54,7 +62,9 @@ pub fn add(
         }
         let mut next = app.model.clone();
         let id = next.add_shortcut(&group.to_string(), label.trim(), payload);
-        if let Some(bytes) = icon {
+        let icon_override = if let Some(reference) = icon_ref {
+            Some(reference.to_string())
+        } else if let Some(bytes) = icon {
             if bytes.len() > 2 * 1024 * 1024 {
                 return Err("Shortcut icon is too large".into());
             }
@@ -62,14 +72,20 @@ pub fn add(
                 .store
                 .as_ref()
                 .ok_or("No configuration directory for the shortcut icon")?;
-            let name = store
-                .write_icon(&id, bytes)
-                .map_err(|e| state::store_error(&e))?;
+            Some(
+                store
+                    .write_icon(&id, bytes)
+                    .map_err(|e| state::store_error(&e))?,
+            )
+        } else {
+            None
+        };
+        if let Some(icon_override) = icon_override {
             next.items
                 .iter_mut()
                 .find(|i| i.id == id)
                 .unwrap()
-                .icon_override = Some(name);
+                .icon_override = Some(icon_override);
         }
         let store = app
             .store
@@ -129,7 +145,13 @@ fn validate(payload: &ShortcutPayload) -> Result<(), String> {
 pub fn accept_result(group: &str, json: &str) -> Result<ModelSnapshot, String> {
     let result: ShortcutResult =
         serde_json::from_str(json).map_err(|e| format!("Invalid shortcut result: {e}"))?;
-    add(group, &result.label, result.payload, result.icon.as_deref())
+    add(
+        group,
+        &result.label,
+        result.payload,
+        result.icon.as_deref(),
+        result.icon_ref.as_deref(),
+    )
 }
 
 #[frb(ignore)]
@@ -153,9 +175,22 @@ pub fn lock() -> Result<(), String> {
 }
 
 #[frb(ignore)]
+pub fn notifications() -> Result<(), String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::platform::android::jni_host::JniHost::call_void("openNotifications", &[])
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("The notification shade is only available on Android".into())
+    }
+}
+
+#[frb(ignore)]
 pub fn launch(payload: &ShortcutPayload) -> Result<(), String> {
     match payload {
         ShortcutPayload::LockScreen => lock(),
+        ShortcutPayload::Notifications => notifications(),
         ShortcutPayload::Command { command } => {
             #[cfg(target_os = "linux")]
             {

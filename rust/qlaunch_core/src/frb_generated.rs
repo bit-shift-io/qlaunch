@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1653083907;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1308300977;
 
 // Section: executor
 
@@ -155,6 +155,44 @@ fn wire__crate__api__api__add_lock_shortcut_impl(
                     (move || async move {
                         let output_ok =
                             crate::api::api::add_lock_shortcut(api_target_group_id).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__add_notifications_shortcut_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "add_notifications_shortcut",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_target_group_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok =
+                            crate::api::api::add_notifications_shortcut(api_target_group_id)
+                                .await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -775,6 +813,41 @@ fn wire__crate__api__api__move_item_impl(
                     (move || async move {
                         let output_ok =
                             crate::api::api::move_item(api_id, api_to_group, api_new_order).await?;
+                        std::result::Result::Ok(output_ok)
+                    })()
+                    .await,
+                )
+            }
+        },
+    )
+}
+fn wire__crate__api__api__open_notifications_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec, _, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "open_notifications",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| async move {
+                transform_result_sse::<_, String>(
+                    (move || async move {
+                        let output_ok = crate::api::api::open_notifications().await?;
                         std::result::Result::Ok(output_ok)
                     })()
                     .await,
@@ -1434,9 +1507,12 @@ impl SseDecode for crate::api::events::CoreEvent {
                 return crate::api::events::CoreEvent::HomePressed;
             }
             6 => {
-                return crate::api::events::CoreEvent::BackPressed;
+                return crate::api::events::CoreEvent::HomePressedFromOverlay;
             }
             7 => {
+                return crate::api::events::CoreEvent::BackPressed;
+            }
+            8 => {
                 let mut var_field0 = <String>::sse_decode(deserializer);
                 return crate::api::events::CoreEvent::Error(var_field0);
             }
@@ -2059,6 +2135,9 @@ impl SseDecode for crate::model::ShortcutPayload {
                 return crate::model::ShortcutPayload::LockScreen;
             }
             1 => {
+                return crate::model::ShortcutPayload::Notifications;
+            }
+            2 => {
                 let mut var_action = <Option<String>>::sse_decode(deserializer);
                 let mut var_data = <Option<String>>::sse_decode(deserializer);
                 let mut var_mimeType = <Option<String>>::sse_decode(deserializer);
@@ -2078,7 +2157,7 @@ impl SseDecode for crate::model::ShortcutPayload {
                     extras: var_extras,
                 };
             }
-            2 => {
+            3 => {
                 let mut var_command = <String>::sse_decode(deserializer);
                 return crate::model::ShortcutPayload::Command {
                     command: var_command,
@@ -2174,39 +2253,46 @@ fn pde_ffi_dispatcher_primary_impl(
         1 => wire__crate__api__api__add_command_shortcut_impl(port, ptr, rust_vec_len, data_len),
         2 => wire__crate__api__api__add_group_impl(port, ptr, rust_vec_len, data_len),
         3 => wire__crate__api__api__add_lock_shortcut_impl(port, ptr, rust_vec_len, data_len),
-        4 => wire__crate__api__api__backup_config_impl(port, ptr, rust_vec_len, data_len),
-        5 => wire__crate__api__api__begin_shortcut_impl(port, ptr, rust_vec_len, data_len),
-        6 => wire__crate__api__api__choose_wallpaper_impl(port, ptr, rust_vec_len, data_len),
-        7 => wire__crate__api__api__delete_group_impl(port, ptr, rust_vec_len, data_len),
-        8 => wire__crate__api__api__events_impl(port, ptr, rust_vec_len, data_len),
-        9 => wire__crate__api__api__factory_reset_impl(port, ptr, rust_vec_len, data_len),
-        10 => wire__crate__api__api__frequent_apps_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__api__home_group_id_impl(port, ptr, rust_vec_len, data_len),
-        12 => wire__crate__api__api__icon_for_impl(port, ptr, rust_vec_len, data_len),
-        13 => wire__crate__api__api__init_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__api__item_icon_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__api__launch_app_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__api__launch_shortcut_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__api__list_backups_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__api__lock_screen_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__api__move_group_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__api__move_item_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__api__recent_apps_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__api__refresh_apps_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__api__remove_item_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__api__rename_group_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__api__rename_item_impl(port, ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__api__restore_config_impl(port, ptr, rust_vec_len, data_len),
-        27 => wire__crate__api__api__search_all_apps_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__api__set_group_hidden_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__api__set_group_role_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__api__set_item_icon_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__api__shortcut_providers_impl(port, ptr, rust_vec_len, data_len),
-        32 => wire__crate__api__api__snapshot_impl(port, ptr, rust_vec_len, data_len),
-        33 => wire__crate__api__api__sort_group_impl(port, ptr, rust_vec_len, data_len),
-        34 => wire__crate__api__api__uninstall_app_impl(port, ptr, rust_vec_len, data_len),
-        35 => wire__crate__api__api__update_settings_impl(port, ptr, rust_vec_len, data_len),
-        36 => wire__crate__api__api__version_impl(port, ptr, rust_vec_len, data_len),
+        4 => wire__crate__api__api__add_notifications_shortcut_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        5 => wire__crate__api__api__backup_config_impl(port, ptr, rust_vec_len, data_len),
+        6 => wire__crate__api__api__begin_shortcut_impl(port, ptr, rust_vec_len, data_len),
+        7 => wire__crate__api__api__choose_wallpaper_impl(port, ptr, rust_vec_len, data_len),
+        8 => wire__crate__api__api__delete_group_impl(port, ptr, rust_vec_len, data_len),
+        9 => wire__crate__api__api__events_impl(port, ptr, rust_vec_len, data_len),
+        10 => wire__crate__api__api__factory_reset_impl(port, ptr, rust_vec_len, data_len),
+        11 => wire__crate__api__api__frequent_apps_impl(port, ptr, rust_vec_len, data_len),
+        12 => wire__crate__api__api__home_group_id_impl(port, ptr, rust_vec_len, data_len),
+        13 => wire__crate__api__api__icon_for_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__api__init_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__api__item_icon_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__api__launch_app_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__api__launch_shortcut_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__api__list_backups_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__api__lock_screen_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__api__move_group_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__api__move_item_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__api__open_notifications_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__api__recent_apps_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__api__refresh_apps_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__api__remove_item_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__api__rename_group_impl(port, ptr, rust_vec_len, data_len),
+        27 => wire__crate__api__api__rename_item_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__api__restore_config_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__api__search_all_apps_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__api__set_group_hidden_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__api__set_group_role_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__api__set_item_icon_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__api__shortcut_providers_impl(port, ptr, rust_vec_len, data_len),
+        34 => wire__crate__api__api__snapshot_impl(port, ptr, rust_vec_len, data_len),
+        35 => wire__crate__api__api__sort_group_impl(port, ptr, rust_vec_len, data_len),
+        36 => wire__crate__api__api__uninstall_app_impl(port, ptr, rust_vec_len, data_len),
+        37 => wire__crate__api__api__update_settings_impl(port, ptr, rust_vec_len, data_len),
+        38 => wire__crate__api__api__version_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2253,9 +2339,10 @@ impl flutter_rust_bridge::IntoDart for crate::api::events::CoreEvent {
             crate::api::events::CoreEvent::ShortcutCancelled => [3.into_dart()].into_dart(),
             crate::api::events::CoreEvent::WallpaperChanged => [4.into_dart()].into_dart(),
             crate::api::events::CoreEvent::HomePressed => [5.into_dart()].into_dart(),
-            crate::api::events::CoreEvent::BackPressed => [6.into_dart()].into_dart(),
+            crate::api::events::CoreEvent::HomePressedFromOverlay => [6.into_dart()].into_dart(),
+            crate::api::events::CoreEvent::BackPressed => [7.into_dart()].into_dart(),
             crate::api::events::CoreEvent::Error(field0) => {
-                [7.into_dart(), field0.into_into_dart().into_dart()].into_dart()
+                [8.into_dart(), field0.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -2647,6 +2734,7 @@ impl flutter_rust_bridge::IntoDart for crate::model::ShortcutPayload {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
             crate::model::ShortcutPayload::LockScreen => [0.into_dart()].into_dart(),
+            crate::model::ShortcutPayload::Notifications => [1.into_dart()].into_dart(),
             crate::model::ShortcutPayload::Android {
                 action,
                 data,
@@ -2657,7 +2745,7 @@ impl flutter_rust_bridge::IntoDart for crate::model::ShortcutPayload {
                 flags,
                 extras,
             } => [
-                1.into_dart(),
+                2.into_dart(),
                 action.into_into_dart().into_dart(),
                 data.into_into_dart().into_dart(),
                 mime_type.into_into_dart().into_dart(),
@@ -2669,7 +2757,7 @@ impl flutter_rust_bridge::IntoDart for crate::model::ShortcutPayload {
             ]
             .into_dart(),
             crate::model::ShortcutPayload::Command { command } => {
-                [2.into_dart(), command.into_into_dart().into_dart()].into_dart()
+                [3.into_dart(), command.into_into_dart().into_dart()].into_dart()
             }
             _ => {
                 unimplemented!("");
@@ -2825,11 +2913,14 @@ impl SseEncode for crate::api::events::CoreEvent {
             crate::api::events::CoreEvent::HomePressed => {
                 <i32>::sse_encode(5, serializer);
             }
-            crate::api::events::CoreEvent::BackPressed => {
+            crate::api::events::CoreEvent::HomePressedFromOverlay => {
                 <i32>::sse_encode(6, serializer);
             }
-            crate::api::events::CoreEvent::Error(field0) => {
+            crate::api::events::CoreEvent::BackPressed => {
                 <i32>::sse_encode(7, serializer);
+            }
+            crate::api::events::CoreEvent::Error(field0) => {
+                <i32>::sse_encode(8, serializer);
                 <String>::sse_encode(field0, serializer);
             }
             _ => {
@@ -3354,6 +3445,9 @@ impl SseEncode for crate::model::ShortcutPayload {
             crate::model::ShortcutPayload::LockScreen => {
                 <i32>::sse_encode(0, serializer);
             }
+            crate::model::ShortcutPayload::Notifications => {
+                <i32>::sse_encode(1, serializer);
+            }
             crate::model::ShortcutPayload::Android {
                 action,
                 data,
@@ -3364,7 +3458,7 @@ impl SseEncode for crate::model::ShortcutPayload {
                 flags,
                 extras,
             } => {
-                <i32>::sse_encode(1, serializer);
+                <i32>::sse_encode(2, serializer);
                 <Option<String>>::sse_encode(action, serializer);
                 <Option<String>>::sse_encode(data, serializer);
                 <Option<String>>::sse_encode(mime_type, serializer);
@@ -3375,7 +3469,7 @@ impl SseEncode for crate::model::ShortcutPayload {
                 <Vec<crate::model::Extra>>::sse_encode(extras, serializer);
             }
             crate::model::ShortcutPayload::Command { command } => {
-                <i32>::sse_encode(2, serializer);
+                <i32>::sse_encode(3, serializer);
                 <String>::sse_encode(command, serializer);
             }
             _ => {

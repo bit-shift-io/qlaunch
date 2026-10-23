@@ -196,15 +196,11 @@ class _GroupPagerState extends State<GroupPager> {
       0,
       GroupPagerController.virtualPageCount - 1,
     );
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _pageController.jumpToPage(target);
-    } else {
-      _pageController.animateToPage(
-        target,
-        duration: widget.transitionDuration,
-        curve: Curves.easeOutCubic,
-      );
-    }
+    _pageController.animateToPage(
+      target,
+      duration: widget.transitionDuration,
+      curve: Curves.easeOutCubic,
+    );
   }
 
   // With no pages every index maps to '', and 100000 blank pages would be an
@@ -252,15 +248,11 @@ class _GroupPagerState extends State<GroupPager> {
       final target = _targetPage;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_pageController.hasClients) return;
-        if (MediaQuery.disableAnimationsOf(context)) {
-          _pageController.jumpToPage(target);
-        } else {
-          _pageController.animateToPage(
-            target,
-            duration: widget.transitionDuration,
-            curve: Curves.easeOutCubic,
-          );
-        }
+        _pageController.animateToPage(
+          target,
+          duration: widget.transitionDuration,
+          curve: Curves.easeOutCubic,
+        );
       });
     }
     // Reporting cannot happen here: calling the parent while it is building is

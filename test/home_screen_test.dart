@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/events.dart';
@@ -72,9 +73,16 @@ void main() {
     WidgetTester tester, {
     IconWarmer? warmer,
     RasterImageStore? rasterStore,
+    bool disableAnimations = false,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        builder: disableAnimations
+            ? (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(disableAnimations: true),
+                child: child!,
+              )
+            : null,
         home: HomeScreen(
           state: state,
           rasterStore: rasterStore,
@@ -104,7 +112,10 @@ void main() {
       tester.widget<PageView>(find.byType(PageView)).controller?.page;
 
   group('continuous scrolling prototype', () {
-    Future<void> openScroller(WidgetTester tester) async {
+    Future<void> openScroller(
+      WidgetTester tester, {
+      bool disableAnimations = false,
+    }) async {
       setSurface(tester, const Size(400, 800));
       const ids = ['home', 'apps', 'games'];
       await load(
@@ -115,7 +126,7 @@ void main() {
             for (var i = 0; i < 24; i++) launchable('$id-$i', id),
         ],
       );
-      await pumpHome(tester);
+      await pumpHome(tester, disableAnimations: disableAnimations);
       await tester.pumpAndSettle();
     }
 
@@ -177,6 +188,23 @@ void main() {
       await tester.tap(find.byKey(TabStrip.tabKey(0)));
       await tester.pumpAndSettle();
       expect(scrollController(tester).offset, closeTo(appsOffset, 0.1));
+    });
+
+    testWidgets('tab transitions ignore reduced motion', (tester) async {
+      await openScroller(tester, disableAnimations: true);
+      final scroll = scrollController(tester);
+      final before = scroll.offset;
+
+      await tester.tap(find.byKey(TabStrip.tabKey(1)));
+      await tester.pump();
+      // Prime the first animation frame, then inspect partway through.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final midway = scroll.offset;
+      expect(midway, greaterThan(before));
+
+      await tester.pumpAndSettle();
+      expect(scroll.offset, greaterThan(midway));
     });
 
     testWidgets('changing the saved mode swaps navigation in place', (
@@ -549,6 +577,63 @@ void main() {
     });
   });
 
+  group('the Home button pressed while a system overlay is open', () {
+    testWidgets('does not open the search from the home group', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+
+      fake.emit(const CoreEvent.homePressedFromOverlay());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(AppSearch), findsNothing);
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+
+      // The overlay is gone now, so the next press follows the usual rule.
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(AppSearch), findsOneWidget);
+    });
+
+    testWidgets('returns to the home group without opening the search', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+      await tester.drag(find.byType(PageView), const Offset(-400, 0));
+      await tester.pumpAndSettle();
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'apps');
+
+      fake.emit(const CoreEvent.homePressedFromOverlay());
+      await tester.pumpAndSettle();
+
+      expect(tester.widget<AppGrid>(find.byType(AppGrid)).groupId, 'home');
+      expect(find.byType(AppSearch), findsNothing);
+    });
+
+    testWidgets('closes an open search instead of reopening it', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load(pageIds: ['home', 'apps'], homeGroupId: 'home');
+      await pumpHome(tester);
+      fake.emit(const CoreEvent.homePressed());
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(AppSearch), findsOneWidget);
+
+      fake.emit(const CoreEvent.homePressedFromOverlay());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byType(AppSearch), findsNothing);
+    });
+  });
+
   testWidgets(
     'tab clicks animate with saved duration and survive parent rebuilds',
     (tester) async {
@@ -749,6 +834,40 @@ void main() {
 
       expect(find.byKey(LauncherMenu.settingsKey), findsNothing);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('a pull down at the top of a page', () {
+    testWidgets('asks the core to open notifications', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      try {
+        setSurface(tester, const Size(400, 800));
+        await load();
+        await pumpHome(tester);
+
+        await tester.drag(find.byType(GridView).first, const Offset(0, 200));
+        await tester.pumpAndSettle();
+
+        expect(fake.calls, contains('openNotifications'));
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    });
+
+    testWidgets('does nothing off Android', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      try {
+        setSurface(tester, const Size(400, 800));
+        await load();
+        await pumpHome(tester);
+
+        await tester.drag(find.byType(GridView).first, const Offset(0, 200));
+        await tester.pumpAndSettle();
+
+        expect(fake.calls, isNot(contains('openNotifications')));
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
   });
 

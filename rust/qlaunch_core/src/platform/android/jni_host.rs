@@ -2,6 +2,8 @@ use std::ffi::c_void;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use jni::objects::GlobalRef;
 use jni::sys::{JNI_VERSION_1_6, jint};
 use jni::{JNIEnv, JavaVM};
@@ -239,6 +241,45 @@ impl AndroidHost for JniHost {
         .map_err(platform_to_launch)
     }
 
+    fn icon_reference_png(
+        &self,
+        reference: &str,
+        size_px: u32,
+    ) -> Result<Option<Vec<u8>>, PlatformError> {
+        JniHost::with_env(|env| {
+            let class = JniHost::class()?;
+            let reference = env.new_string(reference).map_err(jni_error)?;
+            let result = env.call_static_method(
+                class,
+                "resourceIconPng",
+                "(Ljava/lang/String;I)Ljava/lang/String;",
+                &[(&reference).into(), (size_px as i32).into()],
+            );
+            let value = match result {
+                Ok(value) => value,
+                Err(e) => {
+                    clear_pending(env);
+                    let _ = e;
+                    return Ok(None);
+                }
+            };
+            let object = match value.l() {
+                Ok(object) if !object.is_null() => object,
+                _ => return Ok(None),
+            };
+            let string: jni::objects::JString = object.into();
+            let encoded: String = match env.get_string(&string) {
+                Ok(value) => value.into(),
+                Err(e) => {
+                    clear_pending(env);
+                    let _ = e;
+                    return Ok(None);
+                }
+            };
+            Ok(BASE64.decode(encoded).ok())
+        })
+    }
+
     fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {
         let body = String::from_utf8_lossy(bytes).into_owned();
         JniHost::call_void("writeBackup", &[name.to_string(), body]).map_err(PlatformError::Io)
@@ -336,6 +377,17 @@ pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onHomePressed(
     _this: jni::objects::JObject,
 ) {
     crate::api::state::emit(CoreEvent::HomePressed);
+}
+
+/// Home while a system overlay was focused, also from
+/// `MainActivity.onNewIntent`. Kept separate from [`HomePressed`] so Dart can
+/// dismiss the launcher's own surface without opening the search.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onHomePressedFromOverlay(
+    _env: JNIEnv,
+    _this: jni::objects::JObject,
+) {
+    crate::api::state::emit(CoreEvent::HomePressedFromOverlay);
 }
 
 /// The Back button, from `MainActivity.onBackPressed`. Dart ignores it for

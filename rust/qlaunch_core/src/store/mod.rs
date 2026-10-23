@@ -4,13 +4,15 @@ mod migrate;
 
 pub use location::{config_root, config_root_from};
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -70,6 +72,8 @@ pub enum StoreError {
     Invalid(#[from] ModelError),
     #[error("{0:?} is not a plain file name")]
     InvalidIconName(String),
+    #[error("the backup's icons are invalid: {0}")]
+    InvalidBackupIcon(String),
     #[error(
         "the saved layout could not be read, so nothing will be written over it until a load succeeds"
     )]
@@ -234,6 +238,18 @@ impl Store {
         Ok(())
     }
 
+    fn document(model: &Model, settings: &Settings, usage: &Usage) -> Result<Document, StoreError> {
+        model.validate()?;
+        Ok(Document {
+            schema: SCHEMA_VERSION,
+            settings: settings.clone(),
+            usage: usage.clone(),
+            root_group_id: model.root_group_id.clone(),
+            groups: model.groups.clone(),
+            items: model.items.clone(),
+        })
+    }
+
     /// The exact bytes [`Store::save`] would write for `model`, `settings` and
     /// `usage`, so a backup is the same document, not a second format.
     pub fn document_bytes(
@@ -241,22 +257,46 @@ impl Store {
         settings: &Settings,
         usage: &Usage,
     ) -> Result<Vec<u8>, StoreError> {
-        model.validate()?;
-        let document = Document {
-            schema: SCHEMA_VERSION,
-            settings: settings.clone(),
-            usage: usage.clone(),
-            root_group_id: model.root_group_id.clone(),
-            groups: model.groups.clone(),
-            items: model.items.clone(),
-        };
-        Ok(serde_json::to_vec_pretty(&document)?)
+        Ok(serde_json::to_vec_pretty(&Self::document(
+            model, settings, usage,
+        )?)?)
+    }
+
+    /// The document plus every custom icon it references, as one self-contained
+    /// backup. `icons` maps an `icon_override` file name to its PNG bytes. Only
+    /// custom icons are included; app icons still come from the platform.
+    pub fn backup_bytes(
+        model: &Model,
+        settings: &Settings,
+        usage: &Usage,
+        icons: &BTreeMap<String, Vec<u8>>,
+    ) -> Result<Vec<u8>, StoreError> {
+        let mut value = serde_json::to_value(Self::document(model, settings, usage)?)?;
+        if !icons.is_empty() {
+            let mut encoded = serde_json::Map::with_capacity(icons.len());
+            for (name, bytes) in icons {
+                encoded.insert(name.clone(), Value::String(BASE64.encode(bytes)));
+            }
+            value
+                .as_object_mut()
+                .expect("a document serialises to an object")
+                .insert("icons".into(), Value::Object(encoded));
+        }
+        Ok(serde_json::to_vec_pretty(&value)?)
     }
 
     /// Reads a document from bytes rather than from disk, for a restore.
     /// Nothing is written and a damaged file is an error, never quarantined.
     pub fn parse_document(bytes: &[u8]) -> Result<Loaded, StoreError> {
         interpret(bytes).map(|(loaded, _)| loaded)
+    }
+
+    /// Reads a backup: the document plus the custom icons [`Store::backup_bytes`]
+    /// embedded in it. A backup written before icons were included has none.
+    pub fn parse_backup(bytes: &[u8]) -> Result<(Loaded, BTreeMap<String, Vec<u8>>), StoreError> {
+        let mut value: Value = serde_json::from_slice(bytes)?;
+        let icons = take_icons(&mut value)?;
+        Ok((interpret_value(value)?.0, icons))
     }
 
     /// Keeps `bytes` as [`PRE_RESTORE_NAME`] beside the document, replacing any
@@ -275,10 +315,18 @@ impl Store {
             return Err(StoreError::InvalidIconName(String::new()));
         }
         let name = format!("{item}.png");
-        let path = self.icon_path(&name)?;
+        self.write_icon_file(&name, png)?;
+        Ok(name)
+    }
+
+    /// Writes a PNG under `name`, where `name` came from a backup. The name is
+    /// checked by [`Store::icon_path`] so a restore cannot escape the icons
+    /// directory.
+    pub fn write_icon_file(&self, name: &str, png: &[u8]) -> Result<(), StoreError> {
+        let path = self.icon_path(name)?;
         fs::create_dir_all(self.icons_dir())?;
         atomic::write_atomic(&path, png)?;
-        Ok(name)
+        Ok(())
     }
 
     /// Moves the document aside and returns the path it was moved to.
@@ -400,7 +448,10 @@ fn path_taken(path: &Path) -> Result<bool, StoreError> {
 /// flag says whether the result differs from what was read, so it needs
 /// writing back.
 fn interpret(bytes: &[u8]) -> Result<(Loaded, bool), StoreError> {
-    let mut value: Value = serde_json::from_slice(bytes)?;
+    interpret_value(serde_json::from_slice(bytes)?)
+}
+
+fn interpret_value(mut value: Value) -> Result<(Loaded, bool), StoreError> {
     let found = value
         .get("schema")
         .and_then(Value::as_u64)
@@ -440,6 +491,33 @@ fn interpret(bytes: &[u8]) -> Result<(Loaded, bool), StoreError> {
         },
         repaired,
     ))
+}
+
+/// Removes the backup-only `icons` object from `value`, decoding each entry.
+fn take_icons(value: &mut Value) -> Result<BTreeMap<String, Vec<u8>>, StoreError> {
+    let Some(icons) = value
+        .as_object_mut()
+        .and_then(|object| object.remove("icons"))
+    else {
+        return Ok(BTreeMap::new());
+    };
+    if icons.is_null() {
+        return Ok(BTreeMap::new());
+    }
+    let entries = icons
+        .as_object()
+        .ok_or_else(|| StoreError::InvalidBackupIcon("icons is not an object".into()))?;
+    let mut out = BTreeMap::new();
+    for (name, encoded) in entries {
+        let encoded = encoded.as_str().ok_or_else(|| {
+            StoreError::InvalidBackupIcon(format!("{name:?} is not a base64 string"))
+        })?;
+        let bytes = BASE64.decode(encoded).map_err(|e| {
+            StoreError::InvalidBackupIcon(format!("{name:?} is not valid base64: {e}"))
+        })?;
+        out.insert(name.clone(), bytes);
+    }
+    Ok(out)
 }
 
 /// Clamps `settings` and describes each value that had to move.

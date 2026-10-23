@@ -164,6 +164,10 @@ class FakeBackend implements LauncherBackend {
       _snapshotFor('addLockShortcut($targetGroupId)');
 
   @override
+  Future<ModelSnapshot> addNotificationsShortcut(String targetGroupId) =>
+      _snapshotFor('addNotificationsShortcut($targetGroupId)');
+
+  @override
   Future<ModelSnapshot> addCommandShortcut(
     String targetGroupId,
     String label,
@@ -185,6 +189,9 @@ class FakeBackend implements LauncherBackend {
 
   @override
   Future<void> lockScreen() => _plain('lockScreen', null);
+
+  @override
+  Future<void> openNotifications() => _plain('openNotifications', null);
 
   @override
   Future<List<int>?> itemIcon(String id) =>

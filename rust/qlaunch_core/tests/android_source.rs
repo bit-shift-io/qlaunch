@@ -1,6 +1,7 @@
 use qlaunch_core::model::{AppCategory, AppRef, IconImage};
 use qlaunch_core::platform::android::{
-    AndroidHost, AndroidList, AndroidSource, parse_backup_names_json, parse_list_json,
+    AndroidHost, AndroidList, AndroidSource, icon_ref, parse_backup_names_json, parse_icon_ref,
+    parse_list_json,
 };
 use qlaunch_core::platform::{AppSource, LaunchError, PlatformError};
 
@@ -101,4 +102,26 @@ fn a_bad_backup_name_is_refused_before_the_host_sees_it() {
     let source = AndroidSource::new(host());
     assert!(source.read_backup("../../etc/passwd").is_err());
     assert!(source.write_backup("not-a-backup.json", b"x").is_err());
+}
+
+#[test]
+fn an_icon_reference_round_trips_package_and_resource() {
+    let reference = icon_ref("com.example", "com.example:drawable/icon").unwrap();
+    assert_eq!(
+        reference,
+        "android-res://com.example/com.example:drawable/icon"
+    );
+    assert_eq!(
+        parse_icon_ref(&reference),
+        Some(("com.example", "com.example:drawable/icon"))
+    );
+}
+
+#[test]
+fn a_malformed_icon_reference_is_not_mistaken_for_a_real_one() {
+    assert_eq!(parse_icon_ref("com.example/drawable/icon"), None);
+    assert_eq!(parse_icon_ref("android-res://"), None);
+    assert_eq!(parse_icon_ref("android-res://com.example/"), None);
+    assert_eq!(icon_ref("", "drawable/icon"), None);
+    assert_eq!(icon_ref("com.example", ""), None);
 }

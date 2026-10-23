@@ -82,6 +82,7 @@ void main() {
     String groupId = 'g',
     ValueChanged<Item>? onItemTap,
     ValueChanged<Item>? onItemLongPress,
+    VoidCallback? onPullDownNotifications,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -91,6 +92,7 @@ void main() {
             groupId: groupId,
             onItemTap: onItemTap,
             onItemLongPress: onItemLongPress,
+            onPullDownNotifications: onPullDownNotifications,
           ),
         ),
       ),
@@ -173,6 +175,58 @@ void main() {
         );
       });
     }
+  });
+
+  group('pull down for notifications', () {
+    testWidgets('a long pull at the top asks once', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(twelve());
+      var pulls = 0;
+      await pumpGrid(tester, onPullDownNotifications: () => pulls++);
+
+      await tester.drag(find.byType(GridView), const Offset(0, 200));
+      await tester.pumpAndSettle();
+
+      expect(pulls, 1);
+    });
+
+    testWidgets('a short pull does nothing', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(twelve());
+      var pulls = 0;
+      await pumpGrid(tester, onPullDownNotifications: () => pulls++);
+
+      await tester.drag(find.byType(GridView), const Offset(0, 20));
+      await tester.pumpAndSettle();
+
+      expect(pulls, 0);
+    });
+
+    testWidgets('a pull up does nothing', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      await load(twelve());
+      var pulls = 0;
+      await pumpGrid(tester, onPullDownNotifications: () => pulls++);
+
+      await tester.drag(find.byType(GridView), const Offset(0, -200));
+      await tester.pumpAndSettle();
+
+      expect(pulls, 0);
+    });
+
+    testWidgets('a pull works when the group is too short to scroll', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      await load([_appItem('only')]);
+      var pulls = 0;
+      await pumpGrid(tester, onPullDownNotifications: () => pulls++);
+
+      await tester.drag(find.byType(GridView), const Offset(0, 200));
+      await tester.pumpAndSettle();
+
+      expect(pulls, 1);
+    });
   });
 
   group('items', () {

@@ -301,6 +301,20 @@ void main() {
 
       expect(state.homeRequests, 2);
     });
+
+    test('a Home press from an overlay is its own request', () async {
+      await state.load();
+      fake.calls.clear();
+      final before = notifications;
+
+      fake.emit(const CoreEvent.homePressedFromOverlay());
+      await pumpEventQueue();
+
+      expect(state.overlayHomeRequests, 1);
+      expect(state.homeRequests, 0);
+      expect(notifications, before + 1);
+      expect(fake.calls, isEmpty);
+    });
   });
 
   group('chooseWallpaper', () {

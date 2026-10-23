@@ -17,6 +17,10 @@ pub enum CoreEvent {
     /// the spec and a future reader (a live wallpaper, say) can emit it.
     WallpaperChanged,
     HomePressed,
+    /// Home pressed while a system overlay (the notification shade, say) had
+    /// focus. The press is consumed by dismissing that overlay, so it may
+    /// return to the launcher but must not advance the usual Home sequence.
+    HomePressedFromOverlay,
     BackPressed,
     Error(String),
 }

@@ -7,6 +7,30 @@ use crate::platform::{AppSource, LaunchError, PlatformError};
 #[cfg(target_os = "android")]
 pub mod jni_host;
 
+/// The `icon_override` prefix for an icon that lives in another app's
+/// resources. The rest is `<package>/<resource name>`.
+pub const ICON_REF_PREFIX: &str = "android-res://";
+
+/// A reference to a drawable in `package`, for an icon an app's shortcut
+/// provider returned as `Intent.ShortcutIconResource`.
+pub fn icon_ref(package: &str, resource: &str) -> Option<String> {
+    if package.is_empty() || resource.is_empty() || package.contains('/') {
+        return None;
+    }
+    Some(format!("{ICON_REF_PREFIX}{package}/{resource}"))
+}
+
+/// Splits an icon reference into its package and resource name.
+pub fn parse_icon_ref(reference: &str) -> Option<(&str, &str)> {
+    let rest = reference.strip_prefix(ICON_REF_PREFIX)?;
+    let (package, resource) = rest.split_once('/')?;
+    if package.is_empty() || resource.is_empty() {
+        None
+    } else {
+        Some((package, resource))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AndroidActivity {
     pub package: String,
@@ -26,6 +50,18 @@ pub trait AndroidHost: Send + Sync {
     fn list(&self) -> Result<AndroidList, PlatformError>;
     fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError>;
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError>;
+
+    /// The PNG for an icon reference in [`ICON_REF_PREFIX`] form.
+    fn icon_reference_png(
+        &self,
+        reference: &str,
+        size_px: u32,
+    ) -> Result<Option<Vec<u8>>, PlatformError> {
+        let _ = (reference, size_px);
+        Err(PlatformError::Unsupported(
+            "icon references are not supported on this host".into(),
+        ))
+    }
 
     /// Writes a config backup into the shared Downloads collection. Android
     /// needs a `ContentResolver` for this, so it can never be a plain file path.
@@ -181,6 +217,14 @@ impl<H: AndroidHost> AppSource for AndroidSource<H> {
 
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError> {
         self.host.launch(app)
+    }
+
+    fn icon_reference(
+        &self,
+        reference: &str,
+        size_px: u32,
+    ) -> Result<Option<Vec<u8>>, PlatformError> {
+        self.host.icon_reference_png(reference, size_px)
     }
 
     fn write_backup(&self, name: &str, bytes: &[u8]) -> Result<(), PlatformError> {

@@ -13,6 +13,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Looper
 import android.provider.Settings
+import android.util.Base64
 import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
@@ -72,6 +73,18 @@ object LauncherActions {
         if (service != null) {
             check(service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)) {
                 "Android could not lock the screen. Please try again."
+            }
+        } else {
+            Toast.makeText(host, R.string.screen_lock_service_enable, Toast.LENGTH_LONG).show()
+            host.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+    }
+
+    fun openNotifications() = onMain { host ->
+        val service = ScreenLockService.instance
+        if (service != null) {
+            check(service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)) {
+                "Android could not open notifications. Please try again."
             }
         } else {
             Toast.makeText(host, R.string.screen_lock_service_enable, Toast.LENGTH_LONG).show()
@@ -154,14 +167,15 @@ object LauncherActions {
             .put("categories", JSONArray(intent.categories?.toList() ?: emptyList<String>()))
             .put("extras", extras)
 
-        val context = QLaunchBridge.getAppContext()
+        // A provider may give us the icon as a bitmap, or as a reference to one
+        // of its own drawables. The reference stays small and can be resolved
+        // again after a restore; only a bitmap has to be stored.
         val bitmap = data.getParcelableExtra(Intent.EXTRA_SHORTCUT_ICON) as? Bitmap
-            ?: (data.getParcelableExtra(Intent.EXTRA_SHORTCUT_ICON_RESOURCE)
-                as? Intent.ShortcutIconResource)?.let { resource ->
-                val resources = context.packageManager.getResourcesForApplication(resource.packageName)
-                val id = resources.getIdentifier(resource.resourceName, null, null)
-                if (id == 0) null else QLaunchBridge.drawableToBitmap(resources.getDrawable(id, null), 192)
-            }
+        val resource = if (bitmap == null) {
+            data.getParcelableExtra(Intent.EXTRA_SHORTCUT_ICON_RESOURCE)
+                as? Intent.ShortcutIconResource
+        } else null
+        val iconRef = resource?.let { QLaunchBridge.iconRefFor(it) }
         val icon = bitmap?.let {
             val scaled = if (it.width > 192 || it.height > 192) {
                 val ratio = minOf(192.0 / it.width, 192.0 / it.height)
@@ -173,6 +187,7 @@ object LauncherActions {
             JSONArray().apply { bytes.toByteArray().forEach { byte -> put(byte.toInt() and 255) } }
         }
         return JSONObject().put("label", label).put("payload", payload)
-            .put("icon", icon ?: JSONObject.NULL).toString()
+            .put("icon", icon ?: JSONObject.NULL)
+            .put("icon_ref", iconRef ?: JSONObject.NULL).toString()
     }
 }

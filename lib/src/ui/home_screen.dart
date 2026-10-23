@@ -48,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final GroupPagerController _controller;
   late String _currentGroupId;
   late int _seenHomeRequests;
+  late int _seenOverlayHomeRequests;
   late int _seenBackRequests;
   String? _shownError;
   late final IconWarmer _warmer;
@@ -91,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _goToHome();
     _currentGroupId = _controller.currentGroupId(_controller.currentPage);
     _seenHomeRequests = widget.state.homeRequests;
+    _seenOverlayHomeRequests = widget.state.overlayHomeRequests;
     _seenBackRequests = widget.state.backRequests;
     _syncOwners();
     widget.state.addListener(_onStateChanged);
@@ -275,6 +277,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _onStateChanged() {
     _syncPages();
     _handleHomePress();
+    _handleOverlayHomePress();
     _handleBackPress();
     _reportNewError();
     // A new snapshot (after `AppsChanged`, say) can change this page's items;
@@ -318,7 +321,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _handleHomePress() {
     if (widget.state.homeRequests == _seenHomeRequests) return;
     _seenHomeRequests = widget.state.homeRequests;
+    _homeAction(openSearch: true);
+  }
 
+  /// Home while the notification shade (or another system overlay) was open.
+  /// That press dismisses the overlay, so it returns to the launcher without
+  /// advancing to the search: a Home press opens search only when the user was
+  /// already looking at the home screen with nothing else in front of it.
+  void _handleOverlayHomePress() {
+    if (widget.state.overlayHomeRequests == _seenOverlayHomeRequests) return;
+    _seenOverlayHomeRequests = widget.state.overlayHomeRequests;
+    _homeAction(openSearch: false);
+  }
+
+  void _homeAction({required bool openSearch}) {
     // A pushed screen (the settings) is what the user is looking at: Home
     // returns to the launcher rather than changing something underneath it.
     final route = ModalRoute.of(context);
@@ -341,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    _openSearch();
+    if (openSearch) _openSearch();
   }
 
   void _openSearch() {
@@ -592,6 +608,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                                           groupId: groupId,
                                           onItemLongPress: _openAppSettings,
                                           onItemPointerDown: _onItemPointerDown,
+                                          onPullDownNotifications:
+                                              defaultTargetPlatform ==
+                                                  TargetPlatform.android
+                                              ? () => unawaited(
+                                                  widget.state
+                                                      .openNotifications(),
+                                                )
+                                              : null,
                                         ),
                                       ),
                               ),

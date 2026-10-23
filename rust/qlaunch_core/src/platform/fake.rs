@@ -9,6 +9,7 @@ use super::{AppSource, LaunchError, PlatformError};
 pub struct FakeSource {
     apps: Vec<AppEntry>,
     icons: HashMap<AppRef, Vec<u8>>,
+    icon_references: HashMap<String, Vec<u8>>,
     launched: Mutex<Vec<AppRef>>,
     fail_launch: bool,
     /// Backups the fake Downloads folder holds, keyed by backup file name.
@@ -20,6 +21,7 @@ impl FakeSource {
         Self {
             apps,
             icons: HashMap::new(),
+            icon_references: HashMap::new(),
             launched: Mutex::new(Vec::new()),
             fail_launch: false,
             backups: Mutex::new(HashMap::new()),
@@ -53,6 +55,11 @@ impl FakeSource {
         self
     }
 
+    pub fn with_icon_reference(mut self, reference: &str, png: Vec<u8>) -> Self {
+        self.icon_references.insert(reference.to_string(), png);
+        self
+    }
+
     pub fn with_launch_failure(mut self) -> Self {
         self.fail_launch = true;
         self
@@ -72,6 +79,14 @@ impl AppSource for FakeSource {
 
     fn icon_image(&self, app: &AppRef, _size_px: u32) -> Result<Option<IconImage>, PlatformError> {
         Ok(self.icons.get(app).cloned().map(IconImage::png))
+    }
+
+    fn icon_reference(
+        &self,
+        reference: &str,
+        _size_px: u32,
+    ) -> Result<Option<Vec<u8>>, PlatformError> {
+        Ok(self.icon_references.get(reference).cloned())
     }
 
     fn launch(&self, app: &AppRef) -> Result<(), LaunchError> {

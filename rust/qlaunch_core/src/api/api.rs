@@ -225,6 +225,19 @@ pub async fn add_lock_shortcut(target_group_id: String) -> Result<ModelSnapshot,
         "Lock Screen",
         crate::model::ShortcutPayload::LockScreen,
         None,
+        None,
+    )
+}
+
+pub async fn add_notifications_shortcut(
+    target_group_id: String,
+) -> Result<ModelSnapshot, String> {
+    super::shortcuts::add(
+        &target_group_id,
+        "Notifications",
+        crate::model::ShortcutPayload::Notifications,
+        None,
+        None,
     )
 }
 
@@ -237,6 +250,7 @@ pub async fn add_command_shortcut(
         &target_group_id,
         &label,
         crate::model::ShortcutPayload::Command { command },
+        None,
         None,
     )
 }
@@ -283,13 +297,22 @@ pub async fn lock_screen() -> Result<(), String> {
     super::shortcuts::lock()
 }
 
+pub async fn open_notifications() -> Result<(), String> {
+    super::shortcuts::notifications()
+}
+
 pub async fn item_icon(id: String) -> Option<Vec<u8>> {
     state::with_app(|app, _| {
+        let Some(reference) = app.model.item(&id).and_then(|i| i.icon_override.as_ref()) else {
+            return Ok(None);
+        };
+        if crate::platform::android::parse_icon_ref(reference).is_some() {
+            return Ok(app.source.icon_reference(reference, 192).ok().flatten());
+        }
         let path = app
-            .model
-            .item(&id)
-            .and_then(|i| i.icon_override.as_ref())
-            .and_then(|name| app.store.as_ref()?.icon_path(name).ok());
+            .store
+            .as_ref()
+            .and_then(|store| store.icon_path(reference).ok());
         Ok(path.and_then(|path| std::fs::read(path).ok()))
     })
     .ok()

@@ -107,6 +107,20 @@ fn shortcuts_persist_and_reject_invalid_destinations_or_blank_commands() {
             .contains("lock_screen")
     );
     assert!(block_on(api::add_lock_shortcut("gone".into())).is_err());
+    let snap = block_on(api::add_notifications_shortcut(home.clone())).unwrap();
+    let item = snap
+        .items
+        .iter()
+        .find(|i| i.label == "Notifications")
+        .unwrap();
+    assert_eq!(item.group_id, home);
+    assert!(item.app.is_none());
+    assert!(
+        serde_json::to_string(&item.shortcut)
+            .unwrap()
+            .contains("notifications")
+    );
+    assert!(block_on(api::add_notifications_shortcut("gone".into())).is_err());
     assert!(
         block_on(api::add_command_shortcut(
             home.clone(),
@@ -131,6 +145,12 @@ fn shortcuts_persist_and_reject_invalid_destinations_or_blank_commands() {
     .unwrap();
     let restored = init_fake(dir.path());
     assert_eq!(snap.items, restored.items);
+}
+
+#[cfg(not(target_os = "android"))]
+#[test]
+fn opening_notifications_is_android_only() {
+    assert!(qlaunch_core::api::shortcuts::notifications().is_err());
 }
 
 #[test]
@@ -298,6 +318,21 @@ fn the_home_button_reaches_subscribers_as_home_pressed() {
 }
 
 #[test]
+fn a_home_button_over_an_overlay_reaches_subscribers_separately() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    init_fake(dir.path());
+    let seen = record_events();
+
+    api::emit_for_test(CoreEvent::HomePressedFromOverlay);
+
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![CoreEvent::HomePressedFromOverlay]
+    );
+}
+
+#[test]
 fn the_back_button_reaches_subscribers_as_back_pressed() {
     let _guard = serial();
     let dir = tempdir().unwrap();
@@ -450,6 +485,7 @@ fn a_successful_refresh_removes_uninstalled_apps_and_their_shortcuts() {
             extras: Vec::new(),
         },
         None,
+        None,
     )
     .unwrap();
     let seen = record_events();
@@ -513,6 +549,7 @@ fn init_removes_apps_uninstalled_since_the_last_run() {
             flags: 0,
             extras: Vec::new(),
         },
+        None,
         None,
     )
     .unwrap();
@@ -1415,6 +1452,110 @@ fn a_backup_is_listed_and_restores_the_whole_document() {
     let restored = block_on(api::restore_config(name.clone())).unwrap();
     assert!(restored.groups.iter().any(|g| g.label == "Holiday"));
     assert!(dir.path().join("qlaunch-backup.pre-restore.json").is_file());
+}
+
+#[test]
+fn a_backup_keeps_a_shortcuts_custom_icon() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let home = group_id(&snap, GroupRole::Home);
+    let icon = vec![0x89, b'P', b'N', b'G', 1, 2, 3];
+    let result = serde_json::json!({
+        "label": "Icon shortcut",
+        "payload": { "type": "lock_screen" },
+        "icon": icon,
+    });
+    let snap =
+        qlaunch_core::api::shortcuts::accept_result(&home, &serde_json::to_string(&result).unwrap())
+            .unwrap();
+    let id = snap
+        .items
+        .iter()
+        .find(|i| i.label == "Icon shortcut")
+        .unwrap()
+        .id
+        .clone();
+    assert_eq!(block_on(api::item_icon(id.clone())), Some(icon.clone()));
+
+    let name = block_on(api::backup_config()).unwrap();
+    block_on(api::factory_reset()).unwrap();
+    assert_eq!(block_on(api::item_icon(id.clone())), None);
+
+    let restored = block_on(api::restore_config(name)).unwrap();
+    let item = restored
+        .items
+        .iter()
+        .find(|i| i.label == "Icon shortcut")
+        .unwrap();
+    assert_eq!(item.id, id);
+    assert_eq!(block_on(api::item_icon(id)), Some(icon));
+}
+
+#[test]
+fn a_shortcut_icon_reference_survives_a_restore_without_stored_bytes() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let reference = "android-res://com.example/as:drawable/shortcut";
+    let png = vec![0x89, b'P', b'N', b'G', 9, 9];
+    let snap = api::init_with_source(
+        Some(dir.path().to_path_buf()),
+        Box::new(FakeSource::new(fixtures()).with_icon_reference(reference, png.clone())),
+        Vec::new(),
+    )
+    .unwrap();
+    let home = group_id(&snap, GroupRole::Home);
+    let result = serde_json::json!({
+        "label": "Reference shortcut",
+        "payload": { "type": "lock_screen" },
+        "icon_ref": reference,
+    });
+    let snap = qlaunch_core::api::shortcuts::accept_result(
+        &home,
+        &serde_json::to_string(&result).unwrap(),
+    )
+    .unwrap();
+    let id = snap
+        .items
+        .iter()
+        .find(|i| i.label == "Reference shortcut")
+        .unwrap()
+        .id
+        .clone();
+    assert_eq!(block_on(api::item_icon(id.clone())), Some(png.clone()));
+
+    let name = block_on(api::backup_config()).unwrap();
+    block_on(api::factory_reset()).unwrap();
+    assert_eq!(block_on(api::item_icon(id.clone())), None);
+
+    let restored = block_on(api::restore_config(name)).unwrap();
+    let item = restored
+        .items
+        .iter()
+        .find(|i| i.label == "Reference shortcut")
+        .unwrap();
+    assert_eq!(item.icon_override.as_deref(), Some(reference));
+    assert_eq!(block_on(api::item_icon(id)), Some(png));
+}
+
+#[test]
+fn a_bad_shortcut_icon_reference_is_rejected() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let home = group_id(&snap, GroupRole::Home);
+    let result = serde_json::json!({
+        "label": "Bad reference",
+        "payload": { "type": "lock_screen" },
+        "icon_ref": "not-a-reference",
+    });
+    assert!(
+        qlaunch_core::api::shortcuts::accept_result(
+            &home,
+            &serde_json::to_string(&result).unwrap()
+        )
+        .is_err()
+    );
 }
 
 #[test]

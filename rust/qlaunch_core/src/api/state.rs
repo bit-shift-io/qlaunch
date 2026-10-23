@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -101,6 +101,7 @@ pub(crate) fn store_error(e: &StoreError) -> String {
         StoreError::UnsupportedSchema(_) => "UnsupportedSchema",
         StoreError::Invalid(_) => "Invalid",
         StoreError::InvalidIconName(_) => "InvalidIconName",
+        StoreError::InvalidBackupIcon(_) => "InvalidBackupIcon",
         StoreError::WritesBlocked => "WritesBlocked",
     };
     format!("{tag}: {e}")
@@ -203,7 +204,8 @@ pub(crate) fn persist(
             e @ (StoreError::Invalid(_)
             | StoreError::Parse(_)
             | StoreError::UnsupportedSchema(_)
-            | StoreError::InvalidIconName(_)),
+            | StoreError::InvalidIconName(_)
+            | StoreError::InvalidBackupIcon(_)),
         ) => Err(store_error(&e)),
     }
 }
@@ -459,10 +461,30 @@ pub(crate) fn factory_reset() -> Result<ModelSnapshot, String> {
 /// so a failed save is not silently left out.
 pub(crate) fn backup_config() -> Result<String, String> {
     with_app(|app, _| {
-        app.store.as_ref().ok_or_else(|| {
+        let store = app.store.as_ref().ok_or_else(|| {
             "NoStore: there is no configuration directory to read a backup from".to_string()
         })?;
-        let bytes = Store::document_bytes(&app.model, &app.settings, &app.usage)
+        let mut icons = BTreeMap::new();
+        for name in app
+            .model
+            .items
+            .iter()
+            .filter_map(|item| item.icon_override.as_deref())
+        {
+            // A reference is re-resolved on restore, so it needs no bytes.
+            if crate::platform::android::parse_icon_ref(name).is_some() {
+                continue;
+            }
+            let path = store.icon_path(name).map_err(|e| store_error(&e))?;
+            match std::fs::read(&path) {
+                Ok(bytes) => {
+                    icons.insert(name.to_string(), bytes);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(format!("Io: {e}")),
+            }
+        }
+        let bytes = Store::backup_bytes(&app.model, &app.settings, &app.usage, &icons)
             .map_err(|e| store_error(&e))?;
         let name = backup_name(now_ms());
         app.source
@@ -497,7 +519,7 @@ pub(crate) fn restore_config(file_name: String) -> Result<ModelSnapshot, String>
             .source
             .read_backup(&file_name)
             .map_err(|e| platform_error(&e))?;
-        let loaded = Store::parse_document(&bytes).map_err(|e| store_error(&e))?;
+        let (loaded, icons) = Store::parse_backup(&bytes).map_err(|e| store_error(&e))?;
 
         // Kept only after the backup parses, so a bad file cannot cost the
         // current setup. A missing current document is normal on a fresh root.
@@ -510,6 +532,20 @@ pub(crate) fn restore_config(file_name: String) -> Result<ModelSnapshot, String>
         let entries = app.source.list_apps().map_err(|e| platform_error(&e))?;
         let mut model = loaded.model;
         reconcile(&mut model, &entries);
+        for name in model
+            .items
+            .iter()
+            .filter_map(|item| item.icon_override.as_deref())
+        {
+            if crate::platform::android::parse_icon_ref(name).is_some() {
+                continue;
+            }
+            if let Some(png) = icons.get(name) {
+                store
+                    .write_icon_file(name, png)
+                    .map_err(|e| store_error(&e))?;
+            }
+        }
         store
             .save(&model, &loaded.settings, &loaded.usage)
             .map_err(|e| store_error(&e))?;

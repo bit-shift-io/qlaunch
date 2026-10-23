@@ -28,6 +28,12 @@ sealed class CoreEvent with _$CoreEvent {
   /// the spec and a future reader (a live wallpaper, say) can emit it.
   const factory CoreEvent.wallpaperChanged() = CoreEvent_WallpaperChanged;
   const factory CoreEvent.homePressed() = CoreEvent_HomePressed;
+
+  /// Home pressed while a system overlay (the notification shade, say) had
+  /// focus. The press is consumed by dismissing that overlay, so it may
+  /// return to the launcher but must not advance the usual Home sequence.
+  const factory CoreEvent.homePressedFromOverlay() =
+      CoreEvent_HomePressedFromOverlay;
   const factory CoreEvent.backPressed() = CoreEvent_BackPressed;
   const factory CoreEvent.error(String field0) = CoreEvent_Error;
 }

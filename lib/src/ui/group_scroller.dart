@@ -84,7 +84,7 @@ class _GroupScrollerState extends State<GroupScroller> {
     final group = relative % cycle.ids.length;
     final lap = (relative / cycle.ids.length).floor();
     final offset = lap * cycle.extent + cycle.groupOffsets[group];
-    if (animate && !MediaQuery.disableAnimationsOf(context)) {
+    if (animate) {
       _scroll!.animateTo(
         offset,
         duration: const Duration(milliseconds: 250),
