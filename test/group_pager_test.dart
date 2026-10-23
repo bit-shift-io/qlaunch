@@ -218,6 +218,50 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    testWidgets(
+      'a vertical scroll in the visible page is not swallowed right after a '
+      'horizontal fling',
+      (tester) async {
+        final c = GroupPagerController(pageIds: ['apps', 'home', 'games']);
+        final axes = <Axis>[];
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification is ScrollStartNotification) {
+                    axes.add(notification.metrics.axis);
+                  }
+                  return false;
+                },
+                child: GroupPager(
+                  controller: c,
+                  gridFor: (context, groupId) => ListView.builder(
+                    itemCount: 50,
+                    itemBuilder: (context, i) =>
+                        SizedBox(height: 40, child: Text('$groupId $i')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+        await tester.fling(find.byType(PageView), const Offset(-300, 0), 1500);
+        await tester.pump();
+        // Let the page transition finish; a long pager ballistic still leaves
+        // the page ignoring pointers at this point and swallows the drag.
+        await tester.pump(const Duration(milliseconds: 500));
+        axes.clear();
+
+        await tester.drag(find.byType(PageView), const Offset(0, -200));
+        await tester.pump();
+
+        expect(axes, contains(Axis.vertical));
+        await tester.pumpAndSettle();
+      },
+    );
+
     testWidgets('shows the first group initially', (tester) async {
       final c = GroupPagerController(pageIds: ['apps', 'home', 'games']);
       await tester.pumpWidget(host(c));

@@ -159,6 +159,36 @@ class _GroupPagerState extends State<GroupPager> {
   late int _revision;
   late int _command;
 
+  void _dragUpdate(DragUpdateDetails details) {
+    if (!_pageController.hasClients) return;
+    final position = _pageController.position;
+    _pageController.jumpTo(
+      (position.pixels - details.delta.dx).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
+
+  void _settleDrag([double velocity = 0]) {
+    if (!_pageController.hasClients) return;
+    var page = _pageController.page ?? _targetPage.toDouble();
+    if (velocity.abs() >= 300) page += velocity < 0 ? 0.5 : -0.5;
+    final target = page.round().clamp(
+      0,
+      GroupPagerController.virtualPageCount - 1,
+    );
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pageController.jumpToPage(target);
+    } else {
+      _pageController.animateToPage(
+        target,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
   // With no pages every index maps to '', and 100000 blank pages would be an
   // endless scroll through nothing. One page lets the caller draw an empty
   // state. In that case this is deliberately 0 while the controller's
@@ -283,37 +313,51 @@ class _GroupPagerState extends State<GroupPager> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
-    return PageView.builder(
-      controller: _pageController,
-      itemCount: controller.pageIds.isEmpty
-          ? 1
-          : GroupPagerController.virtualPageCount,
-      physics: controller.pageIds.length < 2
-          ? const NeverScrollableScrollPhysics()
-          : null,
-      onPageChanged: _onPageChanged,
-      itemBuilder: (context, i) => AnimatedBuilder(
-        animation: _pageController,
-        child: widget.gridFor(context, controller.groupIdAt(i)),
-        builder: (context, child) {
-          final page =
-              _pageController.hasClients &&
-                  _pageController.position.haveDimensions
-              ? _pageController.page ?? _targetPage.toDouble()
-              : _targetPage.toDouble();
-          final relative = i - page;
-          final width = _pageController.position.viewportDimension;
-          final travel = widget.columns <= 1 ? 0.5 : 1 / widget.columns;
-          return Transform.translate(
-            offset: Offset(-relative * width * (1 - travel), 0),
-            child: Opacity(
-              // Fade a little faster than the position moves so a heavy page
-              // stops compositing sooner; it still crosses the neighbour.
-              opacity: (1 - relative.abs() * 1.5).clamp(0.0, 1.0),
-              child: child,
-            ),
-          );
-        },
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragUpdate: controller.pageIds.length < 2
+          ? null
+          : _dragUpdate,
+      onHorizontalDragEnd: controller.pageIds.length < 2
+          ? null
+          : (details) => _settleDrag(details.primaryVelocity ?? 0),
+      onHorizontalDragCancel: controller.pageIds.length < 2
+          ? null
+          : _settleDrag,
+      child: PageView.builder(
+        controller: _pageController,
+        // The custom gesture drives the page directly. Native page ballistics
+        // ignore the entire viewport, swallowing nested vertical grid gestures
+        // until their spring settles. Only our short release animation is needed.
+        pageSnapping: false,
+        itemCount: controller.pageIds.isEmpty
+            ? 1
+            : GroupPagerController.virtualPageCount,
+        physics: const NeverScrollableScrollPhysics(),
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, i) => AnimatedBuilder(
+          animation: _pageController,
+          child: widget.gridFor(context, controller.groupIdAt(i)),
+          builder: (context, child) {
+            final page =
+                _pageController.hasClients &&
+                    _pageController.position.haveDimensions
+                ? _pageController.page ?? _targetPage.toDouble()
+                : _targetPage.toDouble();
+            final relative = i - page;
+            final width = _pageController.position.viewportDimension;
+            final travel = widget.columns <= 1 ? 0.5 : 1 / widget.columns;
+            return Transform.translate(
+              offset: Offset(-relative * width * (1 - travel), 0),
+              child: Opacity(
+                // Fade a little faster than the position moves so a heavy page
+                // stops compositing sooner; it still crosses the neighbour.
+                opacity: (1 - relative.abs() * 1.5).clamp(0.0, 1.0),
+                child: child,
+              ),
+            );
+          },
+        ),
       ),
     );
   }

@@ -18,9 +18,16 @@ group and Back does nothing. Home-app selection is manual, not automatic.
 Implemented: paged groups with a Java-style title strip, content-sized tiles/list/
 centred layouts with two-line labels, Home-button search with frequent and recent
 apps, Android and Linux shortcuts, system wallpaper with dimming, display settings
-applied at runtime, scroll fading (none, edge gradient, or whole-cell), device-admin
+applied at runtime, scroll fading (none, edge gradient, or whole-cell), accessibility
 screen lock, and a confirmed factory reset. The blank-space long-press menu replaces
 the old side drawers.
+
+Double-tap on blank space and the Lock Screen shortcut use Android's accessibility
+lock action so fingerprint/face unlock remains available under normal Android
+security rules. The first lock attempt opens Settings: enable **QLaunch screen
+lock**, return to the launcher, and try again. This service does not read screen
+content. The old device-admin permission is revoked on the next lock attempt
+after upgrading.
 
 An **Advanced** page (a single row in Settings) holds the destructive actions —
 Restart Launcher, Backup config, Restore config and Factory Reset. Backup writes the

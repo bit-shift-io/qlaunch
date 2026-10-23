@@ -1,6 +1,7 @@
 package bitshift.qlaunch
 
 import android.app.Activity
+import android.accessibilityservice.AccessibilityService
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -11,6 +12,8 @@ import android.view.WindowInsetsController
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Looper
+import android.provider.Settings
+import android.widget.Toast
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -59,14 +62,21 @@ object LauncherActions {
     }
 
     fun lockScreen() = onMain { host ->
+        // Revoke the legacy permission on upgrade; never fall back to lockNow(),
+        // which forces PIN/password authentication on the next unlock.
         val manager = host.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         val admin = ComponentName(host, LockDeviceAdminReceiver::class.java)
-        if (manager.isAdminActive(admin)) manager.lockNow()
-        else host.startActivity(Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin)
-            putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                "Allow QLaunch to lock the screen with a double tap or Lock Screen shortcut.")
-        })
+        if (manager.isAdminActive(admin)) manager.removeActiveAdmin(admin)
+
+        val service = ScreenLockService.instance
+        if (service != null) {
+            check(service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN)) {
+                "Android could not lock the screen. Please try again."
+            }
+        } else {
+            Toast.makeText(host, R.string.screen_lock_service_enable, Toast.LENGTH_LONG).show()
+            host.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
     }
 
     fun providersJson(): String {
