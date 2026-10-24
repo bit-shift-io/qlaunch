@@ -135,7 +135,9 @@ class GroupEditorScreen extends StatelessWidget {
             // reorder it.
             final pageIds = state.pageIds;
             final rootId = state.snapshot?.rootGroupId;
-            final groups = state.groups.where((g) => g.id != rootId).toList()
+            final groups = state.groups
+                .where((g) => g.id != rootId && !g.folder)
+                .toList()
               ..sort((a, b) => a.order.compareTo(b.order));
             return ListView(
               children: [

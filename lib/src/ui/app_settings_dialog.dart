@@ -80,16 +80,30 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
   Widget build(BuildContext context) {
     final item = widget.item;
     final rootId = widget.state.snapshot?.rootGroupId;
-    final destinations = widget.state.groups
-        .where((g) => g.id != rootId)
-        .toList();
+    final destinations = <({String id, String label, bool folder})>[
+      for (final group in widget.state.groups)
+        if (group.id != rootId && !group.folder) ...[
+          (id: group.id, label: group.label, folder: false),
+          for (final folder in widget.state.foldersIn(group.id))
+            (id: folder.id, label: folder.label, folder: true),
+        ],
+    ];
+    if (!destinations.any((d) => d.id == _groupId)) {
+      final current = widget.state.groupById(_groupId);
+      if (current != null) {
+        destinations.add((
+          id: current.id,
+          label: current.label,
+          folder: current.folder,
+        ));
+      }
+    }
     final canUninstall = item.app != null && !item.uninstalled;
     final canSave = _label.text.trim().isNotEmpty;
 
     return LauncherFontScope(
       settings: widget.state.snapshot?.settings,
       child: AlertDialog(
-        title: Text(item.label),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -118,11 +132,30 @@ class _AppSettingsDialogState extends State<AppSettingsDialog> {
               initialValue: _groupId,
               decoration: const InputDecoration(labelText: 'Group'),
               items: [
-                for (final group in destinations)
+                for (final destination in destinations)
                   DropdownMenuItem(
-                    key: AppSettingsDialog.groupOptionKey(group.id),
-                    value: group.id,
-                    child: Text(group.label),
+                    key: AppSettingsDialog.groupOptionKey(destination.id),
+                    value: destination.id,
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: destination.folder ? 20 : 0,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (destination.folder) ...[
+                            const Icon(Icons.folder, size: 18),
+                            const SizedBox(width: 8),
+                          ],
+                          Flexible(
+                            child: Text(
+                              destination.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
               ],
               onChanged: (value) {

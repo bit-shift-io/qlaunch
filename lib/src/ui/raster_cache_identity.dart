@@ -139,6 +139,7 @@ RasterCacheKey appCellRasterKey({
   );
   final iconPixels = (
     item.shortcut?.runtimeType,
+    item.folderGroupId != null,
     item.uninstalled,
     item.app?.package,
     item.app?.activity,

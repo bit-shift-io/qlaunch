@@ -29,6 +29,13 @@ pub struct Group {
     /// field still loads (the schema stays at 1).
     #[serde(default)]
     pub hidden: bool,
+    /// Whether this group exists only to hold a folder's members. Folder
+    /// groups are root children but are never pages, never appear in the group
+    /// editor, and cannot hold a role. A tile item in a real group points at
+    /// one through `Item::folder_group_id`. Defaulted so a document written
+    /// before this field still loads (the schema stays at 1).
+    #[serde(default)]
+    pub folder: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -86,6 +93,12 @@ pub struct Item {
     pub uninstalled: bool,
     pub order: i32,
     pub icon_override: Option<String>,
+    /// Set only on a folder tile item: the folder group whose members this tile
+    /// represents. Such an item has neither an app nor a shortcut and lives in
+    /// a real group (never in a folder). Defaulted so a document written before
+    /// this field still loads (the schema stays at 1).
+    #[serde(default)]
+    pub folder_group_id: Option<Id>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -125,6 +138,7 @@ impl Model {
             role: Some(GroupRole::Root),
             order: 0,
             hidden: false,
+            folder: false,
         };
         let child = |label: &str, role: GroupRole, order: i32| Group {
             id: new_id(),
@@ -133,6 +147,7 @@ impl Model {
             role: Some(role),
             order,
             hidden: false,
+            folder: false,
         };
         let children = [
             child("Apps", GroupRole::Apps, 0),
@@ -207,6 +222,41 @@ impl Model {
                 }
             }
         }
+        for group in &self.groups {
+            if group.id == self.root_group_id && group.folder {
+                return Err(ModelError::RootIsFolder(group.id.clone()));
+            }
+            if !group.folder {
+                continue;
+            }
+            if group.role.is_some() {
+                return Err(ModelError::FolderHoldsRole(group.id.clone()));
+            }
+            let tiles: Vec<&Item> = self
+                .items
+                .iter()
+                .filter(|i| i.folder_group_id.as_deref() == Some(group.id.as_str()))
+                .collect();
+            match tiles.len() {
+                0 => return Err(ModelError::FolderGroupHasNoTile(group.id.clone())),
+                1 => {}
+                _ => return Err(ModelError::FolderGroupHasManyTiles(group.id.clone())),
+            }
+            let tile = tiles[0];
+            if tile.app.is_some() || tile.shortcut.is_some() {
+                return Err(ModelError::FolderTileHasContent(tile.id.clone()));
+            }
+            if tile.group_id == self.root_group_id {
+                return Err(ModelError::ItemInRoot(tile.id.clone()));
+            }
+            match self.groups.iter().find(|g| g.id == tile.group_id) {
+                None => return Err(ModelError::UnknownGroup(tile.group_id.clone())),
+                Some(container) if container.folder => {
+                    return Err(ModelError::FolderTileInFolder(tile.id.clone()));
+                }
+                Some(_) => {}
+            }
+        }
         for item in &self.items {
             if item.group_id == self.root_group_id {
                 return Err(ModelError::ItemInRoot(item.id.clone()));
@@ -216,6 +266,15 @@ impl Model {
             }
             if item.app.is_some() && item.shortcut.is_some() {
                 return Err(ModelError::ItemHasAppAndShortcut(item.id.clone()));
+            }
+            if let Some(folder_id) = &item.folder_group_id {
+                match self.groups.iter().find(|g| g.id == *folder_id) {
+                    Some(g) if g.folder => {}
+                    _ => return Err(ModelError::NotAFolderGroup(folder_id.clone())),
+                }
+                if item.app.is_some() || item.shortcut.is_some() {
+                    return Err(ModelError::FolderTileHasContent(item.id.clone()));
+                }
             }
         }
 

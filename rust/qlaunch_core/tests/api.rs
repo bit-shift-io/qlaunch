@@ -1455,6 +1455,59 @@ fn a_backup_is_listed_and_restores_the_whole_document() {
 }
 
 #[test]
+fn a_backup_restores_a_folder_and_its_members() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let apps = group_id(&snap, GroupRole::Apps);
+    let snap = block_on(api::add_folder(apps.clone(), "Chat".into())).unwrap();
+    let folder = snap
+        .groups
+        .iter()
+        .find(|g| g.folder)
+        .unwrap()
+        .id
+        .clone();
+    let alpha = snap
+        .items
+        .iter()
+        .find(|i| i.app.as_ref().is_some_and(|a| a.package == "org.alpha"))
+        .unwrap()
+        .id
+        .clone();
+    block_on(api::move_item(alpha.clone(), folder.clone(), 0)).unwrap();
+
+    let name = block_on(api::backup_config()).unwrap();
+    block_on(api::factory_reset()).unwrap();
+    let restored = block_on(api::restore_config(name)).unwrap();
+
+    let folder_group = restored
+        .groups
+        .iter()
+        .find(|g| g.folder && g.label == "Chat")
+        .expect("the folder group is restored");
+    let tile = restored
+        .items
+        .iter()
+        .find(|i| i.label == "Chat")
+        .expect("the folder tile is restored");
+    assert_eq!(tile.group_id, apps);
+    assert_eq!(tile.folder_group_id.as_deref(), Some(folder_group.id.as_str()));
+    let member = restored
+        .items
+        .iter()
+        .find(|i| i.id == alpha)
+        .expect("the member is restored");
+    assert_eq!(member.group_id, folder_group.id);
+    let icon = restored
+        .folder_icons
+        .iter()
+        .find(|f| f.folder_group_id == folder_group.id)
+        .expect("the folder icon is restored");
+    assert_eq!(icon.item_id.as_deref(), Some(alpha.as_str()));
+}
+
+#[test]
 fn a_backup_keeps_a_shortcuts_custom_icon() {
     let _guard = serial();
     let dir = tempdir().unwrap();
@@ -1573,4 +1626,32 @@ fn restoring_rejects_a_bad_name_or_a_corrupt_backup_and_changes_nothing() {
     assert!(block_on(api::restore_config("../../etc/passwd".into())).is_err());
     assert!(block_on(api::restore_config(good.into())).is_err());
     assert_eq!(block_on(api::snapshot()).unwrap().groups, before.groups);
+}
+
+
+#[test]
+fn search_finds_an_app_moved_into_a_folder() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let apps = group_id(&snap, GroupRole::Apps);
+    let snap = block_on(api::add_folder(apps, "Chat".into())).unwrap();
+    let folder = snap
+        .groups
+        .iter()
+        .find(|g| g.folder)
+        .unwrap()
+        .id
+        .clone();
+    let alpha = snap
+        .items
+        .iter()
+        .find(|i| i.app.as_ref().is_some_and(|a| a.package == "org.alpha"))
+        .unwrap()
+        .id
+        .clone();
+    block_on(api::move_item(alpha, folder, 0)).unwrap();
+
+    let hits = block_on(api::search_all_apps("al".into()));
+    assert!(hits.iter().any(|h| h.app.package == "org.alpha"));
 }

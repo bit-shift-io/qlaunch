@@ -14,6 +14,7 @@ fn app_item(id: &str, group: &str, package: &str, activity: &str) -> Item {
         uninstalled: false,
         order: 0,
         icon_override: None,
+        folder_group_id: None,
     }
 }
 
@@ -176,6 +177,7 @@ fn group_with_unknown_parent_is_rejected() {
         role: None,
         order: 5,
         hidden: false,
+        folder: false,
     });
     assert_eq!(
         m.validate(),
@@ -216,6 +218,7 @@ fn group_whose_parent_is_not_the_root_is_rejected() {
         role: None,
         order: 5,
         hidden: false,
+        folder: false,
     });
     assert_eq!(
         m.validate(),
@@ -233,6 +236,7 @@ fn second_group_without_a_parent_is_rejected() {
         role: None,
         order: 5,
         hidden: false,
+        folder: false,
     });
     assert_eq!(m.validate(), Err(ModelError::SecondRoot("floating".into())));
 }

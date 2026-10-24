@@ -19,7 +19,7 @@ void main() {
         rootGroupId: 'root',
         pageIds: ['apps', 'games', 'tools'],
         groups: [
-          Group(id: 'root', label: 'root', order: 0, hidden: false),
+          Group(id: 'root', label: 'root', order: 0, hidden: false, folder: false),
           makeGroup('apps', role: GroupRole.apps, order: 0),
           makeGroup('games', role: GroupRole.games, order: 1),
           makeGroup('tools', order: 2),
@@ -216,7 +216,7 @@ void main() {
       rootGroupId: 'root',
       pageIds: ['apps', 'games'],
       groups: [
-        Group(id: 'root', label: 'root', order: 0, hidden: false),
+        Group(id: 'root', label: 'root', order: 0, hidden: false, folder: false),
         makeGroup('apps', role: GroupRole.apps, order: 0),
         makeGroup('games', role: GroupRole.games, order: 1),
         makeGroup('tools', order: 2, hidden: true),
@@ -234,5 +234,26 @@ void main() {
           .value,
       isTrue,
     );
+  });
+
+  testWidgets('folder groups are not listed', (tester) async {
+    await pumpEditor(tester);
+    fake.current = snapshotOf(
+      rootGroupId: 'root',
+      pageIds: ['apps'],
+      groups: [
+        Group(id: 'root', label: 'root', order: 0, hidden: false, folder: false),
+        makeGroup('apps', role: GroupRole.apps, order: 0),
+        makeGroup('chat', folder: true, label: 'Chat', order: 1),
+      ],
+      items: [
+        makeItem('chat-tile', 'apps', folderGroupId: 'chat'),
+      ],
+    );
+    await state.load();
+    await tester.pump();
+
+    expect(find.byKey(GroupEditorScreen.rowKey('apps')), findsOneWidget);
+    expect(find.byKey(GroupEditorScreen.rowKey('chat')), findsNothing);
   });
 }

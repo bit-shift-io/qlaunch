@@ -16,12 +16,14 @@ class AppCellVisual extends StatelessWidget {
     required this.icon,
     required this.settings,
     required this.geometry,
+    this.folder = false,
     this.onIconFrame,
   });
 
   final Item item;
   final ImageProvider? icon;
   final Settings settings;
+  final bool folder;
   final AppCellGeometry geometry;
 
   /// Reports an icon frame or failure so the live cell can gate new captures.
@@ -41,10 +43,15 @@ class AppCellVisual extends StatelessWidget {
     required ImageProvider? icon,
     required Settings settings,
     required double side,
+    bool folder = false,
     ValueChanged<ImageProvider>? onIconFrame,
   }) {
     final provider = item.uninstalled ? null : icon;
-    final placeholder = AppCellPlaceholder(side: side, item: item);
+    final placeholder = AppCellPlaceholder(
+      side: side,
+      item: item,
+      folder: folder,
+    );
     final opacity = (settings.iconAlpha / 100).clamp(0.0, 1.0);
     Widget image = provider == null
         ? placeholder
@@ -104,6 +111,7 @@ class AppCellVisual extends StatelessWidget {
             icon: icon,
             settings: settings,
             side: geometry.iconSide,
+            folder: folder,
             onIconFrame: onIconFrame,
           )
         : null,
@@ -141,14 +149,22 @@ class AppCellVisual extends StatelessWidget {
 
 /// The rounded placeholder drawn for a shortcut or missing icon.
 class AppCellPlaceholder extends StatelessWidget {
-  const AppCellPlaceholder({super.key, required this.side, required this.item});
+  const AppCellPlaceholder({
+    super.key,
+    required this.side,
+    required this.item,
+    this.folder = false,
+  });
 
   final double side;
   final Item item;
+  final bool folder;
 
   @override
   Widget build(BuildContext context) {
-    final icon = switch (item.shortcut) {
+    final icon = folder
+        ? Icons.folder
+        : switch (item.shortcut) {
       ShortcutPayload_LockScreen() => Icons.lock_outline,
       ShortcutPayload_Notifications() => Icons.notifications_none,
       ShortcutPayload_Command() => Icons.terminal,

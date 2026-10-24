@@ -1,4 +1,5 @@
-import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot, IconRevision;
+import 'package:qlaunch/src/rust/api/api.dart'
+    show FolderIcon, IconRevision, ModelSnapshot;
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/rust/settings.dart';
@@ -30,7 +31,16 @@ Group makeGroup(
   GroupRole? role,
   int order = 0,
   bool hidden = false,
-}) => Group(id: id, label: id, role: role, order: order, hidden: hidden);
+  bool folder = false,
+  String? label,
+}) => Group(
+  id: id,
+  label: label ?? id,
+  role: role,
+  order: order,
+  hidden: hidden,
+  folder: folder,
+);
 
 Item makeItem(
   String id,
@@ -41,6 +51,7 @@ Item makeItem(
   bool uninstalled = false,
   String? iconOverride,
   String? label,
+  String? folderGroupId,
 }) => Item(
   id: id,
   groupId: groupId,
@@ -51,6 +62,7 @@ Item makeItem(
   uninstalled: uninstalled,
   order: order,
   iconOverride: iconOverride,
+  folderGroupId: folderGroupId,
 );
 
 /// `homeGroupId` is optional on [ModelSnapshot], so a snapshot built without
@@ -63,6 +75,7 @@ ModelSnapshot snapshotOf({
   List<Item> items = const [],
   Settings settings = testSettings,
   List<IconRevision> iconRevisions = const [],
+  List<FolderIcon> folderIcons = const [],
 }) => ModelSnapshot(
   rootGroupId: rootGroupId,
   homeGroupId: homeGroupId,
@@ -72,4 +85,5 @@ ModelSnapshot snapshotOf({
   settings: settings,
   warnings: const [],
   iconRevisions: iconRevisions,
+  folderIcons: folderIcons,
 );

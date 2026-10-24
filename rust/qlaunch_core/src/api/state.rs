@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use crate::icons::IconDiskCache;
 use crate::model::mutate::SortKey;
-use crate::model::{AppEntry, AppRef, Item, Model, ModelError};
+use crate::model::{AppEntry, AppRef, Id, Item, Model, ModelError};
 use crate::platform::backup::{backup_name, is_backup_name};
 use crate::platform::{AppSource, LaunchError, PlatformError, WatchHandle};
 use crate::reconcile::reconcile;
@@ -12,7 +12,7 @@ use crate::settings::Settings;
 use crate::store::{Store, StoreError};
 use crate::usage::{Usage, UsageHit};
 
-use super::api::{IconRevision, ModelSnapshot};
+use super::api::{FolderIcon, IconRevision, ModelSnapshot};
 use super::events::{CoreEvent, EventBus};
 
 /// How much the on-disk icon cache may hold before its oldest entries go.
@@ -90,6 +90,14 @@ pub(crate) fn model_error(e: &ModelError) -> String {
         ModelError::ItemInRoot(_) => "ItemInRoot",
         ModelError::ItemHasAppAndShortcut(_) => "ItemHasAppAndShortcut",
         ModelError::ItemHasShortcut(_) => "ItemHasShortcut",
+        ModelError::RootIsFolder(_) => "RootIsFolder",
+        ModelError::FolderGroupHasNoTile(_) => "FolderGroupHasNoTile",
+        ModelError::FolderGroupHasManyTiles(_) => "FolderGroupHasManyTiles",
+        ModelError::FolderTileHasContent(_) => "FolderTileHasContent",
+        ModelError::FolderTileInFolder(_) => "FolderTileInFolder",
+        ModelError::FolderHoldsRole(_) => "FolderHoldsRole",
+        ModelError::NotAFolderGroup(_) => "NotAFolderGroup",
+        ModelError::NotAFolderDestination(_) => "NotAFolderDestination",
     };
     format!("{tag}: {e}")
 }
@@ -142,6 +150,43 @@ fn items_in_display_order(model: &Model) -> Vec<Item> {
     items
 }
 
+/// The member whose icon a folder tile draws: the app with the highest usage
+/// count, then the most recent launch, then the first in display order. When no
+/// member has usage data, the first member (which may be a shortcut or a plain
+/// placeholder) is used; an empty folder has none.
+pub(crate) fn folder_icon_item(
+    model: &Model,
+    usage: &Usage,
+    folder_group: &Id,
+) -> Option<Id> {
+    let items = items_in_display_order(model);
+    let members: Vec<&Item> = items
+        .iter()
+        .filter(|i| i.group_id == *folder_group)
+        .collect();
+    let first = members.first()?;
+    let mut best: Option<(&Item, u32, i64)> = None;
+    for item in &members {
+        let Some(app) = &item.app else {
+            continue;
+        };
+        let Some(entry) = usage
+            .apps
+            .iter()
+            .find(|u| u.package == app.package && u.activity == app.activity)
+        else {
+            continue;
+        };
+        match best {
+            Some((_, count, last)) if (entry.count, entry.last_used_ms) <= (count, last) => {}
+            _ => best = Some((item, entry.count, entry.last_used_ms)),
+        }
+    }
+    Some(
+        best.map_or_else(|| first.id.clone(), |(item, _, _)| item.id.clone()),
+    )
+}
+
 /// Builds the snapshot Dart sees. The warnings are the startup ones plus
 /// whatever is wrong right now, worked out afresh from the flags on `app`, so
 /// the list does not grow with every call.
@@ -175,6 +220,16 @@ pub(crate) fn snapshot_of(app: &App) -> ModelSnapshot {
         settings: app.settings.clone(),
         warnings,
         icon_revisions,
+        folder_icons: app
+            .model
+            .groups
+            .iter()
+            .filter(|g| g.folder)
+            .map(|g| FolderIcon {
+                folder_group_id: g.id.clone(),
+                item_id: folder_icon_item(&app.model, &app.usage, &g.id),
+            })
+            .collect(),
     }
 }
 
@@ -651,4 +706,70 @@ pub(crate) fn refresh_apps_now() -> Result<ModelSnapshot, String> {
         }
         Ok(snapshot_of(app))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{AppRef, GroupRole, Model};
+    use crate::usage::{AppUsage, Usage};
+
+    fn app(package: &str) -> AppRef {
+        AppRef {
+            package: package.into(),
+            activity: "Main".into(),
+        }
+    }
+
+    fn add_member(model: &mut Model, folder: &Id, label: &str, package: &str) -> Id {
+        let id = model.add_item_to(folder, label);
+        model.set_item_app(&id, app(package)).unwrap();
+        id
+    }
+
+    fn folder_with_members() -> (Model, Id, Id, Id, Id) {
+        let mut model = Model::new_default();
+        let apps = model.role_holder(GroupRole::Apps).unwrap().id.clone();
+        let folder = model.add_folder(&apps, "F").unwrap();
+        let a = add_member(&mut model, &folder, "A", "a");
+        let b = add_member(&mut model, &folder, "B", "b");
+        let c = add_member(&mut model, &folder, "C", "c");
+        (model, folder, a, b, c)
+    }
+
+    fn app_usage(count: u32, last_used_ms: i64, package: &str) -> AppUsage {
+        AppUsage {
+            package: package.into(),
+            activity: "Main".into(),
+            count,
+            last_used_ms,
+        }
+    }
+
+    #[test]
+    fn folder_icon_is_the_most_used_member_then_recent_then_first() {
+        let (model, folder, a, _, c) = folder_with_members();
+        let mut usage_data = Usage::default();
+        usage_data.apps = vec![
+            app_usage(5, 50, "a"),
+            app_usage(2, 200, "b"),
+            app_usage(2, 100, "c"),
+        ];
+        assert_eq!(folder_icon_item(&model, &usage_data, &folder), Some(a.clone()));
+
+        usage_data.apps[0].count = 2;
+        usage_data.apps[2].last_used_ms = 300;
+        assert_eq!(folder_icon_item(&model, &usage_data, &folder), Some(c));
+
+        usage_data.apps.clear();
+        assert_eq!(folder_icon_item(&model, &usage_data, &folder), Some(a));
+    }
+
+    #[test]
+    fn an_empty_folder_has_no_icon_item() {
+        let mut model = Model::new_default();
+        let apps = model.role_holder(GroupRole::Apps).unwrap().id.clone();
+        let folder = model.add_folder(&apps, "Empty").unwrap();
+        assert_eq!(folder_icon_item(&model, &Usage::default(), &folder), None);
+    }
 }

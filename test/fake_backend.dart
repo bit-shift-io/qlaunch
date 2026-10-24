@@ -122,6 +122,14 @@ class FakeBackend implements LauncherBackend {
       _snapshotFor('deleteGroup($id)');
 
   @override
+  Future<ModelSnapshot> addFolder(String containingGroupId, String label) =>
+      _snapshotFor('addFolder($containingGroupId,$label)');
+
+  @override
+  Future<ModelSnapshot> deleteFolder(String folderGroupId) =>
+      _snapshotFor('deleteFolder($folderGroupId)');
+
+  @override
   Future<ModelSnapshot> moveItem(String id, String toGroup, int newOrder) =>
       _snapshotFor('moveItem($id,$toGroup,$newOrder)');
 
@@ -335,6 +343,7 @@ ModelSnapshot withSettings(ModelSnapshot snapshot, Settings settings) =>
       settings: settings,
       warnings: snapshot.warnings,
       iconRevisions: snapshot.iconRevisions,
+      folderIcons: snapshot.folderIcons,
     );
 
 /// Collects what `FlutterError.reportError` is given, for the rest of the test.

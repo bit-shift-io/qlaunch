@@ -686,4 +686,48 @@ void main() {
       expect(state.error, contains('gone'));
     });
   });
+
+  group('folders', () {
+    test('foldersIn, folderTile and folderIconItem read the snapshot', () async {
+      fake.current = snapshotOf(
+        groups: [
+          makeGroup('apps', role: GroupRole.apps),
+          makeGroup('games', role: GroupRole.games),
+          makeGroup('music', folder: true, label: 'Music'),
+          makeGroup('chat', folder: true, label: 'Chat'),
+        ],
+        items: [
+          makeItem('chat-tile', 'games', folderGroupId: 'chat'),
+          makeItem('music-tile', 'apps', folderGroupId: 'music'),
+        ],
+        folderIcons: const [
+          FolderIcon(folderGroupId: 'chat', itemId: 'm1'),
+        ],
+      );
+      await state.load();
+
+      expect(state.foldersIn('games').map((g) => g.id), ['chat']);
+      expect(state.foldersIn('apps').map((g) => g.id), ['music']);
+      expect(state.foldersIn('games').single.label, 'Chat');
+      expect(state.folderTile('chat')?.id, 'chat-tile');
+      expect(state.folderTile('music')?.id, 'music-tile');
+      expect(state.folderTile('missing'), isNull);
+      expect(state.folderIconItem('chat'), 'm1');
+      expect(state.folderIconItem('music'), isNull);
+      expect(state.groupById('chat')?.label, 'Chat');
+      expect(state.itemById('chat-tile')?.groupId, 'games');
+    });
+
+    test('addFolder and deleteFolder forward the arguments', () async {
+      await state.load();
+
+      await state.addFolder('apps', 'Chat');
+      await state.deleteFolder('chat');
+
+      expect(
+        fake.calls,
+        containsAllInOrder(['addFolder(apps,Chat)', 'deleteFolder(chat)']),
+      );
+    });
+  });
 }

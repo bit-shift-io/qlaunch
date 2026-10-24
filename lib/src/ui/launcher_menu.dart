@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/folder_dialog.dart';
 import 'package:qlaunch/src/ui/group_editor_screen.dart';
 import 'package:qlaunch/src/ui/settings_screen.dart';
 
@@ -12,6 +13,7 @@ import 'package:qlaunch/src/ui/settings_screen.dart';
 class LauncherMenu {
   static const settingsKey = ValueKey('launcherMenu.settings');
   static const addShortcutKey = ValueKey('launcherMenu.addShortcut');
+  static const createFolderKey = ValueKey('launcherMenu.createFolder');
   static const editGroupsKey = ValueKey('launcherMenu.editGroups');
   static const wallpaperKey = ValueKey('launcherMenu.wallpaper');
 
@@ -39,6 +41,12 @@ class LauncherMenu {
               leading: const Icon(Icons.add_link),
               title: const Text('Add Shortcut'),
               onTap: () => Navigator.of(context).pop(_MenuAction.shortcut),
+            ),
+            ListTile(
+              key: createFolderKey,
+              leading: const Icon(Icons.create_new_folder_outlined),
+              title: const Text('Create Folder'),
+              onTap: () => Navigator.of(context).pop(_MenuAction.folder),
             ),
             ListTile(
               key: editGroupsKey,
@@ -70,6 +78,12 @@ class LauncherMenu {
           builder: (context) =>
               AddShortcutDialog(state: state, targetGroupId: groupId),
         );
+      case _MenuAction.folder:
+        await showDialog<void>(
+          context: context,
+          builder: (context) =>
+              FolderDialog.create(state: state, containingGroupId: groupId),
+        );
       case _MenuAction.groups:
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
@@ -82,7 +96,7 @@ class LauncherMenu {
   }
 }
 
-enum _MenuAction { settings, shortcut, groups, wallpaper }
+enum _MenuAction { settings, shortcut, folder, groups, wallpaper }
 
 /// The list of ways to create a shortcut: the built-in lock action, a typed
 /// command on Linux, and whichever providers Android reports.

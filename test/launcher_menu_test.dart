@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/folder_dialog.dart';
 import 'package:qlaunch/src/ui/launcher_menu.dart';
 
 import 'fake_backend.dart';
@@ -122,5 +123,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fake.calls, contains('beginShortcut(pkg/.Provider,home)'));
+  });
+
+  testWidgets('the empty-space menu offers Create Folder', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => LauncherMenu.show(context, state, 'home'),
+              child: const Text('menu'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('menu'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(LauncherMenu.createFolderKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FolderDialog), findsOneWidget);
+    await tester.enterText(find.byKey(FolderDialog.nameKey), 'Chat');
+    await tester.pump();
+    await tester.tap(find.byKey(FolderDialog.saveKey));
+    await tester.pumpAndSettle();
+
+    expect(fake.calls, contains('addFolder(home,Chat)'));
   });
 }

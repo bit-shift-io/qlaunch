@@ -17,7 +17,7 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'shortcuts.dart';
 
 // These functions are ignored because they are not marked as `pub`: `apply_display_settings`, `choose_root`, `platform_config_root`, `platform_source`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `eq`, `eq`, `fmt`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `eq`, `eq`, `eq`, `fmt`, `fmt`, `fmt`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `emit_for_test`, `init_with_source`, `reset_for_test`, `subscribe_for_test`
 
 Future<String> version() => RustLib.instance.api.crateApiApiVersion();
@@ -56,6 +56,17 @@ Future<ModelSnapshot> setGroupRole({required String id, GroupRole? role}) =>
 
 Future<ModelSnapshot> deleteGroup({required String id}) =>
     RustLib.instance.api.crateApiApiDeleteGroup(id: id);
+
+Future<ModelSnapshot> addFolder({
+  required String containingGroup,
+  required String label,
+}) => RustLib.instance.api.crateApiApiAddFolder(
+  containingGroup: containingGroup,
+  label: label,
+);
+
+Future<ModelSnapshot> deleteFolder({required String folderGroupId}) =>
+    RustLib.instance.api.crateApiApiDeleteFolder(folderGroupId: folderGroupId);
 
 /// Shows or hides the group `id` from the pager and the tab strip.
 Future<ModelSnapshot> setGroupHidden({
@@ -209,6 +220,26 @@ Future<void> chooseWallpaper() =>
 /// closed.
 Stream<CoreEvent> events() => RustLib.instance.api.crateApiApiEvents();
 
+/// The member item whose icon a folder tile draws. `item_id` is `None` for an
+/// empty folder, which Dart renders with a generic folder glyph.
+class FolderIcon {
+  final String folderGroupId;
+  final String? itemId;
+
+  const FolderIcon({required this.folderGroupId, this.itemId});
+
+  @override
+  int get hashCode => folderGroupId.hashCode ^ itemId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FolderIcon &&
+          runtimeType == other.runtimeType &&
+          folderGroupId == other.folderGroupId &&
+          itemId == other.itemId;
+}
+
 /// Everything Dart needs to draw the launcher.
 ///
 /// `page_ids` is the page order, computed by Rust from `Model::pages()`; Dart
@@ -253,6 +284,10 @@ class ModelSnapshot {
   final List<String> warnings;
   final List<IconRevision> iconRevisions;
 
+  /// One entry for every folder group, with the member whose icon the tile
+  /// should draw (see `folder_icon_item`).
+  final List<FolderIcon> folderIcons;
+
   const ModelSnapshot({
     required this.rootGroupId,
     this.homeGroupId,
@@ -262,6 +297,7 @@ class ModelSnapshot {
     required this.settings,
     required this.warnings,
     required this.iconRevisions,
+    required this.folderIcons,
   });
 
   @override
@@ -273,7 +309,8 @@ class ModelSnapshot {
       items.hashCode ^
       settings.hashCode ^
       warnings.hashCode ^
-      iconRevisions.hashCode;
+      iconRevisions.hashCode ^
+      folderIcons.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -287,5 +324,6 @@ class ModelSnapshot {
           items == other.items &&
           settings == other.settings &&
           warnings == other.warnings &&
-          iconRevisions == other.iconRevisions;
+          iconRevisions == other.iconRevisions &&
+          folderIcons == other.folderIcons;
 }

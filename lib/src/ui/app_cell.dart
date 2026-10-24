@@ -16,6 +16,7 @@ class AppCell extends StatefulWidget {
     required this.item,
     required this.icon,
     required this.settings,
+    this.folder = false,
     this.geometry,
     this.onTap,
     this.onLongPress,
@@ -25,6 +26,10 @@ class AppCell extends StatefulWidget {
   final Item item;
   final ImageProvider? icon;
   final Settings settings;
+
+  /// Whether this cell is a folder tile. With no icon it draws a folder glyph
+  /// instead of the app/shortcut placeholder.
+  final bool folder;
 
   /// Measured once by the enclosing grid; standalone cells fall back to
   /// measuring their own label.
@@ -67,7 +72,9 @@ class _AppCellState extends State<AppCell> {
   Settings get settings => widget.settings;
 
   bool get _launchable =>
-      item.shortcut != null || (item.app != null && !item.uninstalled);
+      item.folderGroupId != null ||
+      item.shortcut != null ||
+      (item.app != null && !item.uninstalled);
 
   bool get _iconCacheable {
     final provider = item.uninstalled ? null : widget.icon;
@@ -137,6 +144,7 @@ class _AppCellState extends State<AppCell> {
             icon: widget.icon,
             settings: settings,
             side: side,
+            folder: widget.folder,
             onIconFrame: _markIconReady,
           )
         : null;
@@ -205,6 +213,7 @@ class _AppCellState extends State<AppCell> {
         item: item,
         icon: widget.icon,
         settings: settings,
+        folder: widget.folder,
         geometry: geometry,
         onIconFrame: _markIconReady,
       ),

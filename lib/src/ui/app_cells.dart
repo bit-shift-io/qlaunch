@@ -7,6 +7,8 @@ import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/settings.dart' hide Orientation;
 import 'package:qlaunch/src/state/launcher_state.dart';
 import 'package:qlaunch/src/ui/app_cell.dart';
+import 'package:qlaunch/src/ui/folder_dialog.dart';
+import 'package:qlaunch/src/ui/folder_popup.dart';
 import 'package:qlaunch/src/ui/grid_geometry.dart';
 import 'package:qlaunch/src/ui/raster_cache_identity.dart';
 import 'package:qlaunch/src/ui/scroll_edge_fade.dart';
@@ -32,6 +34,7 @@ class AppCells extends StatelessWidget {
     this.onItemPointerDown,
     this.onPullDownNotifications,
     this.embedded = false,
+    this.columns,
   });
 
   final LauncherState state;
@@ -61,6 +64,10 @@ class AppCells extends StatelessWidget {
   /// A non-scrolling row inside the continuous group scroller.
   final bool embedded;
 
+  /// Overrides the column count from [settings], so a caller can ask for a
+  /// narrower grid while keeping the same cell geometry.
+  final int? columns;
+
   void _launch(Item item) {
     final app = item.app;
     if (app != null && !item.uninstalled) {
@@ -77,7 +84,10 @@ class AppCells extends StatelessWidget {
     final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
     final columns = math.max(
       1,
-      (portrait ? settings.gridColumnsPortrait : settings.gridColumnsLandscape)
+      (this.columns ??
+              (portrait
+                  ? settings.gridColumnsPortrait
+                  : settings.gridColumnsLandscape))
           .toInt(),
     );
     // The bridge takes physical pixels; the setting is in dp.
@@ -104,44 +114,97 @@ class AppCells extends StatelessWidget {
         );
         final tileFade =
             !embedded && settings.scrollFade == ScrollFadeStyle.tile;
+        // Only an installed app has a platform icon, and only an item with a
+        // stored override has bytes to read. Everything else draws the
+        // placeholder. A hidden or zero-sized icon is not worth a request.
+        ({ImageProvider? cached, Future<ImageProvider?>? future}) resolve(
+          Item target,
+        ) {
+          if (!settings.iconsVisible || sizePx <= 0) {
+            return (cached: null, future: null);
+          }
+          final app = target.app;
+          if (app != null && !target.uninstalled) {
+            final cached = state.cachedIcon(app.package, app.activity, sizePx);
+            return (
+              cached: cached,
+              future: cached == null
+                  ? state.iconFor(app.package, app.activity, sizePx)
+                  : null,
+            );
+          }
+          if (target.iconOverride != null) {
+            final cached = state.cachedItemIcon(
+              target.id,
+              target.iconOverride!,
+              sizePx,
+            );
+            return (
+              cached: cached,
+              future: cached == null
+                  ? state.itemIcon(
+                      target.id,
+                      reference: target.iconOverride!,
+                      sizePx: sizePx,
+                    )
+                  : null,
+            );
+          }
+          return (cached: null, future: null);
+        }
+
         Widget buildTile(BuildContext context, int i) {
           final item = items[i];
-          final app = item.app;
-          // Only an installed app has a platform icon, and only a shortcut with
-          // a stored icon has bytes to read. Everything else draws the
-          // placeholder. A hidden or zero-sized icon is not worth a request.
-          Future<ImageProvider?>? icon;
-          ImageProvider? cached;
-          if (settings.iconsVisible && sizePx > 0) {
-            if (app != null && !item.uninstalled) {
-              cached = state.cachedIcon(app.package, app.activity, sizePx);
-              if (cached == null) {
-                icon = state.iconFor(app.package, app.activity, sizePx);
-              }
-            } else if (item.iconOverride != null) {
-              cached = state.cachedItemIcon(
-                item.id,
-                item.iconOverride!,
-                sizePx,
-              );
-              if (cached == null) {
-                icon = state.itemIcon(
-                  item.id,
-                  reference: item.iconOverride!,
-                  sizePx: sizePx,
-                );
-              }
-            }
+          final folderId = item.folderGroupId;
+          final ImageProvider? cached;
+          final Future<ImageProvider?>? icon;
+          if (folderId != null) {
+            final memberId = state.folderIconItem(folderId);
+            final member = memberId == null ? null : state.itemById(memberId);
+            final usable =
+                member != null &&
+                ((member.app != null && !member.uninstalled) ||
+                    member.iconOverride != null);
+            final resolved = usable
+                ? resolve(member)
+                : (cached: null, future: null);
+            cached = resolved.cached;
+            icon = resolved.future;
+          } else {
+            final resolved = resolve(item);
+            cached = resolved.cached;
+            icon = resolved.future;
           }
           Widget cell(ImageProvider? icon) => AppCell(
             item: item,
             icon: icon,
             settings: settings,
+            folder: folderId != null,
             geometry: geometry,
-            onTap: () => (onItemTap ?? _launch)(item),
-            onLongPress: onItemLongPress == null
-                ? null
-                : () => onItemLongPress!(item),
+            onTap: () {
+              if (folderId != null) {
+                unawaited(FolderPopup.show(context, state, folderId));
+              } else {
+                (onItemTap ?? _launch)(item);
+              }
+            },
+            onLongPress: folderId != null
+                ? () {
+                    final group = state.groupById(folderId);
+                    if (group == null) return;
+                    unawaited(
+                      showDialog<void>(
+                        context: context,
+                        builder: (context) => FolderDialog.edit(
+                          state: state,
+                          folderGroup: group,
+                        ),
+                      ),
+                    );
+                  }
+                : (onItemLongPress == null
+                      ? null
+                      : () => onItemLongPress!(item)),
             onPointerDown: onItemPointerDown,
           );
           final Widget tile;

@@ -168,34 +168,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ...pageIds,
     };
     final requests = <IconWarmRequest>[];
+    void warm(Item item) {
+      if (item.uninstalled) return;
+      final app = item.app;
+      if (app != null) {
+        requests.add(
+          IconWarmRequest(
+            key: (app.package, app.activity, sizePx),
+            estimatedBytes: sizePx * sizePx * 4,
+            load: () => widget.state.iconFor(app.package, app.activity, sizePx),
+          ),
+        );
+      } else if (item.iconOverride != null) {
+        requests.add(
+          IconWarmRequest(
+            key: (item.id, item.iconOverride, sizePx),
+            // The decoded image dominates for the small PNGs a shortcut
+            // stores. Actual source bytes are accounted by the cache bounds.
+            estimatedBytes: sizePx * sizePx * 4,
+            load: () => widget.state.itemIcon(
+              item.id,
+              reference: item.iconOverride!,
+              sizePx: sizePx,
+            ),
+          ),
+        );
+      }
+    }
+
     for (final group in groups) {
       for (final item in widget.state.itemsIn(group)) {
-        final app = item.app;
-        if (item.uninstalled) continue;
-        if (app != null) {
-          requests.add(
-            IconWarmRequest(
-              key: (app.package, app.activity, sizePx),
-              estimatedBytes: sizePx * sizePx * 4,
-              load: () =>
-                  widget.state.iconFor(app.package, app.activity, sizePx),
-            ),
-          );
-        } else if (item.iconOverride != null) {
-          requests.add(
-            IconWarmRequest(
-              key: (item.id, item.iconOverride, sizePx),
-              // The decoded image dominates for the small PNGs a shortcut
-              // stores. Actual source bytes are accounted by the cache bounds.
-              estimatedBytes: sizePx * sizePx * 4,
-              load: () => widget.state.itemIcon(
-                item.id,
-                reference: item.iconOverride!,
-                sizePx: sizePx,
-              ),
-            ),
-          );
+        final folderId = item.folderGroupId;
+        if (folderId == null) {
+          warm(item);
+          continue;
         }
+        // A folder tile shows one member's icon; warm only that member.
+        final memberId = widget.state.folderIconItem(folderId);
+        final member = memberId == null
+            ? null
+            : widget.state.itemById(memberId);
+        if (member != null) warm(member);
       }
     }
     _updateWarming();

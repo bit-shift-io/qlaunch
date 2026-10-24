@@ -48,6 +48,14 @@ pub struct IconRevision {
     pub revision: i64,
 }
 
+/// The member item whose icon a folder tile draws. `item_id` is `None` for an
+/// empty folder, which Dart renders with a generic folder glyph.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FolderIcon {
+    pub folder_group_id: Id,
+    pub item_id: Option<Id>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelSnapshot {
     pub root_group_id: Id,
@@ -66,6 +74,9 @@ pub struct ModelSnapshot {
     pub settings: Settings,
     pub warnings: Vec<String>,
     pub icon_revisions: Vec<IconRevision>,
+    /// One entry for every folder group, with the member whose icon the tile
+    /// should draw (see `folder_icon_item`).
+    pub folder_icons: Vec<FolderIcon>,
 }
 
 /// Starts the core: loads the saved layout (or creates it), reconciles it with
@@ -190,6 +201,14 @@ pub async fn set_group_role(id: Id, role: Option<GroupRole>) -> Result<ModelSnap
 
 pub async fn delete_group(id: Id) -> Result<ModelSnapshot, String> {
     state::mutate_model(|m| m.delete_group(&id))
+}
+
+pub async fn add_folder(containing_group: Id, label: String) -> Result<ModelSnapshot, String> {
+    state::mutate_model(|m| m.add_folder(&containing_group, &label).map(|_| ()))
+}
+
+pub async fn delete_folder(folder_group_id: Id) -> Result<ModelSnapshot, String> {
+    state::mutate_model(|m| m.delete_folder(&folder_group_id))
 }
 
 /// Shows or hides the group `id` from the pager and the tab strip.

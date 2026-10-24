@@ -38,4 +38,20 @@ pub enum ModelError {
     ItemHasAppAndShortcut(Id),
     #[error("item {0} is a shortcut and cannot also have an app")]
     ItemHasShortcut(Id),
+    #[error("the root group {0} cannot be a folder")]
+    RootIsFolder(Id),
+    #[error("folder group {0} has no tile item")]
+    FolderGroupHasNoTile(Id),
+    #[error("folder group {0} has more than one tile item")]
+    FolderGroupHasManyTiles(Id),
+    #[error("item {0} is a folder tile and must not have an app or a shortcut")]
+    FolderTileHasContent(Id),
+    #[error("folder tile {0} cannot live inside a folder")]
+    FolderTileInFolder(Id),
+    #[error("group {0} is a folder and cannot hold a role")]
+    FolderHoldsRole(Id),
+    #[error("group {0} is not a folder group")]
+    NotAFolderGroup(Id),
+    #[error("group {0} cannot contain a folder")]
+    NotAFolderDestination(Id),
 }

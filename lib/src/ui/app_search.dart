@@ -39,8 +39,8 @@ class _AppSearchState extends State<AppSearch>
   // These are presentation pages, not groups in the persistent launcher model.
   static const _pageIds = ['frequent', 'recent'];
   static const _groups = [
-    Group(id: 'frequent', label: 'Frequent', order: 0, hidden: false),
-    Group(id: 'recent', label: 'Recent', order: 1, hidden: false),
+    Group(id: 'frequent', label: 'Frequent', order: 0, hidden: false, folder: false),
+    Group(id: 'recent', label: 'Recent', order: 1, hidden: false, folder: false),
   ];
 
   final _focus = FocusNode();

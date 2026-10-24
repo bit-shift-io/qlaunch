@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
-import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot, IconRevision;
+import 'package:qlaunch/src/rust/api/api.dart'
+    show FolderIcon, IconRevision, ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/api/shortcuts.dart';
 import 'package:qlaunch/src/rust/model.dart';
@@ -70,6 +71,62 @@ class LauncherState extends ChangeNotifier {
   List<Item> itemsIn(String groupId) {
     return _itemsByGroup[groupId] ?? const [];
   }
+
+  Group? groupById(String id) {
+    for (final group in groups) {
+      if (group.id == id) return group;
+    }
+    return null;
+  }
+
+  Item? itemById(String id) {
+    for (final item in _snapshot?.items ?? const <Item>[]) {
+      if (item.id == id) return item;
+    }
+    return null;
+  }
+
+  /// The folders whose tile lives in [groupId], by label.
+  List<Group> foldersIn(String groupId) {
+    final s = _snapshot;
+    if (s == null) return const [];
+    final folderIds = {
+      for (final item in s.items)
+        if (item.groupId == groupId && item.folderGroupId != null)
+          item.folderGroupId!,
+    };
+    final folders = [
+      for (final group in s.groups)
+        if (group.folder && folderIds.contains(group.id)) group,
+    ];
+    folders.sort(
+      (a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()),
+    );
+    return folders;
+  }
+
+  /// The tile item representing [folderGroupId].
+  Item? folderTile(String folderGroupId) {
+    for (final item in _snapshot?.items ?? const <Item>[]) {
+      if (item.folderGroupId == folderGroupId) return item;
+    }
+    return null;
+  }
+
+  /// The member whose icon the folder tile draws, or `null` for an empty
+  /// folder.
+  String? folderIconItem(String folderGroupId) {
+    for (final icon in _snapshot?.folderIcons ?? const <FolderIcon>[]) {
+      if (icon.folderGroupId == folderGroupId) return icon.itemId;
+    }
+    return null;
+  }
+
+  Future<void> addFolder(String containingGroupId, String label) =>
+      _fetch(() => _backend.addFolder(containingGroupId, label));
+
+  Future<void> deleteFolder(String folderGroupId) =>
+      _fetch(() => _backend.deleteFolder(folderGroupId));
 
   void releaseIconSources() => _icons.clear();
   void retainIconSize(int sizePx) => _icons.retainSize(sizePx);

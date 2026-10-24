@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qlaunch/src/rust/api/api.dart' show FolderIcon, ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
@@ -13,6 +14,8 @@ import 'package:qlaunch/src/ui/app_cell.dart';
 import 'package:qlaunch/src/ui/app_grid.dart';
 import 'package:qlaunch/src/ui/app_search.dart';
 import 'package:qlaunch/src/ui/app_settings_dialog.dart';
+import 'package:qlaunch/src/ui/folder_dialog.dart';
+import 'package:qlaunch/src/ui/folder_popup.dart';
 import 'package:qlaunch/src/ui/background_layer.dart';
 import 'package:qlaunch/src/ui/group_pager.dart';
 import 'package:qlaunch/src/ui/home_screen.dart';
@@ -1359,6 +1362,87 @@ void main() {
       await tester.pump();
       expect(store.statistics.pinnedBytes, 0);
       expect(store.statistics.retiredLiveBytes, 0);
+    });
+  });
+
+  group('folders', () {
+    ModelSnapshot folderSnapshot() => snapshotOf(
+      pageIds: const ['apps'],
+      groups: [
+        makeGroup('apps', role: GroupRole.apps),
+        makeGroup('chat', folder: true, label: 'Chat'),
+      ],
+      items: [
+        makeItem('folder-tile', 'apps', label: 'Chat', folderGroupId: 'chat'),
+        makeItem('m1', 'chat', app: AppRef(package: 'pkg.m1', activity: 'Main')),
+        makeItem('m2', 'chat', app: AppRef(package: 'pkg.m2', activity: 'Main')),
+      ],
+    );
+
+    testWidgets('tapping a folder tile opens the folder popup', (tester) async {
+      setSurface(tester, const Size(400, 800));
+      fake.current = folderSnapshot();
+      await state.load();
+      await pumpHome(tester);
+
+      await tester.tap(find.text('Chat'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FolderPopup), findsOneWidget);
+      expect(find.text('m1'), findsOneWidget);
+    });
+
+    testWidgets('long-pressing a folder tile opens the folder dialog', (
+      tester,
+    ) async {
+      setSurface(tester, const Size(400, 800));
+      fake.current = folderSnapshot();
+      await state.load();
+      await pumpHome(tester);
+
+      await tester.longPress(find.text('Chat'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(FolderDialog), findsOneWidget);
+    });
+
+    testWidgets('a folder tile warms only the member icon it shows', (
+      tester,
+    ) async {
+      final scheduled = <Future<void> Function()>[];
+      final warmer = IconWarmer(schedule: scheduled.add);
+      setSurface(tester, const Size(400, 300));
+      fake.current = snapshotOf(
+        pageIds: const ['apps'],
+        groups: [
+          makeGroup('apps', role: GroupRole.apps),
+          makeGroup('chat', folder: true, label: 'Chat'),
+        ],
+        items: [
+          makeItem('folder-tile', 'apps', label: 'Chat', folderGroupId: 'chat'),
+          makeItem(
+            'm1',
+            'chat',
+            app: AppRef(package: 'pkg.m1', activity: 'Main'),
+          ),
+          makeItem(
+            'm2',
+            'chat',
+            app: AppRef(package: 'pkg.m2', activity: 'Main'),
+          ),
+        ],
+        folderIcons: const [
+          FolderIcon(folderGroupId: 'chat', itemId: 'm2'),
+        ],
+      );
+      await state.load();
+      await pumpHome(tester, warmer: warmer);
+      while (scheduled.isNotEmpty) {
+        await scheduled.removeAt(0)();
+      }
+
+      expect(fake.calls, contains('iconFor(pkg.m2,Main,48)'));
+      expect(fake.calls, isNot(contains('iconFor(pkg.m1,Main,48)')));
     });
   });
 }

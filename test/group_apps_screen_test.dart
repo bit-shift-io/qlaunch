@@ -18,7 +18,7 @@ void main() {
         rootGroupId: 'root',
         pageIds: ['apps', 'games'],
         groups: [
-          Group(id: 'root', label: 'root', order: 0, hidden: false),
+          Group(id: 'root', label: 'root', order: 0, hidden: false, folder: false),
           makeGroup('apps', role: GroupRole.apps, order: 0),
           makeGroup('games', role: GroupRole.games, order: 1),
         ],

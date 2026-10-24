@@ -18,7 +18,7 @@ void main() {
         rootGroupId: 'root',
         pageIds: ['apps', 'games'],
         groups: [
-          Group(id: 'root', label: 'root', order: 0, hidden: false),
+          Group(id: 'root', label: 'root', order: 0, hidden: false, folder: false),
           makeGroup('apps', role: GroupRole.apps),
           makeGroup('games', role: GroupRole.games),
         ],
@@ -157,5 +157,78 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(fake.calls, contains('removeItem(lock)'));
+  });
+
+  testWidgets('the dialog has no title', (tester) async {
+    await pumpDialog(tester);
+
+    expect(
+      tester.widget<AlertDialog>(find.byType(AlertDialog)).title,
+      isNull,
+    );
+  });
+
+  testWidgets('the group list nests folders under their group', (tester) async {
+    fake.current = snapshotOf(
+      rootGroupId: 'root',
+      groups: [
+        makeGroup('root'),
+        makeGroup('apps', role: GroupRole.apps),
+        makeGroup('games', role: GroupRole.games),
+        makeGroup('chat', folder: true, label: 'Chat'),
+      ],
+      items: [
+        makeItem('chat-tile', 'apps', folderGroupId: 'chat'),
+        makeItem('m1', 'chat'),
+        makeItem('i1', 'apps'),
+      ],
+    );
+    await state.load();
+    final item = state.itemsIn('apps').firstWhere((i) => i.id == 'i1');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AppSettingsDialog(state: state, item: item)),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(AppSettingsDialog.groupKey));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(AppSettingsDialog.groupOptionKey('apps')), findsWidgets);
+    expect(find.byKey(AppSettingsDialog.groupOptionKey('games')), findsWidgets);
+    expect(find.byKey(AppSettingsDialog.groupOptionKey('chat')), findsOneWidget);
+
+    await tester.tap(find.byKey(AppSettingsDialog.groupOptionKey('chat')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(AppSettingsDialog.saveKey));
+    await tester.pumpAndSettle();
+
+    expect(fake.calls, contains('moveItem(i1,chat,1)'));
+  });
+
+  testWidgets('an item already in a folder shows that folder', (tester) async {
+    fake.current = snapshotOf(
+      rootGroupId: 'root',
+      groups: [
+        makeGroup('root'),
+        makeGroup('apps', role: GroupRole.apps),
+        makeGroup('chat', folder: true, label: 'Chat'),
+      ],
+      items: [
+        makeItem('chat-tile', 'apps', folderGroupId: 'chat'),
+        makeItem('m1', 'chat'),
+      ],
+    );
+    await state.load();
+    final item = state.itemsIn('chat').single;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AppSettingsDialog(state: state, item: item)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Chat'), findsOneWidget);
   });
 }

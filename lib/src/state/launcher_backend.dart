@@ -20,6 +20,8 @@ abstract class LauncherBackend {
   Future<ModelSnapshot> setGroupRole(String id, GroupRole? role);
   Future<ModelSnapshot> setGroupHidden(String id, bool hidden);
   Future<ModelSnapshot> deleteGroup(String id);
+  Future<ModelSnapshot> addFolder(String containingGroupId, String label);
+  Future<ModelSnapshot> deleteFolder(String folderGroupId);
   Future<ModelSnapshot> moveItem(String id, String toGroup, int newOrder);
   Future<ModelSnapshot> renameItem(String id, String label);
   Future<ModelSnapshot> setItemIcon(String id, List<int> png);
@@ -89,6 +91,14 @@ class RustBackend implements LauncherBackend {
 
   @override
   Future<ModelSnapshot> deleteGroup(String id) => rust.deleteGroup(id: id);
+
+  @override
+  Future<ModelSnapshot> addFolder(String containingGroupId, String label) =>
+      rust.addFolder(containingGroup: containingGroupId, label: label);
+
+  @override
+  Future<ModelSnapshot> deleteFolder(String folderGroupId) =>
+      rust.deleteFolder(folderGroupId: folderGroupId);
 
   @override
   Future<ModelSnapshot> moveItem(String id, String toGroup, int newOrder) =>

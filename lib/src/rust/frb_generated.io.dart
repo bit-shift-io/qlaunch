@@ -94,6 +94,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ExtraKind dco_decode_extra_kind(dynamic raw);
 
   @protected
+  FolderIcon dco_decode_folder_icon(dynamic raw);
+
+  @protected
   Group dco_decode_group(dynamic raw);
 
   @protected
@@ -128,6 +131,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Extra> dco_decode_list_extra(dynamic raw);
+
+  @protected
+  List<FolderIcon> dco_decode_list_folder_icon(dynamic raw);
 
   @protected
   List<Group> dco_decode_list_group(dynamic raw);
@@ -314,6 +320,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ExtraKind sse_decode_extra_kind(SseDeserializer deserializer);
 
   @protected
+  FolderIcon sse_decode_folder_icon(SseDeserializer deserializer);
+
+  @protected
   Group sse_decode_group(SseDeserializer deserializer);
 
   @protected
@@ -348,6 +357,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<Extra> sse_decode_list_extra(SseDeserializer deserializer);
+
+  @protected
+  List<FolderIcon> sse_decode_list_folder_icon(SseDeserializer deserializer);
 
   @protected
   List<Group> sse_decode_list_group(SseDeserializer deserializer);
@@ -580,6 +592,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_extra_kind(ExtraKind self, SseSerializer serializer);
 
   @protected
+  void sse_encode_folder_icon(FolderIcon self, SseSerializer serializer);
+
+  @protected
   void sse_encode_group(Group self, SseSerializer serializer);
 
   @protected
@@ -614,6 +629,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_extra(List<Extra> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_folder_icon(
+    List<FolderIcon> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_group(List<Group> self, SseSerializer serializer);

@@ -19,16 +19,21 @@ final Uint8List _png = base64Decode(
 
 const _app = AppRef(package: 'org.example.app', activity: 'Main');
 
-Item _item({String label = 'Maps', bool uninstalled = false, AppRef? app}) =>
-    Item(
-      id: 'i1',
-      groupId: 'g',
-      label: label,
-      labelOverridden: false,
-      app: app,
-      uninstalled: uninstalled,
-      order: 0,
-    );
+Item _item({
+  String label = 'Maps',
+  bool uninstalled = false,
+  AppRef? app,
+  String? folderGroupId,
+}) => Item(
+  id: 'i1',
+  groupId: 'g',
+  label: label,
+  labelOverridden: false,
+  app: app,
+  uninstalled: uninstalled,
+  order: 0,
+  folderGroupId: folderGroupId,
+);
 
 Future<void> _pumpCell(
   WidgetTester tester, {
@@ -37,6 +42,7 @@ Future<void> _pumpCell(
   Settings? settings,
   VoidCallback? onTap,
   VoidCallback? onLongPress,
+  bool folder = false,
   Size cell = const Size(100, 100),
 }) async {
   await tester.pumpWidget(
@@ -49,6 +55,7 @@ Future<void> _pumpCell(
               item: item ?? _item(app: _app),
               icon: icon == null ? null : MemoryImage(icon),
               settings: settings ?? testSettings,
+              folder: folder,
               onTap: onTap,
               onLongPress: onLongPress,
             ),
@@ -196,6 +203,29 @@ void main() {
   });
 
   group('icon', () {
+    testWidgets('a folder with no icon draws a folder glyph', (tester) async {
+      await _pumpCell(
+        tester,
+        item: _item(label: 'Chat', folderGroupId: 'f'),
+        folder: true,
+      );
+
+      expect(find.byIcon(Icons.folder), findsOneWidget);
+    });
+
+    testWidgets('a folder tile is tappable', (tester) async {
+      var taps = 0;
+      await _pumpCell(
+        tester,
+        item: _item(label: 'Chat', folderGroupId: 'f'),
+        folder: true,
+        onTap: () => taps++,
+      );
+
+      await tester.tap(find.byType(AppCell));
+      expect(taps, 1);
+    });
+
     testWidgets('a null icon renders a placeholder and does not throw', (
       tester,
     ) async {

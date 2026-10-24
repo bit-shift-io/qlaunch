@@ -64,6 +64,13 @@ class Group {
   /// field still loads (the schema stays at 1).
   final bool hidden;
 
+  /// Whether this group exists only to hold a folder's members. Folder
+  /// groups are root children but are never pages, never appear in the group
+  /// editor, and cannot hold a role. A tile item in a real group points at
+  /// one through `Item::folder_group_id`. Defaulted so a document written
+  /// before this field still loads (the schema stays at 1).
+  final bool folder;
+
   const Group({
     required this.id,
     required this.label,
@@ -71,6 +78,7 @@ class Group {
     this.role,
     required this.order,
     required this.hidden,
+    required this.folder,
   });
 
   @override
@@ -80,7 +88,8 @@ class Group {
       parentId.hashCode ^
       role.hashCode ^
       order.hashCode ^
-      hidden.hashCode;
+      hidden.hashCode ^
+      folder.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -92,7 +101,8 @@ class Group {
           parentId == other.parentId &&
           role == other.role &&
           order == other.order &&
-          hidden == other.hidden;
+          hidden == other.hidden &&
+          folder == other.folder;
 }
 
 class Item {
@@ -106,6 +116,12 @@ class Item {
   final int order;
   final String? iconOverride;
 
+  /// Set only on a folder tile item: the folder group whose members this tile
+  /// represents. Such an item has neither an app nor a shortcut and lives in
+  /// a real group (never in a folder). Defaulted so a document written before
+  /// this field still loads (the schema stays at 1).
+  final String? folderGroupId;
+
   const Item({
     required this.id,
     required this.groupId,
@@ -116,6 +132,7 @@ class Item {
     required this.uninstalled,
     required this.order,
     this.iconOverride,
+    this.folderGroupId,
   });
 
   @override
@@ -128,7 +145,8 @@ class Item {
       shortcut.hashCode ^
       uninstalled.hashCode ^
       order.hashCode ^
-      iconOverride.hashCode;
+      iconOverride.hashCode ^
+      folderGroupId.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -143,7 +161,8 @@ class Item {
           shortcut == other.shortcut &&
           uninstalled == other.uninstalled &&
           order == other.order &&
-          iconOverride == other.iconOverride;
+          iconOverride == other.iconOverride &&
+          folderGroupId == other.folderGroupId;
 }
 
 @freezed

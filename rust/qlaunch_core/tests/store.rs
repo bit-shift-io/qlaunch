@@ -29,6 +29,7 @@ fn app_item(id: &str, group: &Id, label: &str, package: &str, order: i32) -> Ite
         uninstalled: false,
         order,
         icon_override: None,
+        folder_group_id: None,
     }
 }
 
@@ -485,7 +486,15 @@ fn on_disk_strings_are_the_documented_ones() {
     group_keys.sort();
     assert_eq!(
         group_keys,
-        ["hidden", "id", "label", "order", "parent_id", "role"]
+        [
+            "folder",
+            "hidden",
+            "id",
+            "label",
+            "order",
+            "parent_id",
+            "role"
+        ]
     );
     assert_eq!(root["parent_id"], Value::Null);
     assert_eq!(root["hidden"], json!(false));
@@ -503,6 +512,7 @@ fn on_disk_strings_are_the_documented_ones() {
         item_keys,
         [
             "app",
+            "folder_group_id",
             "group_id",
             "icon_override",
             "id",

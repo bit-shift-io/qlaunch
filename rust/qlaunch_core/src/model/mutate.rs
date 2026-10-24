@@ -46,18 +46,94 @@ impl Model {
             role: None,
             order,
             hidden: false,
+            folder: false,
         });
         self.renumber_pages();
         id
     }
 
+    /// Adds a folder held by `containing_group`: a root-child group with
+    /// `folder = true` and a tile item in `containing_group` that points at it.
+    /// The tile carries the folder's name. Refused when `containing_group` is
+    /// the root, a folder, or unknown.
+    pub fn add_folder(
+        &mut self,
+        containing_group: &Id,
+        label: &str,
+    ) -> Result<Id, ModelError> {
+        let container = self.group(containing_group)?;
+        if container.id == self.root_group_id || container.folder {
+            return Err(ModelError::NotAFolderDestination(
+                containing_group.clone(),
+            ));
+        }
+
+        let folder_id = new_id();
+        self.groups.push(Group {
+            id: folder_id.clone(),
+            label: label.into(),
+            parent_id: Some(self.root_group_id.clone()),
+            role: None,
+            order: 0,
+            hidden: false,
+            folder: true,
+        });
+        let tile_id = self.add_item_to(containing_group, label);
+        if let Some(tile) = self.items.iter_mut().find(|i| i.id == tile_id) {
+            tile.folder_group_id = Some(folder_id.clone());
+        }
+        Ok(folder_id)
+    }
+
+    /// Deletes a folder: its members are appended, in order, to the group the
+    /// folder tile currently lives in, then the tile and folder group are
+    /// removed. Refused for a group that is not a folder (`NotAFolderGroup`).
+    pub fn delete_folder(&mut self, folder_group_id: &Id) -> Result<(), ModelError> {
+        if !self.group(folder_group_id)?.folder {
+            return Err(ModelError::NotAFolderGroup(folder_group_id.clone()));
+        }
+        let tile = self
+            .items
+            .iter()
+            .find(|i| i.folder_group_id.as_deref() == Some(folder_group_id.as_str()))
+            .ok_or_else(|| ModelError::FolderGroupHasNoTile(folder_group_id.clone()))?;
+        let tile_id = tile.id.clone();
+        let parent = tile.group_id.clone();
+
+        let mut ids = self.item_ids(&parent);
+        ids.retain(|i| i != &tile_id);
+        ids.extend(self.item_ids(folder_group_id));
+        for item in self
+            .items
+            .iter_mut()
+            .filter(|i| i.group_id == *folder_group_id)
+        {
+            item.group_id = parent.clone();
+        }
+        self.set_item_orders(&ids);
+        self.items.retain(|i| i.id != tile_id);
+        self.groups.retain(|g| g.id != *folder_group_id);
+        self.renumber_pages();
+        Ok(())
+    }
+
     pub fn rename_group(&mut self, id: &Id, label: &str) -> Result<(), ModelError> {
+        let is_folder = self.group(id)?.folder;
         let group = self
             .groups
             .iter_mut()
             .find(|g| g.id == *id)
             .ok_or_else(|| ModelError::UnknownGroup(id.clone()))?;
         group.label = label.into();
+        if is_folder {
+            if let Some(tile) = self
+                .items
+                .iter_mut()
+                .find(|i| i.folder_group_id.as_deref() == Some(id.as_str()))
+            {
+                tile.label = label.into();
+            }
+        }
         Ok(())
     }
 
@@ -88,7 +164,11 @@ impl Model {
     /// validating. All of these are `RoleNotAssignable`. `Home` is optional and
     /// can be unset.
     pub fn set_group_role(&mut self, id: &Id, role: Option<GroupRole>) -> Result<(), ModelError> {
-        let current = self.group(id)?.role;
+        let group = self.group(id)?;
+        let current = group.role;
+        if group.folder {
+            return Err(ModelError::RoleNotAssignable);
+        }
         if current == role {
             return Ok(());
         }
@@ -122,7 +202,11 @@ impl Model {
     /// the `Apps` group. A group holding any role (this includes the root) is
     /// refused with `GroupHoldsRole`.
     pub fn delete_group(&mut self, id: &Id) -> Result<(), ModelError> {
-        if self.group(id)?.role.is_some() {
+        let group = self.group(id)?;
+        if group.folder {
+            return Err(ModelError::FolderHoldsRole(id.clone()));
+        }
+        if group.role.is_some() {
             return Err(ModelError::GroupHoldsRole(id.clone()));
         }
         let apps = self
@@ -148,7 +232,10 @@ impl Model {
     /// toggled: `NotAPage`.
     pub fn set_group_hidden(&mut self, id: &Id, hidden: bool) -> Result<(), ModelError> {
         let group = self.group(id)?;
-        if group.id == self.root_group_id || group.role == Some(GroupRole::Hidden) {
+        if group.folder
+            || group.id == self.root_group_id
+            || group.role == Some(GroupRole::Hidden)
+        {
             return Err(ModelError::NotAPage(id.clone()));
         }
         if let Some(group) = self.groups.iter_mut().find(|g| g.id == *id) {
@@ -170,6 +257,9 @@ impl Model {
         self.group(to_group)?;
         if *to_group == self.root_group_id {
             return Err(ModelError::ItemInRoot(id.clone()));
+        }
+        if self.item_or_err(id)?.folder_group_id.is_some() && self.group(to_group)?.folder {
+            return Err(ModelError::FolderTileInFolder(id.clone()));
         }
 
         let mut ids = self.item_ids(to_group);
@@ -291,6 +381,7 @@ impl Model {
             uninstalled: false,
             order,
             icon_override: None,
+            folder_group_id: None,
         });
         self.renumber_items(&group);
         id
@@ -307,6 +398,7 @@ impl Model {
         group.parent_id.as_ref() == Some(&self.root_group_id)
             && group.role != Some(GroupRole::Hidden)
             && !group.hidden
+            && !group.folder
     }
 
     fn group(&self, id: &Id) -> Result<&Group, ModelError> {
