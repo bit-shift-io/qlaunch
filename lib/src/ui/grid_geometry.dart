@@ -30,10 +30,12 @@ double gridRowExtent(
         )
       : 0.0;
   final textHeight = measuredLabelHeight ?? gridLabelHeight(context, settings);
+  // Larger label text needs more room between rows, not just a taller row.
+  final gap = math.max(list ? 10.0 : 8.0, textHeight * 0.3);
   return math.max(
     24,
     list
-        ? math.max(icon, textHeight) + 10
-        : icon + textHeight + (icon > 0 && textHeight > 0 ? 2 : 0) + 8,
+        ? math.max(icon, textHeight) + gap
+        : icon + textHeight + (icon > 0 && textHeight > 0 ? 2 : 0) + gap,
   );
 }

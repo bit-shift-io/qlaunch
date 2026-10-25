@@ -156,30 +156,18 @@ class AppCells extends StatelessWidget {
         Widget buildTile(BuildContext context, int i) {
           final item = items[i];
           final folderId = item.folderGroupId;
-          final ImageProvider? cached;
-          final Future<ImageProvider?>? icon;
-          if (folderId != null) {
-            final memberId = state.folderIconItem(folderId);
-            final member = memberId == null ? null : state.itemById(memberId);
-            final usable =
-                member != null &&
-                ((member.app != null && !member.uninstalled) ||
-                    member.iconOverride != null);
-            final resolved = usable
-                ? resolve(member)
-                : (cached: null, future: null);
-            cached = resolved.cached;
-            icon = resolved.future;
-          } else {
-            final resolved = resolve(item);
-            cached = resolved.cached;
-            icon = resolved.future;
-          }
+          final isFolder = folderId != null;
+          // Every folder looks the same: the generic folder glyph, never a
+          // member's app icon.
+          final ({ImageProvider? cached, Future<ImageProvider?>? future})
+          resolved = isFolder ? (cached: null, future: null) : resolve(item);
+          final cached = resolved.cached;
+          final icon = resolved.future;
           Widget cell(ImageProvider? icon) => AppCell(
             item: item,
             icon: icon,
             settings: settings,
-            folder: folderId != null,
+            folder: isFolder,
             geometry: geometry,
             onTap: () {
               if (folderId != null) {
@@ -195,10 +183,8 @@ class AppCells extends StatelessWidget {
                     unawaited(
                       showDialog<void>(
                         context: context,
-                        builder: (context) => FolderDialog.edit(
-                          state: state,
-                          folderGroup: group,
-                        ),
+                        builder: (context) =>
+                            FolderDialog.edit(state: state, folderGroup: group),
                       ),
                     );
                   }

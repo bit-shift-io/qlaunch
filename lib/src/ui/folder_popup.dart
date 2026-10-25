@@ -28,6 +28,12 @@ class FolderPopup extends StatelessWidget {
   static const contentKey = ValueKey('folderPopup.content');
   static const emptyKey = ValueKey('folderPopup.empty');
 
+  /// Space kept between the popup and the screen edge, besides [padding].
+  static const screenMargin = 24.0;
+
+  /// The space around the popup's grid.
+  static const padding = 16.0;
+
   static Future<void> show(
     BuildContext context,
     LauncherState state,
@@ -71,7 +77,7 @@ class FolderPopup extends StatelessWidget {
                   ),
               clipBehavior: Clip.antiAlias,
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(padding),
                 child: items.isEmpty
                     ? SizedBox(
                         key: emptyKey,
@@ -106,11 +112,14 @@ class FolderPopup extends StatelessWidget {
       math.max(1, math.sqrt(items.length).ceil()),
     );
     final screen = MediaQuery.sizeOf(context);
-    final available = math.max(1.0, screen.width - 80 - 32);
+    final available = math.max(
+      1.0,
+      screen.width - screenMargin * 2 - padding * 2,
+    );
     final list = settings.layout == LayoutStyle.list;
     final naturalWidth = list
         ? math.max(180.0, settings.iconSize.toDouble() + 100)
-        : math.max(80.0, settings.iconSize.toDouble() + 32);
+        : math.max(96.0, settings.iconSize.toDouble() + 60);
     final cellWidth = math.min(naturalWidth, available / columns);
     final rowExtent = gridRowExtent(
       context,
@@ -120,7 +129,10 @@ class FolderPopup extends StatelessWidget {
     );
     final rows = (items.length / columns).ceil();
     final double width = columns * cellWidth;
-    final double height = math.min(rows * rowExtent, screen.height * 0.7 - 32);
+    final double height = math.min(
+      rows * rowExtent,
+      screen.height * 0.7 - padding * 2,
+    );
 
     return SizedBox(
       width: width,

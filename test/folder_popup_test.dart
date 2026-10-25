@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
 import 'package:qlaunch/src/state/launcher_state.dart';
+import 'package:qlaunch/src/ui/app_cell.dart';
 import 'package:qlaunch/src/ui/app_settings_dialog.dart';
 import 'package:qlaunch/src/ui/folder_popup.dart';
+import 'package:qlaunch/src/ui/grid_geometry.dart';
 
 import 'fake_backend.dart';
 import 'snapshot_builders.dart';
@@ -99,6 +102,56 @@ void main() {
     expect(one.width, lessThan(two.width));
     expect(two.width, 2 * one.width);
     expect(one.height, two.height);
+  });
+
+  testWidgets('a 3x3 folder grows taller when the label size grows', (
+    tester,
+  ) async {
+    ModelSnapshot nine({required int labelSize}) => snapshotOf(
+      rootGroupId: 'root',
+      groups: [
+        makeGroup('root'),
+        makeGroup('apps', role: GroupRole.apps),
+        makeGroup('chat', folder: true, label: 'Chat'),
+      ],
+      items: [
+        makeItem('chat-tile', 'apps', folderGroupId: 'chat'),
+        for (var i = 0; i < 9; i++)
+          makeItem(
+            'm$i',
+            'chat',
+            app: AppRef(package: 'pkg.m$i', activity: 'Main'),
+          ),
+      ],
+      settings: settingsWith(labelSize: labelSize),
+    );
+
+    fake.current = nine(labelSize: 12);
+    await pumpPopup(tester);
+    final small = tester.getSize(find.byKey(FolderPopup.contentKey));
+    final smallCell = tester.getSize(find.byType(AppCell).first);
+    final smallTextHeight = gridLabelHeight(
+      tester.element(find.byType(AppCell).first),
+      fake.current.settings,
+    );
+
+    fake.current = nine(labelSize: 24);
+    await state.load();
+    await tester.pump();
+    final large = tester.getSize(find.byKey(FolderPopup.contentKey));
+    final largeCell = tester.getSize(find.byType(AppCell).first);
+    final largeTextHeight = gridLabelHeight(
+      tester.element(find.byType(AppCell).first),
+      fake.current.settings,
+    );
+
+    expect(large.width, small.width);
+    expect(large.height, greaterThan(small.height));
+    expect(
+      largeCell.height - largeTextHeight,
+      greaterThan(smallCell.height - smallTextHeight),
+      reason: 'Larger text gets extra breathing room beyond its own height',
+    );
   });
 
   testWidgets('the members are not scrollable when they fit', (tester) async {

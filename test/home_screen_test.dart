@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qlaunch/src/rust/api/api.dart' show FolderIcon, ModelSnapshot;
+import 'package:qlaunch/src/rust/api/api.dart' show ModelSnapshot;
 import 'package:qlaunch/src/rust/api/events.dart';
 import 'package:qlaunch/src/rust/model.dart';
 import 'package:qlaunch/src/rust/model/roles.dart';
@@ -1374,8 +1374,16 @@ void main() {
       ],
       items: [
         makeItem('folder-tile', 'apps', label: 'Chat', folderGroupId: 'chat'),
-        makeItem('m1', 'chat', app: AppRef(package: 'pkg.m1', activity: 'Main')),
-        makeItem('m2', 'chat', app: AppRef(package: 'pkg.m2', activity: 'Main')),
+        makeItem(
+          'm1',
+          'chat',
+          app: AppRef(package: 'pkg.m1', activity: 'Main'),
+        ),
+        makeItem(
+          'm2',
+          'chat',
+          app: AppRef(package: 'pkg.m2', activity: 'Main'),
+        ),
       ],
     );
 
@@ -1406,9 +1414,7 @@ void main() {
       expect(find.byType(FolderDialog), findsOneWidget);
     });
 
-    testWidgets('a folder tile warms only the member icon it shows', (
-      tester,
-    ) async {
+    testWidgets('a folder tile does not warm a member icon', (tester) async {
       final scheduled = <Future<void> Function()>[];
       final warmer = IconWarmer(schedule: scheduled.add);
       setSurface(tester, const Size(400, 300));
@@ -1431,9 +1437,6 @@ void main() {
             app: AppRef(package: 'pkg.m2', activity: 'Main'),
           ),
         ],
-        folderIcons: const [
-          FolderIcon(folderGroupId: 'chat', itemId: 'm2'),
-        ],
       );
       await state.load();
       await pumpHome(tester, warmer: warmer);
@@ -1441,8 +1444,9 @@ void main() {
         await scheduled.removeAt(0)();
       }
 
-      expect(fake.calls, contains('iconFor(pkg.m2,Main,48)'));
       expect(fake.calls, isNot(contains('iconFor(pkg.m1,Main,48)')));
+      expect(fake.calls, isNot(contains('iconFor(pkg.m2,Main,48)')));
+      expect(find.byIcon(Icons.folder), findsOneWidget);
     });
   });
 }

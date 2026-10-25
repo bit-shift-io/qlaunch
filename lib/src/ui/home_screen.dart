@@ -198,17 +198,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     for (final group in groups) {
       for (final item in widget.state.itemsIn(group)) {
-        final folderId = item.folderGroupId;
-        if (folderId == null) {
-          warm(item);
-          continue;
-        }
-        // A folder tile shows one member's icon; warm only that member.
-        final memberId = widget.state.folderIconItem(folderId);
-        final member = memberId == null
-            ? null
-            : widget.state.itemById(memberId);
-        if (member != null) warm(member);
+        // A folder tile draws the generic folder glyph, so there is no member
+        // icon to warm for it.
+        if (item.folderGroupId == null) warm(item);
       }
     }
     _updateWarming();
