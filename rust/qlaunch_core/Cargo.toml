@@ -9,7 +9,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [dependencies]
 base64 = "0.22.1"
 dirs = "7.0.0"
-flutter_rust_bridge = "=2.13.0"
+flutter_rust_bridge = { version = "=2.13.0", optional = true }
 notify = "8.2.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -17,10 +17,15 @@ thiserror = "2.0.21"
 unicode-normalization = "0.1.26"
 uuid = { version = "1.28.0", features = ["v4", "serde"] }
 
+[features]
+default = ["flutter"]
+flutter = ["dep:flutter_rust_bridge"]
+
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 
 [dev-dependencies]
+futures = { version = "0.3", features = ["executor"] }
 tempfile = "3.27.0"
 
 [lints.rust]

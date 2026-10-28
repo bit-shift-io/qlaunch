@@ -55,3 +55,4 @@ app.*.map.json
 
 # Rust
 /rust/target/
+/android/app/src/main/jniLibs/

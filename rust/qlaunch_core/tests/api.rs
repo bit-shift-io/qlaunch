@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
-use flutter_rust_bridge::for_generated::futures::executor::block_on;
+use futures::executor::block_on;
 use qlaunch_core::api::api::{self, ModelSnapshot};
 use qlaunch_core::api::events::{CoreEvent, EventBus};
 use qlaunch_core::model::ShortcutPayload;

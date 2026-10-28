@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
-use flutter_rust_bridge::frb;
-
+#[cfg(feature = "flutter")]
 use crate::frb_generated::StreamSink;
 use crate::model::{AppRef, Group, GroupRole, IconImage, Id, Item};
 use crate::platform::AppSource;
@@ -134,7 +133,7 @@ fn platform_config_root() -> Result<PathBuf, String> {
 /// `warnings` is whatever the caller already knows (a failed root resolution).
 /// Everything after that is what `init` does.
 #[doc(hidden)]
-#[frb(ignore)]
+#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn init_with_source(
     config_root: Option<PathBuf>,
     source: Box<dyn AppSource>,
@@ -145,7 +144,7 @@ pub fn init_with_source(
 
 /// Empties the state and the event subscribers. For tests only.
 #[doc(hidden)]
-#[frb(ignore)]
+#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn reset_for_test() {
     state::clear();
 }
@@ -153,18 +152,18 @@ pub fn reset_for_test() {
 /// Registers a plain Rust subscriber, which returns `false` once it is gone.
 /// For tests only.
 #[doc(hidden)]
-#[frb(ignore)]
+#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn subscribe_for_test(
     deliver: Box<dyn Fn(CoreEvent) -> bool + Send + Sync>,
 ) -> Result<(), String> {
-    state::subscribe(Box::new(move |event| deliver(event.clone())));
+    subscribe_native(deliver);
     Ok(())
 }
 
 /// Emits a core event to subscribers. For tests only: the Android host emits
 /// the Home and Back events itself, from the JNI callbacks.
 #[doc(hidden)]
-#[frb(ignore)]
+#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn emit_for_test(event: CoreEvent) {
     state::emit(event);
 }
@@ -500,9 +499,17 @@ pub async fn choose_wallpaper() -> Result<(), String> {
 /// Streams the core's events to Dart. A subscriber that misses an event can
 /// always re-read `snapshot()`. The subscription ends when the stream is
 /// closed.
+#[cfg(feature = "flutter")]
 pub fn events(sink: StreamSink<CoreEvent>) -> Result<(), String> {
     state::subscribe(Box::new(move |event| sink.add(event.clone()).is_ok()));
     Ok(())
+}
+
+/// Native UI subscription. Delivery runs under the core lock; never call the
+/// API from this callback. Return false when the receiver has gone away.
+#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
+pub fn subscribe_native(deliver: impl Fn(CoreEvent) -> bool + Send + Sync + 'static) {
+    state::subscribe(Box::new(move |event| deliver(event.clone())));
 }
 
 #[cfg(test)]

@@ -1,5 +1,3 @@
-use flutter_rust_bridge::frb;
-
 use crate::model::Id;
 
 /// What the core tells Dart happened. An event only says that something
@@ -34,7 +32,7 @@ type Deliver = Box<dyn Fn(&CoreEvent) -> bool + Send + Sync>;
 /// stream), and `emit` then drops it, so a subscriber that went away does not
 /// stay in the list for good. Delivery runs on the caller's thread while the
 /// global state lock is held, so a closure must not call back into the API.
-#[frb(ignore)]
+#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub struct EventBus {
     next_token: u64,
     subscribers: Vec<(u64, Deliver)>,

@@ -1,5 +1,24 @@
 # qlaunch
 
+## `dev/iced`: experimental comparison build
+
+This branch builds an **iced + Rust Android launcher without Flutter/Dart or the
+Flutter–Rust bridge**. It is a feasibility spike, not full feature parity.
+The original Flutter sources are retained as a reference, but Android now starts
+`IcedActivity` and `libqlaunch_iced.so` directly.
+
+Build/install instructions, comparison cautions and known gaps:
+[`docs/iced-spike.md`](docs/iced-spike.md).
+
+```sh
+ANDROID_NDK_HOME="$HOME/Android/Sdk/ndk/28.2.13676358" bash scripts/build-iced.sh release
+adb install -r build/app/outputs/apk/release/app-release.apk
+adb shell am start -W -n bitshift.qlaunch/.MainActivity
+```
+
+**The APK replaces QLaunch and reuses its saved configuration.** The main branch
+remains the Flutter implementation described below.
+
 A quick, easy and slim application launcher for **Android** and **Linux (Wayland)**.
 
 This is a ground-up rewrite of the original Android/Java launcher (see the `java`
