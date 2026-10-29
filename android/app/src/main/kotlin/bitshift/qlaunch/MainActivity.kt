@@ -16,6 +16,7 @@ class MainActivity : IcedActivity() {
     private lateinit var accessibility: LauncherAccessibilityView
 
     fun publishAccessibility(json: String) {
+        if (!ACCESSIBILITY_EXPOSURE_ENABLED) return
         if (!::accessibility.isInitialized) return
         if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
             runOnUiThread { publishAccessibility(json) }
@@ -76,16 +77,21 @@ class MainActivity : IcedActivity() {
         // before the surface is created, or Vulkan's inherited alpha is opaque.
         window.setFormat(PixelFormat.RGBA_8888)
 
-        accessibility = LauncherAccessibilityView(this)
-        accessibility.onAction = ::sendAccessibilityAction
-        addContentView(
-            accessibility,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            ),
-        )
-        LauncherActions.flushAccessibility(this)
+        // No host view is attached while exposure is off: with nothing to
+        // publish into, the native side's publishes are dropped in
+        // `LauncherActions.publishAccessibility`.
+        if (ACCESSIBILITY_EXPOSURE_ENABLED) {
+            accessibility = LauncherAccessibilityView(this)
+            accessibility.onAction = ::sendAccessibilityAction
+            addContentView(
+                accessibility,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+            LauncherActions.flushAccessibility(this)
+        }
 
         // Android 8+ (API 26) will not deliver these implicit broadcasts to a
         // manifest-declared receiver, so they are registered here at runtime

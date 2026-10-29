@@ -33,6 +33,7 @@ object LauncherActions {
     /// Fire-and-forget from the iced thread: keep only the latest tree and let
     /// the UI thread publish it. Never blocks the caller.
     fun publishAccessibility(json: String) {
+        if (!ACCESSIBILITY_EXPOSURE_ENABLED) return
         pendingAccessibility.set(json)
         val host = activity.get() ?: return
         if (!accessibilityPosted.compareAndSet(false, true)) return

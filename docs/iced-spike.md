@@ -14,6 +14,10 @@ Experimental comparison build on `dev/iced`, not a production replacement.
 - [x] Build/install on the connected Pixel 5a; record visual/lifecycle findings.
 - [x] Measure release frame pacing and app-side CPU frame work against the saved
       Flutter release artifact, keeping the two metrics separate.
+- [x] Replace the fork's translated overlay pages with a custom `Slots` widget and
+      verify mid-drag rendering and input gating on the tablet.
+- [ ] Accessibility: TalkBack cannot drive the launcher — NO-GO; the exposure is
+      switched off and the failure is recorded below.
 - [x] Document reproducible performance comparisons and remaining gaps.
 
 Kotlin/JNI remains the OS adapter. No backend rewrite is needed. The experimental
@@ -29,16 +33,36 @@ Dependencies are pinned to iced_android v0.1.1 and its matching iced and
 android-activity forks. This is community-maintained mobile support, not official
 iced support. Workability must be established on-device before adoption.
 
-## Accessibility — Task 6 acceptance in progress (2026-10-29)
+## Accessibility — Task 6 result: NO-GO (2026-10-29)
 
-**Decision: pending; Tasks 7–9 are not authorised to proceed.** Automated
-accessibility actions pass, but this is not a substitute for hands-on TalkBack
-speech, swipe/double-tap and touch-exploration acceptance.
+**Decision: NO-GO.** Two hands-on attempts with TalkBack failed: the selector
+stayed on the navigation bar and left/right swipes never entered the launcher,
+so no announcement, exploration or double-tap flow could be used. The plan says
+to stop and not start the pager work when any of the five acceptance items fails;
+the user has since directed that the pager tasks proceed anyway, and that
+accessibility exposure be switched off in the meantime.
+
+**Accessibility exposure is off by default.** `ACCESSIBILITY_EXPOSURE_ENABLED`
+in `LauncherAccessibilityView.kt` gates the host view, the published tree and
+action dispatch together. The implementation is kept intact; the device
+acceptance tests require the flag to be `true`. With it off the launcher is
+verified to behave normally: no virtual nodes in `uiautomator dump` (a 1.7 KB
+trampoline-only tree), tap still launches, and swiping still pages
+(Home → Games with the wrapped title strip in landscape).
+
+The earlier automated results below remain accurate for the code they tested;
+they did not predict the hands-on failure, which is the whole reason this gate
+was defined as a TalkBack check rather than an action-level check.
 
 Tablet: iPlay60 mini Turbo, Android 14, TalkBack 17.1.0.1003738110.
-TalkBack and touch exploration remain enabled for the manual check. The updated
-release APK was built and installed with `adb install -r`; its Home tree exposes
-the five expected apps. Wallpaper remains visible.
+TalkBack is now **disabled** on the tablet: with the launcher's exposure off,
+TalkBack sees no launcher content, so leaving it enabled made the device unusable
+(the user asked for it to be turned off). Settings are
+`enabled_accessibility_services=null`, `accessibility_enabled=0` and
+`touch_exploration_enabled=0`; the launcher was rechecked afterwards (a tap
+launches, paging works). The updated release APK was built and installed with
+`adb install -r`; its Home tree exposes the five expected apps. Wallpaper remains
+visible.
 
 Fresh verification: 125 iced library tests (plus binary/doc-test targets), 21
 Kotlin unit tests (including 15 tree-diff tests), and all nine device acceptance
@@ -104,20 +128,30 @@ racing id sets it too. New test
 `i_nodesAreExposedWithoutIncludingUnimportantViews` failed before the fix
 (`importantForAccessibility: false` for Firefox) and passes after.
 
-Observable evidence after the fix (TalkBack enabled, release build): the focused
+Observable evidence after the fix (with TalkBack temporarily enabled, release
+build): the focused
 accessibility window is the QLaunch window on cold start (ids 701–704) where it
 was the navigation bar (676) before; this held across three cold starts, and
 opening search kept it on QLaunch. That is machine evidence only — it shows
 TalkBack moved into the app window, not that speech or swipes are correct.
 
-Still required before a go decision: hands-on spoken traversal, forward/backward
-swipes, double-tap and touch exploration, including focus rectangles after a
-finger-driven fling. These cannot be certified by injected accessibility actions.
-The fix was found only because the first hands-on attempt was made; the earlier
-automated passes did not detect it.
-The service settings from the start of this continuation (TalkBack enabled,
-touch exploration on) were restored after the TalkBack-off checks. The older,
-pre-spike service state is not recorded reliably enough to claim it was restored.
+Second hands-on attempt after the `isImportantForAccessibility` fix still failed:
+the selector stayed on the navigation bar and swipes did not enter the launcher.
+The gate is therefore closed as NO-GO, and the machine evidence above (focused
+accessibility window moving to QLaunch) is not sufficient to reopen it. This is
+the check that mattered: earlier automated passes, including the fixed-flag test,
+did not predict it. Per the plan this failure should also stop the pager work; the
+user directed that Tasks 7-9 continue regardless, and the exposure was switched
+off by default so the launcher behaves as it did before the spike.
+
+Remaining accessibility work, if it is ever resumed: find why TalkBack's linear
+navigation does not enter the launcher window (the focused window moves, but
+swipes stay on the navigation bar), then re-run the five hands-on checks and the
+nine automated device methods with `ACCESSIBILITY_EXPOSURE_ENABLED = true`.
+The service settings as found at the start of this continuation were restored
+after the TalkBack-off checks, and TalkBack was then disabled outright once the
+gate failed and the exposure was switched off (see above). The pre-spike service
+state is not recorded reliably enough to claim it was restored.
 Move destinations were verified without executing a move; actual uninstall was
 cancelled. These are safety-limited checks, not proof of the destructive flows.
 Physical external-keyboard hardware was not available; its key-event path was
@@ -284,10 +318,12 @@ arrangements are previews, not pixel parity. A group's scroll offset resets to t
 top when paging away and back, and multi-page jumps are not animated. Android
 shortcuts already in the config still launch through the core adapter.
 
-Translation of the neighbour pages is drawn through iced's overlay path; on this
-iced_android build the translated `Float` layers can overlap and the title strip
-can disappear in mid-drag screenshots, although the settled page is correct. This
-is a rendering-fork limitation, not a state bug.
+Translation of the neighbour pages was drawn through iced's overlay path; on that
+iced_android build the translated `Float` layers could overlap and the title strip
+could disappear in mid-drag screenshots, although the settled page was correct.
+That is now replaced by the custom `Slots` widget (see "Page renderer" below),
+which clips once and draws each slot itself, so the fork's overlay path is no
+longer on the paging path at all.
 
 Rotation was not verified on device: the saved settings pin the activity to
 portrait, and `wm user-rotation` has no effect while that lock is applied. A resize
@@ -298,6 +334,82 @@ exercised because no saved group has enough items to scroll.
 Do not use this APK to judge final feature-complete maintenance cost. It is useful
 for validating native integration, grid/search rendering, app-return behaviour,
 gesture handling, motion and the reduced UI/core boundary.
+
+## Page renderer (2026-10-30)
+
+`rust/qlaunch_iced/src/slots.rs` adds a three-slot widget that replaces the
+`float`/`Stack` pages and the translated title strip. Both are one clipped layer
+in which each slot is drawn at `child_bounds + translation`: pages translate by
+`(index - 1 - offset) * width`, the strip's thirds translate together by
+`-offset * width / 3`. Two pure functions own that geometry, so the layout, the
+draw calls and the tests share one source.
+
+The widget also owns input gating, which the overlay path could not do:
+
+| Interaction | Slots that receive input |
+| --- | --- |
+| `None` (dragging or settling) | none, except a redraw request to the centre |
+| `Centre` (settled pages) | the committed page only |
+| `All` (settled strip) | all three title slots |
+
+Each slot's content gets the cursor and clip shifted by the inverse translation,
+and a slot whose group key changes gets a fresh widget tree, so a scroll offset
+cannot leak from one group into the next. `operate` forwards to the same slots
+as input, which keeps `scroll_to("apps")` and the scroll resets working.
+
+Device results (tablet, release build, landscape 1920x1200):
+
+- A slow drag in both directions and across a wrap was recorded with
+  `screenrecord` and inspected frame by frame at 5 fps. Mid-drag frames show the
+  committed page, both neighbours and the whole title strip at once, with the
+  strip's opacity following the offset; no overlap, dropout or flicker.
+- A drag starting on an icon (Firefox) paged instead of launching: focus stayed
+  on `bitshift.qlaunch`.
+- A tap on an icon launched it; a tap 0.1-0.25 s after a horizontal drag release
+  was dropped and the page still settled (`Interaction::None` working); at
+  0.4-0.6 s, by which time the page had settled, the same tap launched the app,
+  which is the intended behaviour for a settled page.
+- A title step 0.15 s into a vertical drag landed correctly and did not launch
+  anything. An earlier attempt to check this was invalid (the app was in search
+  mode, where no title strip exists) and is not counted as evidence.
+- `frame-work` lines were emitted for each motion.
+
+Known limits found while verifying:
+
+- The debug native build can abort in `android-activity`'s window-resize glue
+  (`glue.rs:498`, an absent window behind a `debug_assert`). The release build
+  compiles the assert out. Isolated reruns pass, so this is an intermittent
+  lifecycle hazard in the pinned fork, not a resolved issue.
+- One run left a cell highlighted after paging. Instrumenting the set/clear
+  paths and sweeping the tap delay (0.1-0.6 s) showed every press cleared within
+  ~23 ms and did not reproduce it, so no fix was made on a guess; it is recorded
+  as an unreproduced cosmetic finding.
+- Accessibility exposure is off by default; see the NO-GO section above.
+
+## Tablet frame measurement (2026-10-30)
+
+Tablet: iPlay60 mini Turbo, Android 14, 1200x1920, 90 Hz, release build, saved
+layout unchanged, five runs. The tablet was in landscape, where the profiling
+script's default swipe coordinates (which assume portrait) land on the navigation
+bar, so the same script and method were run with landscape coordinates
+(`y=600`, x 1800->100 alternating) from a copy under `/tmp`. No repository script
+was changed for this.
+
+| Run | Frames | p50 | p95 | p99 | max | over 1.5x |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 126 | 11.14 ms | 11.15 ms | 11.45 ms | 22.28 ms | 0.8% |
+| 2 | 126 | 11.14 ms | 11.16 ms | 33.41 ms | 155.93 ms | 1.6% |
+| 3 | 126 | 11.14 ms | 11.16 ms | 11.36 ms | 33.42 ms | 0.8% |
+| 4 | 126 | 11.14 ms | 11.15 ms | 22.27 ms | 167.08 ms | 1.6% |
+| 5 | 126 | 11.14 ms | 11.16 ms | 11.50 ms | 33.41 ms | 0.8% |
+| median | 126 | 11.14 ms | 11.16 ms | 11.50 ms | 33.42 ms | 0.8% |
+
+The median cadence is 11.14 ms, which is the 90 Hz period (11.11 ms), and matches
+the previously recorded tablet baseline (p50/p95/p99 11.14/11.15/11.17 ms). Two of
+the five runs contain a single large interval (156 ms and 167 ms) plus elevated
+p99, so the median row must not be quoted as "no hitches": occasional long frames
+still occur. App-side work stayed small: `update` p50 0.03 ms / p95 0.25-0.27 ms,
+`view` p50 0.76-0.77 ms / p95 0.91-0.99 ms over ~216 frames per drag.
 
 ## Frame measurement (2026-10-28)
 
@@ -358,8 +470,14 @@ Technically, for the exercised flows, yes: the Rust core plus the existing
 Kotlin/JNI adapter provided saved configuration, groups/folders, real icons,
 wallpaper, search, launching, system shortcut providers, lock/notifications
 shortcuts, the wallpaper picker, uninstall and window recreation, with no Dart or
-Flutter code in the iced APK. Motion stayed at 60 Hz and app-side frame work was
-well below a frame budget.
+Flutter code in the iced APK. Motion held the display's cadence (60 Hz on the
+phone, 90 Hz on the tablet) and app-side frame work was well below a frame budget.
+The paging path no longer depends on the fork's translated overlay layers, because
+a custom `Slots` widget owns that geometry and its input gating.
+
+One requirement is not met: accessibility. TalkBack cannot drive the launcher
+(see the NO-GO section), so this build is not usable by a screen-reader user, and
+the exposure is switched off rather than shipped half-working.
 
 Removal is not a drop-in yet. The original Dart UI remains the only complete
 implementation and the reference for behaviour; its widget/integration tests and

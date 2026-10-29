@@ -6,6 +6,7 @@ mod metrics;
 mod overlay;
 pub mod pager;
 mod placeholder;
+mod slots;
 mod view;
 
 use accessibility::{ActionRequest, Target};
@@ -485,6 +486,98 @@ mod tests {
         let _ = app.update(Message::Loaded(Ok(snapshot)));
         assert_eq!(app.pager.committed(), 2);
         assert_eq!(app.snapshot.as_ref().unwrap().page_ids[2], current);
+    }
+
+    fn page_keys(app: &App) -> Vec<String> {
+        crate::view::page_slot_plan(app)
+            .iter()
+            .map(|plan| plan.key.clone())
+            .collect()
+    }
+
+    fn label_of(app: &App, group: &Id) -> String {
+        app.snapshot
+            .as_ref()
+            .unwrap()
+            .groups
+            .iter()
+            .find(|candidate| &candidate.id == group)
+            .map(|candidate| candidate.label.clone())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn page_and_title_slot_keys_follow_wrapped_groups() {
+        let mut app = app();
+        let page_ids = app.snapshot.as_ref().unwrap().page_ids.clone();
+        // A middle page shows its neighbours in order.
+        app.pager.set_count(page_ids.len(), 1);
+        assert_eq!(
+            page_keys(&app),
+            vec![
+                format!("page:{}", page_ids[0]),
+                format!("page:{}", page_ids[1]),
+                format!("page:{}", page_ids[2]),
+            ],
+        );
+
+        // Page 0 wraps: the left slot is the last group, not an empty one.
+        app.pager.set_count(page_ids.len(), 0);
+        assert_eq!(
+            page_keys(&app),
+            vec![
+                format!("page:{}", page_ids[2]),
+                format!("page:{}", page_ids[0]),
+                format!("page:{}", page_ids[1]),
+            ],
+        );
+        let titles = crate::view::title_slot_plan(&app);
+        assert_eq!(titles[0].key, format!("title:{}:0", page_ids[2]));
+        assert_eq!(titles[0].label, label_of(&app, &page_ids[2]));
+        assert_eq!(titles[1].key, format!("title:{}:1", page_ids[0]));
+        assert_eq!(titles[1].label, label_of(&app, &page_ids[0]));
+        assert_eq!(titles[2].key, format!("title:{}:2", page_ids[1]));
+        assert_eq!(titles[2].label, label_of(&app, &page_ids[1]));
+
+        // Fewer groups than slots leaves the empty slots keyed by position.
+        app.snapshot.as_mut().unwrap().page_ids.truncate(1);
+        app.pager.set_count(3, 0);
+        assert_eq!(
+            page_keys(&app),
+            vec![
+                "page:empty:0".to_string(),
+                format!("page:{}", page_ids[0]),
+                "page:empty:2".to_string(),
+            ],
+        );
+    }
+
+    #[test]
+    fn only_the_centre_page_is_scrollable_and_named_apps() {
+        let mut app = app();
+        let page_ids = app.snapshot.as_ref().unwrap().page_ids.clone();
+        app.pager.set_count(page_ids.len(), 1);
+        let pages = crate::view::page_slot_plan(&app);
+        assert!(!pages[0].scrollable);
+        assert!(pages[1].scrollable);
+        assert!(!pages[2].scrollable);
+        assert_eq!(pages[1].group.as_ref(), Some(&page_ids[1]));
+        assert_eq!(pages[0].group.as_ref(), Some(&page_ids[0]));
+
+        // The scrollable page is the committed group even while it is moving.
+        app.pager.set_count(page_ids.len(), 2);
+        let moved = crate::view::page_slot_plan(&app);
+        assert!(moved[1].scrollable);
+        assert_eq!(moved[1].group.as_ref(), Some(&page_ids[2]));
+    }
+
+    #[test]
+    fn title_buttons_keep_step_and_search_messages() {
+        let app = app();
+        let titles = crate::view::title_slot_plan(&app);
+        assert!(matches!(titles[0].message, Message::Step(-1)));
+        assert!(matches!(titles[1].message, Message::Search));
+        assert!(matches!(titles[2].message, Message::Step(1)));
     }
 
     fn publish(app: &mut App) {

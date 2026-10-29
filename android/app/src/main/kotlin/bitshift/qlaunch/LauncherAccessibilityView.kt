@@ -14,6 +14,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
 
+/// Accessible launcher exposure is switched off while the TalkBack gate is
+/// unresolved: hands-on testing showed TalkBack could not navigate the virtual
+/// tree, and the exposure must not get in the way of ordinary use. Everything
+/// below is kept intact, so re-enabling is flipping this one flag; the device
+/// acceptance tests in `AccessibilityAcceptanceTest` require it to be `true`.
+const val ACCESSIBILITY_EXPOSURE_ENABLED = false
+
 /// Transparent host for the virtual tree Rust publishes. It never consumes
 /// ordinary touches and never takes input focus: the iced surface and IME keep
 /// those. TalkBack only sees the virtual nodes.

@@ -1,14 +1,14 @@
 //! Launcher rendering. State lives in `App`; this module only reads it.
 
 use iced::widget::{
-    Stack, button, column, container, float, image, mouse_area, row, scrollable, space, text,
-    text_input,
+    button, column, container, image, mouse_area, row, scrollable, space, text, text_input,
 };
-use iced::{Color, Element, Fill, Font, Vector};
+use iced::{Color, Element, Fill, Font};
 use iced_android as platform;
-use qlaunch_core::model::Item;
+use qlaunch_core::model::{Id, Item};
 use qlaunch_core::settings::{LabelColour, LayoutStyle};
 
+use crate::slots::{Interaction, Slot, Slots};
 use crate::{App, Message, Region, grid, placeholder};
 
 pub fn launcher(app: &App) -> Element<'_, Message> {
@@ -139,25 +139,97 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
     }
 }
 
-/// Three wrapped page slots in translated layers. Only the current slot is
-/// scrollable; the neighbours are static previews of what a drag reveals.
+/// What each of the three page slots shows, before it becomes a widget. The
+/// key is per group, so a slot that changes group gets a fresh widget tree
+/// instead of inheriting the previous group's scroll offset.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PageSlotPlan {
+    pub key: String,
+    pub group: Option<Id>,
+    pub scrollable: bool,
+}
+
+/// What each of the three title slots shows.
+#[derive(Debug, Clone)]
+pub(crate) struct TitleSlotPlan {
+    pub key: String,
+    pub label: String,
+    pub message: Message,
+}
+
+pub(crate) fn page_slot_plan(app: &App) -> [PageSlotPlan; 3] {
+    let slots = app.pager.slots();
+    let page_ids = app
+        .snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.page_ids.as_slice())
+        .unwrap_or_default();
+
+    std::array::from_fn(|index| {
+        let group = page_ids.get(slots[index]).cloned();
+        PageSlotPlan {
+            key: group
+                .as_ref()
+                .map_or_else(|| format!("page:empty:{index}"), |id| format!("page:{id}")),
+            group,
+            // Only the committed page scrolls; its neighbours are previews of
+            // what a drag reveals and must not answer scroll or tap actions.
+            scrollable: index == 1,
+        }
+    })
+}
+
+pub(crate) fn title_slot_plan(app: &App) -> [TitleSlotPlan; 3] {
+    let slots = app.pager.slots();
+    let snapshot = app.snapshot.as_ref();
+    let page_ids = snapshot
+        .map(|snapshot| snapshot.page_ids.as_slice())
+        .unwrap_or_default();
+
+    std::array::from_fn(|index| {
+        let group = page_ids.get(slots[index]).cloned();
+        let label = group
+            .as_ref()
+            .and_then(|id| {
+                snapshot?
+                    .groups
+                    .iter()
+                    .find(|candidate| &candidate.id == id)
+            })
+            .map(|group| group.label.clone())
+            .unwrap_or_default();
+        TitleSlotPlan {
+            key: group.as_ref().map_or_else(
+                || format!("title:empty:{index}"),
+                |id| format!("title:{id}:{index}"),
+            ),
+            label,
+            message: match index {
+                0 => Message::Step(-1),
+                1 => Message::Search,
+                _ => Message::Step(1),
+            },
+        }
+    })
+}
+
+/// Three wrapped page slots. Only the committed slot scrolls; the neighbours
+/// are static previews of what a drag reveals.
 fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Message> {
     let snapshot = app.snapshot.as_ref().unwrap();
     let columns = app.columns();
-    let slots = app.pager.slots();
-    let offset = app.pager.offset();
-    let mut layers = Vec::with_capacity(3);
-    for (index, slot) in slots.iter().enumerate() {
-        let group = snapshot.page_ids.get(*slot);
+    let plan = page_slot_plan(app);
+    let slots = std::array::from_fn(|index| {
+        let planned = &plan[index];
         let items: Vec<&Item> = snapshot
             .items
             .iter()
-            .filter(|item| Some(&item.group_id) == group)
+            .filter(|item| Some(&item.group_id) == planned.group.as_ref())
             .collect();
         let rows = grid_rows(app, items, columns, colour);
-        let content: Element<'a, Message> = if index == 1 {
+        let content: Element<'a, Message> = if planned.scrollable {
             let mut apps = scrollable(rows).id("apps").height(Fill);
-            if let Some(group) = group.cloned() {
+            if let Some(group) = planned.group.clone() {
                 apps = apps.on_scroll(move |viewport| {
                     Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
                 });
@@ -166,55 +238,73 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
         } else {
             container(rows).width(Fill).height(Fill).clip(true).into()
         };
-        // The pages render through `float` overlays, which receive input before
-        // the base tree; target the blank press inside the layer, or presses
-        // between icons never reach the launcher's gesture classifier.
-        let content = mouse_area(content).on_press(Message::BlankPressed);
-        let dx = (index as f32 - 1.0 - offset) * content_width;
-        layers.push(
-            float(container(content).width(Fill).height(Fill))
-                .translate(move |_, _| Vector::new(dx, 0.0))
-                .into(),
-        );
-    }
-    mouse_area(
-        container(Stack::with_children(layers))
-            .width(Fill)
-            .height(Fill)
-            .clip(true),
-    )
+        Slot {
+            key: planned.key.clone(),
+            content: mouse_area(content).on_press(Message::BlankPressed).into(),
+        }
+    });
+
+    let interaction = if settled(app) {
+        Interaction::Centre
+    } else {
+        Interaction::None
+    };
+
+    mouse_area(Slots::pages(
+        slots,
+        app.pager.offset(),
+        content_width,
+        interaction,
+    ))
     .on_press(Message::BlankPressed)
     .into()
 }
 
+/// The title strip: the previous, current and next group names.
 fn title_strip<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Message> {
-    let snapshot = app.snapshot.as_ref().unwrap();
-    let settings = &snapshot.settings;
-    let slots = app.pager.slots();
+    let settings = &app.snapshot.as_ref().unwrap().settings;
     let offset = app.pager.offset();
-    let mut labels = row![].spacing(0).height(Fill);
-    for (index, slot) in slots.iter().enumerate() {
+    let plan = title_slot_plan(app);
+    let height = grid::title_height(settings);
+    let slots = std::array::from_fn(|index| {
+        let planned = &plan[index];
         let position = index as f32 - 1.0;
         let opacity = (1.0 - (position - offset).abs() * 0.6).max(0.0);
-        let label = snapshot
-            .groups
-            .iter()
-            .find(|g| g.id == snapshot.page_ids[*slot])
-            .map(|g| g.label.clone())
-            .unwrap_or_default();
-        let message = match index {
-            0 => Message::Step(-1),
-            1 => Message::Search,
-            _ => Message::Step(1),
-        };
-        labels = labels.push(title_button(app, label, colour, opacity, message));
-    }
-    let dx = -offset * content_width / 3.0;
-    container(float(labels).translate(move |_, _| Vector::new(dx, 0.0)))
-        .width(Fill)
-        .height(grid::title_height(settings))
-        .clip(true)
-        .into()
+        Slot {
+            key: planned.key.clone(),
+            content: title_button(
+                app,
+                planned.label.clone(),
+                colour,
+                opacity,
+                planned.message.clone(),
+            ),
+        }
+    });
+
+    let interaction = if settled(app) {
+        Interaction::All
+    } else {
+        Interaction::None
+    };
+
+    container(Slots::strip(
+        slots,
+        offset,
+        content_width,
+        height,
+        interaction,
+    ))
+    .width(Fill)
+    .height(height)
+    .clip(true)
+    .into()
+}
+
+/// A settled pager is not dragging or animating; only then may its slots take
+/// input, so a tap during a drag or a settle cannot hit a moving page.
+fn settled(app: &App) -> bool {
+    !app.pager.is_dragging() && !app.pager.is_animating()
 }
 
 fn single_grid<'a>(
