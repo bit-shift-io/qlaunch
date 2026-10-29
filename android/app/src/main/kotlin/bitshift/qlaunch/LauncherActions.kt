@@ -20,10 +20,32 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
 import java.util.concurrent.FutureTask
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /// OS operations that require the current Activity or a result round-trip.
 object LauncherActions {
     private var displaySettings: String? = null
+
+    private val pendingAccessibility = AtomicReference<String?>(null)
+    private val accessibilityPosted = AtomicBoolean(false)
+
+    /// Fire-and-forget from the iced thread: keep only the latest tree and let
+    /// the UI thread publish it. Never blocks the caller.
+    fun publishAccessibility(json: String) {
+        pendingAccessibility.set(json)
+        val host = activity.get() ?: return
+        if (!accessibilityPosted.compareAndSet(false, true)) return
+        host.runOnUiThread {
+            accessibilityPosted.set(false)
+            pendingAccessibility.getAndSet(null)?.let(host::publishAccessibility)
+        }
+    }
+
+    /// Closes the startup race: iced may publish before the host view exists.
+    fun flushAccessibility(host: MainActivity) {
+        pendingAccessibility.getAndSet(null)?.let(host::publishAccessibility)
+    }
 
     fun applyDisplaySettings(json: String) {
         displaySettings = json

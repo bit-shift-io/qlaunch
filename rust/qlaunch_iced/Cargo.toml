@@ -19,6 +19,9 @@ iced_android = { git = "https://github.com/Santuzius/iced_android", tag = "v0.1.
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "time"] }
 futures = { version = "0.3", features = ["executor"] }
 log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.15"
+jni = "0.21"

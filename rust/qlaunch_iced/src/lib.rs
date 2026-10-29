@@ -1,4 +1,5 @@
 //! Throwaway Android/desktop comparison UI. The core remains the source of truth.
+mod accessibility;
 pub mod gesture;
 pub mod grid;
 mod metrics;
@@ -7,6 +8,7 @@ pub mod pager;
 mod placeholder;
 mod view;
 
+use accessibility::{ActionRequest, Target};
 use gesture::{Gesture, Outcome, Start};
 use pager::Pager;
 use std::collections::{HashMap, HashSet};
@@ -39,6 +41,7 @@ fn android_main(app: platform::AndroidApp) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accessibility::{Action, Target};
     use qlaunch_core::{model::Model, settings::Settings};
 
     fn app() -> App {
@@ -117,10 +120,47 @@ mod tests {
     }
 
     #[test]
-    fn scrolled_tracks_offsets_per_group() {
+    fn scroll_offsets_are_tracked_per_region() {
         let mut app = app();
-        let _ = app.update(Message::Scrolled("g".into(), 42.0));
-        assert_eq!(app.scroll.get("g"), Some(&42.0));
+        let _ = app.update(Message::Scrolled(Region::Group("g".into()), 42.0));
+        let _ = app.update(Message::Scrolled(Region::Search, 12.0));
+        let _ = app.update(Message::Scrolled(Region::OverlayList, 7.0));
+        assert_eq!(app.scroll.get(&Region::Group("g".into())), Some(&42.0));
+        assert_eq!(app.scroll.get(&Region::Search), Some(&12.0));
+        assert_eq!(app.scroll.get(&Region::OverlayList), Some(&7.0));
+    }
+
+    #[test]
+    fn search_results_report_their_scroll_offset() {
+        let mut app = app();
+        let _ = app.update(Message::Scrolled(Region::Search, 42.0));
+        assert_eq!(app.scroll.get(&Region::Search), Some(&42.0));
+    }
+
+    #[test]
+    fn overlay_list_reports_its_scroll_offset() {
+        let mut app = app();
+        let _ = app.update(Message::Scrolled(Region::OverlayList, 42.0));
+        assert_eq!(app.scroll.get(&Region::OverlayList), Some(&42.0));
+    }
+
+    #[test]
+    fn open_search_and_query_reset_the_search_offset() {
+        let mut app = app();
+        app.scroll.insert(Region::Search, 42.0);
+        let _ = app.open_search();
+        assert_eq!(app.scroll.get(&Region::Search), Some(&0.0));
+        app.scroll.insert(Region::Search, 42.0);
+        let _ = app.update(Message::Query("calc".into()));
+        assert_eq!(app.scroll.get(&Region::Search), Some(&0.0));
+    }
+
+    #[test]
+    fn switching_history_resets_the_search_offset() {
+        let mut app = app();
+        app.scroll.insert(Region::Search, 42.0);
+        let _ = app.update(Message::History(true));
+        assert_eq!(app.scroll.get(&Region::Search), Some(&0.0));
     }
 
     #[test]
@@ -363,6 +403,13 @@ mod tests {
     }
 
     #[test]
+    fn gesture_body_top_still_ignores_search() {
+        let mut app = app();
+        app.searching = true;
+        assert_eq!(app.body_top(), f32::INFINITY);
+    }
+
+    #[test]
     fn pull_down_from_blank_at_the_top_reaches_the_classifier() {
         let mut app = app();
         let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
@@ -439,6 +486,169 @@ mod tests {
         assert_eq!(app.pager.committed(), 2);
         assert_eq!(app.snapshot.as_ref().unwrap().page_ids[2], current);
     }
+
+    fn publish(app: &mut App) {
+        app.publish_accessibility();
+        assert!(app.accessibility.frame.is_some(), "frame was not published");
+    }
+
+    fn request(app: &App, key: &str, action: Action) -> crate::accessibility::ActionRequest {
+        let frame = app.accessibility.frame.as_ref().expect("published frame");
+        let node = frame
+            .nodes
+            .iter()
+            .find(|node| node.key == key)
+            .unwrap_or_else(|| panic!("no node {key}"));
+        crate::accessibility::ActionRequest {
+            node_id: node.id,
+            action,
+            value: String::new(),
+            revision: app.accessibility.publisher.revision(),
+        }
+    }
+
+    fn fill_page(app: &mut App, count: usize) {
+        let group = app.current_group_id().cloned().expect("a current group");
+        for index in 0..count {
+            let mut item = item(app, &format!("fill-{index}"));
+            item.group_id = group.clone();
+            app.snapshot.as_mut().unwrap().items.push(item);
+        }
+    }
+
+    fn visible_folder(app: &mut App) -> Item {
+        let group = app.current_group_id().cloned().expect("a current group");
+        let mut folder = folder_item(app);
+        folder.group_id = group;
+        app.snapshot.as_mut().unwrap().items.push(folder.clone());
+        folder
+    }
+
+    #[test]
+    fn item_click_is_dropped_while_paging() {
+        let mut app = app();
+        app.pager.set_count(3, 0);
+        let folder = visible_folder(&mut app);
+        publish(&mut app);
+        app.pager.begin_drag();
+        let request = request(&app, &format!("item:{}", folder.id), Action::Click);
+        let _ = app.update(Message::Accessibility(request));
+        assert!(app.folder.is_none());
+    }
+
+    #[test]
+    fn returning_to_foreground_republishes_the_tree() {
+        let mut app = app();
+        app.background = true;
+        app.accessibility.frame = None;
+        app.set_foreground(true);
+        assert!(app.accessibility.frame.is_some(), "foreground did not republish");
+    }
+
+    #[test]
+    fn stale_revision_cannot_launch_or_open_a_menu() {
+        let mut app = app();
+        app.pager.set_count(3, 0);
+        let folder = visible_folder(&mut app);
+        publish(&mut app);
+        let mut request = request(&app, &format!("item:{}", folder.id), Action::Click);
+        request.revision -= 1;
+        let _ = app.update(Message::Accessibility(request));
+        assert!(app.folder.is_none());
+    }
+
+    #[test]
+    fn title_action_is_still_allowed_while_paging() {
+        let mut app = app();
+        app.pager.set_count(3, 0);
+        publish(&mut app);
+        app.pager.begin_drag();
+        let request = request(&app, "title:next", Action::Click);
+        let _ = app.update(Message::Accessibility(request));
+        assert!(app.pager.is_animating());
+        settle(&mut app);
+        assert_eq!(app.pager.committed(), 1);
+    }
+
+    #[test]
+    fn accessibility_scroll_updates_the_region_offset() {
+        let mut app = app();
+        app.pager.set_count(3, 0);
+        fill_page(&mut app, 60);
+        publish(&mut app);
+        let region = Region::Group(app.current_group_id().cloned().unwrap());
+        let viewport = app
+            .accessibility
+            .frame
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|node| node.key == "grid:container")
+            .and_then(|node| match node.target {
+                Target::Scroll { viewport, .. } => Some(viewport),
+                _ => None,
+            })
+            .expect("a scroll target");
+        let request = request(&app, "grid:container", Action::ScrollForward);
+        let _ = app.update(Message::Accessibility(request));
+        let offset = app.scroll.get(&region).copied().unwrap_or_default();
+        assert!(
+            (offset - viewport * 0.8).abs() < 0.1,
+            "offset {offset} != {}",
+            viewport * 0.8
+        );
+    }
+
+    #[test]
+    fn page_scroll_actions_step_the_pager() {
+        let mut app = app();
+        app.pager.set_count(3, 0);
+        publish(&mut app);
+        let request = request(&app, "grid:container", Action::ScrollRight);
+        let _ = app.update(Message::Accessibility(request));
+        settle(&mut app);
+        assert_eq!(app.pager.committed(), 1);
+    }
+
+    #[test]
+    fn accessibility_search_text_reaches_the_query() {
+        let mut app = app();
+        app.searching = true;
+        app.query.clear();
+        publish(&mut app);
+        let mut request = request(&app, "search:field", Action::SetText);
+        request.value = "calc".into();
+        let _ = app.update(Message::Accessibility(request));
+        assert_eq!(app.query, "calc");
+    }
+
+    #[test]
+    fn overlay_dismiss_uses_the_back_path() {
+        let mut app = app();
+        app.overlay = Some(app_overlay(&app, overlay::AppStep::Actions));
+        publish(&mut app);
+        let request = request(&app, "overlay:title", Action::Dismiss);
+        let _ = app.update(Message::Accessibility(request));
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn unknown_node_or_action_is_ignored() {
+        let mut app = app();
+        app.pager.set_count(3, 0);
+        publish(&mut app);
+        let mut unknown = request(&app, "grid:container", Action::Click);
+        unknown.node_id = 9999;
+        let _ = app.update(Message::Accessibility(unknown));
+        assert!(!app.pager.is_animating());
+
+        let unadvertised = request(&app, "grid:container", Action::Click);
+        let _ = app.update(Message::Accessibility(unadvertised));
+        assert!(!app.pager.is_animating());
+
+        assert!(Action::parse("teleport").is_none());
+    }
 }
 
 pub fn run() -> iced::Result {
@@ -460,6 +670,23 @@ pub fn run() -> iced::Result {
         app = app.font(font);
     }
     app.run()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum Region {
+    Group(Id),
+    Search,
+    OverlayList,
+}
+
+impl Region {
+    pub(crate) fn widget_id(&self) -> &'static str {
+        match self {
+            Region::Group(_) => "apps",
+            Region::Search => "search-results",
+            Region::OverlayList => "overlay-list",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -487,11 +714,13 @@ enum Message {
     Touch(iced::touch::Event),
     Resized(iced::Size),
     Density(f32),
-    Scrolled(Id, f32),
+    Scrolled(Region, f32),
     Frame(Instant),
     Overlay(overlay::Message),
     Mutated(Result<core::ModelSnapshot, String>),
     ActionDone(Result<(), String>),
+    Accessibility(ActionRequest),
+    AccessibilitySettled(u64),
 }
 
 struct App {
@@ -513,8 +742,9 @@ struct App {
     pending: HashSet<AppRef>,
     pub(crate) error: Option<String>,
     pub(crate) size: iced::Size,
-    scroll: HashMap<Id, f32>,
+    scroll: HashMap<Region, f32>,
     overlay: Option<overlay::Overlay>,
+    accessibility: accessibility::State,
     metrics: Mutex<metrics::Samples>,
     gesture: Gesture,
     pending_target: Option<Start>,
@@ -570,6 +800,7 @@ impl App {
             size: iced::Size::new(420.0, 800.0),
             scroll: HashMap::new(),
             overlay: None,
+            accessibility: accessibility::State::default(),
             metrics: Mutex::new(metrics::Samples::default()),
             gesture: Gesture::new(),
             pending_target: None,
@@ -627,6 +858,7 @@ impl App {
                 _ => None,
             }),
         ];
+        subscriptions.push(accessibility::subscribe().map(Message::Accessibility));
         if self.pager.is_animating() {
             subscriptions.push(window::frames().map(Message::Frame));
         }
@@ -675,11 +907,18 @@ impl App {
 
     /// Returns the page scroll to the top and forgets its old offset.
     fn reset_scroll(&mut self) -> Task<Message> {
-        if let Some(group) = self.current_group_id().cloned() {
-            self.scroll.insert(group, 0.0);
+        let region = self.current_group_id().cloned().map(Region::Group);
+        match region {
+            Some(region) => self.scroll_region_to_top(region),
+            None => Task::none(),
         }
+    }
+
+    /// Resets one scroll region and moves its widget to the top.
+    fn scroll_region_to_top(&mut self, region: Region) -> Task<Message> {
+        self.scroll.insert(region.clone(), 0.0);
         iced::widget::operation::scroll_to(
-            "apps",
+            region.widget_id(),
             iced::widget::operation::AbsoluteOffset {
                 x: Some(0.0),
                 y: Some(0.0),
@@ -928,6 +1167,7 @@ impl App {
         self.folder = None;
         self.query.clear();
         Task::batch([
+            self.scroll_region_to_top(Region::Search),
             iced::widget::operation::focus("search"),
             work(
                 || {
@@ -968,10 +1208,53 @@ impl App {
         if let Some(summary) = summary {
             log::info!("{}", summary.log_line());
         }
+        self.publish_accessibility_if_idle();
         task
     }
 
+    /// Publishes whenever the tree can have changed, unless a pager motion or
+    /// a scroll fling is still in flight.
+    fn publish_accessibility_if_idle(&mut self) {
+        if self.background
+            || self.pager.is_dragging()
+            || self.pager.is_animating()
+            || self.accessibility.pending_scroll
+        {
+            return;
+        }
+        self.publish_accessibility();
+    }
+
+    pub(crate) fn publish_accessibility(&mut self) {
+        let Some(frame) = accessibility::frame(self) else {
+            return;
+        };
+        let announcement = accessibility::announcement(self);
+        if let Err(error) = self.accessibility.publish(frame, Some(announcement)) {
+            log::debug!("accessibility publish failed: {error}");
+        }
+    }
+
+    /// Coming back from another app has no update of its own, so republish
+    /// explicitly; otherwise the overlay stays empty until the next input.
+    fn set_foreground(&mut self, visible: bool) {
+        self.background = !visible;
+        if visible {
+            self.publish_accessibility();
+        }
+    }
+
     fn update_inner(&mut self, message: Message) -> Task<Message> {
+        if !matches!(
+            &message,
+            Message::Scrolled(..)
+                | Message::AccessibilitySettled(_)
+                | Message::Accessibility(_)
+                | Message::Icons(_)
+                | Message::Frame(_)
+        ) {
+            self.accessibility.cancel_scroll();
+        }
         match message {
             Message::Opened(id) => {
                 self.window = Some(id);
@@ -984,7 +1267,7 @@ impl App {
                 }
             }
             Message::Foreground(visible) => {
-                self.background = !visible;
+                self.set_foreground(visible);
                 if visible && self.window.is_none() {
                     let (id, open) = window::open(window_settings());
                     self.window = Some(id);
@@ -1072,7 +1355,8 @@ impl App {
             }
             Message::Query(query) => {
                 self.query = query.clone();
-                return work(
+                let reset = self.scroll_region_to_top(Region::Search);
+                let search = work(
                     move || {
                         let hits = block_on(core::search_all_apps(query.clone()))
                             .into_iter()
@@ -1082,13 +1366,18 @@ impl App {
                     },
                     |(query, hits)| Message::Results(query, hits),
                 );
+                return Task::batch([reset, search]);
             }
             Message::Results(query, hits) => {
                 if query == self.query {
                     self.results = hits;
                 }
             }
-            Message::History(recent) => self.show_recent = recent,
+            Message::History(recent) => {
+                self.show_recent = recent;
+                let reset = self.scroll_region_to_top(Region::Search);
+                return Task::batch([reset, self.warm_icons()]);
+            }
             Message::HistoryLoaded(frequent, recent) => {
                 self.frequent = frequent;
                 self.recent = recent;
@@ -1128,17 +1417,185 @@ impl App {
                     self.icons.insert(app, handle);
                 }
             }
-            Message::Scrolled(group, offset) => {
-                self.scroll.insert(group, offset);
+            Message::Scrolled(region, offset) => {
+                self.scroll.insert(region, offset);
+                let generation = self.accessibility.scroll_started();
+                return Task::perform(
+                    async move { tokio::time::sleep(accessibility::QUIESCENCE).await },
+                    move |_| Message::AccessibilitySettled(generation),
+                );
+            }
+            Message::AccessibilitySettled(generation) => {
+                self.accessibility.scroll_settled(generation);
+            }
+            Message::Accessibility(request) => {
+                return self.accessibility_action(request);
             }
             Message::Touch(event) => return self.touch_event(event),
         }
         self.warm_icons()
     }
 
+    /// Dispatches one TalkBack action against the last published frame. Stale
+    /// revisions, unknown nodes and unadvertised actions are ignored, and page
+    /// content is frozen while the pager moves.
+    fn accessibility_action(&mut self, request: ActionRequest) -> Task<Message> {
+        use accessibility::{Action, TextField};
+
+        let Some(frame) = self.accessibility.frame.clone() else {
+            return Task::none();
+        };
+        if request.revision != self.accessibility.publisher.revision() {
+            return Task::none();
+        }
+        let Some(node) = frame
+            .nodes
+            .iter()
+            .find(|node| node.id == request.node_id)
+            .cloned()
+        else {
+            return Task::none();
+        };
+        if !node.actions.contains(&request.action) {
+            return Task::none();
+        }
+
+        if self.pager.is_dragging() || self.pager.is_animating() {
+            if matches!(
+                request.action,
+                Action::ScrollForward
+                    | Action::ScrollBackward
+                    | Action::ScrollLeft
+                    | Action::ScrollRight
+            ) {
+                return Task::none();
+            }
+            match node.target {
+                Target::Item(_) => return Task::none(),
+                Target::TextField(TextField::Search) if request.action == Action::SetText => {
+                    return Task::none();
+                }
+                _ => {}
+            }
+        }
+
+        self.accessibility.cancel_scroll();
+        match request.action {
+            Action::ScrollLeft => return self.update(Message::Step(-1)),
+            Action::ScrollRight => return self.update(Message::Step(1)),
+            Action::Dismiss => return self.overlay_message(overlay::Message::Back),
+            _ => {}
+        }
+
+        match node.target {
+            Target::Item(id) => match request.action {
+                Action::LongClick => self.apply_gesture(Outcome::LongPress(Start::Item(id))),
+                Action::Click => {
+                    let item = self.snapshot.as_ref().and_then(|snapshot| {
+                        snapshot.items.iter().find(|item| item.id == id).cloned()
+                    });
+                    match item {
+                        Some(item) => self.activate(item),
+                        None => Task::none(),
+                    }
+                }
+                _ => Task::none(),
+            },
+            Target::Step(delta) => self.update(Message::Step(delta)),
+            Target::Search => self.update(Message::Search),
+            Target::Back => self.update(Message::Back),
+            Target::SearchTab(recent) => self.update(Message::History(recent)),
+            Target::TextField(field) => {
+                self.accessibility_text_field(field, request.action, request.value)
+            }
+            Target::Scroll {
+                region,
+                offset,
+                viewport,
+                content,
+            } => match request.action {
+                Action::ScrollForward => {
+                    self.accessibility_scroll(region, offset + 0.8 * viewport, viewport, content)
+                }
+                Action::ScrollBackward => {
+                    self.accessibility_scroll(region, offset - 0.8 * viewport, viewport, content)
+                }
+                Action::LongClick => {
+                    self.open_launcher_menu();
+                    Task::none()
+                }
+                _ => Task::none(),
+            },
+            Target::Overlay(message) => self.overlay_message(message),
+            Target::Dismiss => self.overlay_message(overlay::Message::Back),
+        }
+    }
+
+    fn accessibility_text_field(
+        &mut self,
+        field: accessibility::TextField,
+        action: accessibility::Action,
+        value: String,
+    ) -> Task<Message> {
+        use accessibility::{Action, TextField};
+        use iced::widget::operation;
+
+        match field {
+            TextField::Search => {
+                let focus = operation::focus("search");
+                if action == Action::SetText {
+                    Task::batch([focus, self.update(Message::Query(value))])
+                } else {
+                    focus
+                }
+            }
+            TextField::AppName => {
+                let focus = operation::focus(overlay::APP_NAME_FIELD_ID);
+                if action == Action::SetText {
+                    Task::batch([
+                        focus,
+                        self.overlay_message(overlay::Message::AppRename(value)),
+                    ])
+                } else {
+                    focus
+                }
+            }
+            TextField::FolderName => {
+                let focus = operation::focus(overlay::FOLDER_NAME_FIELD_ID);
+                if action == Action::SetText {
+                    Task::batch([
+                        focus,
+                        self.overlay_message(overlay::Message::LauncherFolderName(value)),
+                    ])
+                } else {
+                    focus
+                }
+            }
+        }
+    }
+
+    fn accessibility_scroll(
+        &mut self,
+        region: Region,
+        next: f32,
+        viewport: f32,
+        content: f32,
+    ) -> Task<Message> {
+        let maximum = (content - viewport).max(0.0);
+        let target = next.clamp(0.0, maximum);
+        self.scroll.insert(region.clone(), target);
+        iced::widget::operation::scroll_to(
+            region.widget_id(),
+            iced::widget::operation::AbsoluteOffset {
+                x: Some(0.0),
+                y: Some(target),
+            },
+        )
+    }
+
     fn at_top(&self) -> bool {
         self.current_group_id()
-            .and_then(|group| self.scroll.get(group))
+            .and_then(|group| self.scroll.get(&Region::Group(group.clone())))
             .copied()
             .unwrap_or(0.0)
             <= 0.5
@@ -1191,14 +1648,7 @@ impl App {
         if self.folder.is_some() {
             return top + grid::title_height(settings);
         }
-        let landscape = self.size.width > self.size.height;
-        let tabs = match settings.tab_visibility {
-            qlaunch_core::settings::TabVisibility::Always => true,
-            qlaunch_core::settings::TabVisibility::Never => false,
-            qlaunch_core::settings::TabVisibility::LandscapeOnly => landscape,
-            qlaunch_core::settings::TabVisibility::PortraitOnly => !landscape,
-        };
-        if tabs && !snapshot.page_ids.is_empty() {
+        if grid::tabs_visible(settings, self.size, snapshot.page_ids.len()) {
             top + grid::title_height(settings)
         } else {
             top

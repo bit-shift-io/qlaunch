@@ -16,24 +16,48 @@ fi
 "${ADB[@]}" get-state >/dev/null
 
 if [ -z "$LAYER" ]; then
-  # `--list` is empty on some Android 14 builds; fall back to the layer table
-  # in the full dump. The suffix (#id) is part of the latency layer name.
-  LAYER=$(
+  # `--list` includes helper layers ("ActivityRecordInputSink ...") and both a
+  # container and its buffer layer. The buffer layer is the clean line with the
+  # package at the start; fall back to prefixed list lines, then the layer table.
+  CANDIDATES=$(
     "${ADB[@]}" shell dumpsys SurfaceFlinger --list 2>/dev/null \
       | tr -d '\r' \
-      | grep -i 'bitshift.qlaunch' \
-      | grep -vi 'Background' \
-      | head -1 || true
+      | grep -E '^bitshift\.qlaunch/[^ ]+MainActivity#[0-9]+$' \
+      | grep -vi 'Background' || true
   )
-  if [ -z "$LAYER" ]; then
-    LAYER=$(
+  if [ -z "$CANDIDATES" ]; then
+    CANDIDATES=$(
+      "${ADB[@]}" shell dumpsys SurfaceFlinger --list 2>/dev/null \
+        | tr -d '\r' \
+        | grep -E 'bitshift\.qlaunch/[^ ]+MainActivity#[0-9]+' \
+        | grep -vi 'Background' \
+        | sed -E 's/^.*(bitshift\.qlaunch\/[^ ]+#[0-9]+)$/\1/' || true
+    )
+  fi
+  if [ -z "$CANDIDATES" ]; then
+    CANDIDATES=$(
       "${ADB[@]}" shell dumpsys SurfaceFlinger \
         | tr -d '\r' \
         | grep -o 'Layer \[[0-9]*\] bitshift\.qlaunch[^ ]*' \
-        | head -1 \
         | sed 's/^Layer \[[0-9]*\] //' || true
     )
   fi
+  # Prefer a candidate that already records presents; the container layer does
+  # not, and some builds keep stale layer names in the list.
+  for candidate in $CANDIDATES; do
+    count=$(
+      "${ADB[@]}" shell "dumpsys SurfaceFlinger --latency '$candidate'" \
+        | tr -d '\r' \
+        | awk 'NR > 1 && NF >= 2 && $2 != "0" && $2 != "9223372036854775807" { n++ } END { print n + 0 }'
+    )
+    if [ "$count" -gt 0 ]; then
+      LAYER=$candidate
+      break
+    fi
+    if [ -z "${LAYER:-}" ]; then
+      LAYER=$candidate
+    fi
+  done
 fi
 if [ -z "$LAYER" ]; then
   echo "profile-iced: no SurfaceFlinger layer matches bitshift.qlaunch; set LAYER" >&2
@@ -53,6 +77,8 @@ latency_rows() {
 SOURCE=latency
 if [ "$(latency_rows)" -lt 2 ]; then
   SOURCE=timestats
+  # TimeStats is off by default on some builds; enabling it is idempotent.
+  "${ADB[@]}" shell "dumpsys SurfaceFlinger --timestats -enable" >/dev/null 2>&1 || true
 fi
 
 echo "profile-iced: layer=$LAYER refresh=${REFRESH}Hz runs=$RUNS source=$SOURCE"

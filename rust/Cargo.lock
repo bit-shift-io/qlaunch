@@ -2829,8 +2829,11 @@ dependencies = [
  "futures",
  "iced",
  "iced_android",
+ "jni 0.21.1",
  "log",
  "qlaunch_core",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

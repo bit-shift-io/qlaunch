@@ -29,6 +29,58 @@ Dependencies are pinned to iced_android v0.1.1 and its matching iced and
 android-activity forks. This is community-maintained mobile support, not official
 iced support. Workability must be established on-device before adoption.
 
+## Accessibility — Task 6 acceptance in progress (2026-10-29)
+
+**Decision: pending; Tasks 7–9 are not authorised to proceed.** Automated
+accessibility actions pass, but this is not a substitute for hands-on TalkBack
+speech, swipe/double-tap and touch-exploration acceptance.
+
+Tablet: iPlay60 mini Turbo, Android 14, TalkBack 17.1.0.1003738110.
+TalkBack and touch exploration remain enabled for the manual check. The updated
+release APK was built and installed with `adb install -r`; its Home tree exposes
+the five expected apps. Wallpaper remains visible.
+
+Fresh verification: 123 iced library tests, 20 Kotlin unit tests (including 14
+tree-diff tests), and all five device acceptance methods pass. Device methods
+cover published order; Firefox launch and app/blank-grid menus; real search IME,
+query/results updates and accessibility focus through `c`, `ca`, `cal`, `calc`;
+vertical scrolling and page steps, focus retention/fallback and removal of old
+page nodes; and dropping an old item action during page motion. Device acceptance
+ran against the debug build; release startup/tree was separately checked.
+
+The device test exposed a bridge focus bug: `ExploreByTouchHelper.INVALID_ID`
+was treated as a removed focused node, generating synthetic focus events while
+the helper retained no focus. Absent focus is now filtered out, and fallback
+focus uses the provider's real focus action instead of merely emitting an event.
+The search test failed before this fix and passes afterwards.
+
+Still required before a go decision:
+- Hands-on spoken traversal, forward/backward swipes, double-tap and exploration.
+- Folder navigation and Rename/Move/Uninstall flows (without destructive changes).
+- Screenshot comparison of app/folder/search/overlay bounds within 2 dp.
+- TalkBack-off ordinary gesture, hardware-keyboard and soft-keyboard regressions.
+- Restore the pre-test accessibility-service settings after manual acceptance.
+
+### Device-test safety
+
+Gradle's connected-test cleanup uninstalled QLaunch and cleared its private
+layout during this run. Android backup restore did not recover it. The on-device
+`Download/qlaunch-backup-2026-10-23-085707.json` did: Apps 26, Home 5, Games 19,
+with the expected labels verified after restoration. This recovers the Oct-23
+settings/usage too; changes since that backup cannot be guaranteed recovered.
+A fresh private-store snapshot is retained outside the repository at
+`/tmp/opencode/qlaunch-pre-release-20261029.json`. No personal images were added.
+
+Do **not** use `connectedDebugAndroidTest` on this tablet. Build with
+`assembleDebugAndroidTest`, install target/test APKs using `adb install -r`, and
+run each method of `AccessibilityAcceptanceTest` in a separate `am instrument`
+invocation. AndroidJUnitRunner destroys activities between methods; recreating
+the NativeActivity in the same process aborts in the pinned native glue.
+The driver preserves TalkBack using `FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`.
+`UiAutomation.executeShellCommand` does not interpret pipes; filter its output
+in Kotlin. Repeated Home opens search by design, so do not use it as an
+unconditional test reset. Gradle configuration-cache reuse was verified.
+
 ## Building (no Flutter SDK required)
 
 Requires Rust with `aarch64-linux-android`, an Android SDK with platform 36,

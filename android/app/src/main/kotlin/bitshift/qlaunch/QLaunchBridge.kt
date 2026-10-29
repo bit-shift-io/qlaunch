@@ -28,6 +28,7 @@ object QLaunchBridge {
         LauncherActions.onMain { it.beginShortcut(provider, group) }
     @JvmStatic fun launchShortcut(json: String) = LauncherActions.launchShortcut(json)
     @JvmStatic fun applyDisplaySettings(json: String) = LauncherActions.applyDisplaySettings(json)
+    @JvmStatic fun publishAccessibility(json: String) = LauncherActions.publishAccessibility(json)
     private var appContext: Context? = null
 
     @JvmStatic

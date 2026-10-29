@@ -7,9 +7,9 @@ use iced::widget::{
 use iced::{Color, Element, Fill, Font, Vector};
 use iced_android as platform;
 use qlaunch_core::model::Item;
-use qlaunch_core::settings::{LabelColour, LayoutStyle, TabVisibility};
+use qlaunch_core::settings::{LabelColour, LayoutStyle};
 
-use crate::{App, Message, grid, placeholder};
+use crate::{App, Message, Region, grid, placeholder};
 
 pub fn launcher(app: &App) -> Element<'_, Message> {
     let Some(snapshot) = &app.snapshot else {
@@ -28,14 +28,24 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
     if app.searching {
         content = content.push(
             row![
-                text_input("Search apps", &app.query)
-                    .id("search")
-                    .on_input(Message::Query)
-                    .padding(10),
-                button("×").on_press(Message::Search).style(button::text)
+                container(
+                    text_input("Search apps", &app.query)
+                        .id("search")
+                        .on_input(Message::Query)
+                        .padding(10),
+                )
+                .width(Fill)
+                .height(grid::SEARCH_CONTENT_HEIGHT)
+                .center_y(Fill),
+                button("×")
+                    .width(grid::SEARCH_CLOSE_WIDTH)
+                    .height(grid::SEARCH_CONTENT_HEIGHT)
+                    .on_press(Message::Search)
+                    .style(button::text)
             ]
-            .spacing(6)
-            .padding([2, 8]),
+            .spacing(grid::SEARCH_GAP)
+            .padding([2.0, grid::SEARCH_HORIZONTAL_PADDING])
+            .height(grid::SEARCH_ROW_HEIGHT),
         );
         if app.query.is_empty() {
             content = content.push(
@@ -55,7 +65,7 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
                         Message::History(true)
                     )
                 ]
-                .height(48),
+                .height(grid::SEARCH_TABS_HEIGHT),
             );
         }
         content = content.push(single_grid(app, app.visible_items(), colour, true));
@@ -68,33 +78,40 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
             .unwrap_or("Folder");
         content = content.push(
             row![
-                button("‹").on_press(Message::Back).style(button::text),
+                button("‹")
+                    .width(grid::FOLDER_BACK_WIDTH)
+                    .height(Fill)
+                    .on_press(Message::Back)
+                    .style(button::text),
                 text(label).size(settings.label_size as f32)
             ]
-            .padding(8),
+            .align_y(iced::Center)
+            .height(grid::title_height(settings))
+            .padding([0.0, grid::FOLDER_PADDING]),
         );
         content = content.push(
             mouse_area(single_grid(app, app.visible_items(), colour, false))
                 .on_press(Message::BlankPressed),
         );
     } else {
-        let landscape = app.size.width > app.size.height;
-        let tabs = match settings.tab_visibility {
-            TabVisibility::Always => true,
-            TabVisibility::Never => false,
-            TabVisibility::LandscapeOnly => landscape,
-            TabVisibility::PortraitOnly => !landscape,
-        };
-        if tabs && !snapshot.page_ids.is_empty() {
+        if grid::tabs_visible(settings, app.size, snapshot.page_ids.len()) {
             content = content.push(title_strip(app, colour, content_width));
         }
         content = content.push(pages(app, colour, content_width));
     }
     if let Some(error) = &app.error {
-        content = content.push(text(error).size(14).color(Color::from_rgb8(255, 140, 140)));
+        content = content.push(
+            container(text(error).size(14).color(Color::from_rgb8(255, 140, 140)))
+                .width(Fill)
+                .height(grid::ERROR_LINE_HEIGHT),
+        );
     }
     for warning in &snapshot.warnings {
-        content = content.push(text(warning).size(12));
+        content = content.push(
+            container(text(warning).size(12))
+                .width(Fill)
+                .height(grid::WARNING_LINE_HEIGHT),
+        );
     }
     let base: Element<'_, Message> = container(
         container(content)
@@ -142,7 +159,7 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
             let mut apps = scrollable(rows).id("apps").height(Fill);
             if let Some(group) = group.cloned() {
                 apps = apps.on_scroll(move |viewport| {
-                    Message::Scrolled(group.clone(), viewport.absolute_offset().y)
+                    Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
                 });
             }
             apps.into()
@@ -216,7 +233,7 @@ fn single_grid<'a>(
         apps = apps.id("apps");
         if let Some(group) = app.current_group_id().cloned() {
             apps = apps.on_scroll(move |viewport| {
-                Message::Scrolled(group.clone(), viewport.absolute_offset().y)
+                Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
             });
         }
         apps.into()

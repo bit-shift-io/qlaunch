@@ -7,11 +7,33 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
 import android.graphics.PixelFormat
+import android.view.ViewGroup
 import io.github.santuzius.icedandroid.IcedActivity
 
 class MainActivity : IcedActivity() {
     private var shortcutGroup: String? = null
     private var wasStopped = false
+    private lateinit var accessibility: LauncherAccessibilityView
+
+    fun publishAccessibility(json: String) {
+        if (!::accessibility.isInitialized) return
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+            runOnUiThread { publishAccessibility(json) }
+            return
+        }
+        accessibility.publish(json)
+    }
+
+    private fun sendAccessibilityAction(nodeId: Int, action: String, value: String, revision: Long) {
+        onAccessibilityAction(nodeId, action, value, revision)
+    }
+
+    private external fun onAccessibilityAction(
+        nodeId: Int,
+        action: String,
+        value: String,
+        revision: Long,
+    )
 
     @Suppress("DEPRECATION")
     fun beginShortcut(provider: String, group: String) {
@@ -54,6 +76,17 @@ class MainActivity : IcedActivity() {
         // before the surface is created, or Vulkan's inherited alpha is opaque.
         window.setFormat(PixelFormat.RGBA_8888)
 
+        accessibility = LauncherAccessibilityView(this)
+        accessibility.onAction = ::sendAccessibilityAction
+        addContentView(
+            accessibility,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ),
+        )
+        LauncherActions.flushAccessibility(this)
+
         // Android 8+ (API 26) will not deliver these implicit broadcasts to a
         // manifest-declared receiver, so they are registered here at runtime
         // for as long as the process lives. The manifest keeps only the exempt
@@ -79,7 +112,13 @@ class MainActivity : IcedActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) LauncherActions.reapplyDisplaySettings(this)
+        if (hasFocus) {
+            // The native surface is created after onCreate and is added above
+            // this view. TalkBack sends hover events to the topmost child, so
+            // lift the accessibility host again once the window is ready.
+            if (::accessibility.isInitialized) accessibility.bringToFront()
+            LauncherActions.reapplyDisplaySettings(this)
+        }
     }
 
     override fun onStop() {
