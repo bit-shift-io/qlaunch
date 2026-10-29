@@ -49,6 +49,12 @@ class AccessibilityDiffTest {
         assertTrue(diff.invalidateRoot)
     }
 
+    @Test fun screenChangeMovesRemovedFocusToFirstLiveNode() {
+        val diff = diffTrees(tree("launcher", node(1)), tree("menu", node(2)), focusedId = 1)
+        assertTrue(diff.invalidateRoot)
+        assertEquals(2, diff.focusTarget)
+    }
+
     @Test fun unchangedTreeInvalidatesNothing() {
         val old = tree("launcher", node(1), node(2, index = 1))
         val new = tree("launcher", node(1), node(2, index = 1))

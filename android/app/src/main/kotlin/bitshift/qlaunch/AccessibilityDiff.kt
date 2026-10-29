@@ -42,7 +42,7 @@ fun diffTrees(old: TreeSnapshot?, new: TreeSnapshot, focusedId: Int?): TreeDiff 
             invalidated = emptySet(),
             removed = emptySet(),
             textChanged = emptySet(),
-            focusTarget = null,
+            focusTarget = if (focusedId != null && focusedId !in new.nodes) new.order.firstOrNull() else null,
         )
     }
 

@@ -489,8 +489,7 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
                 .padding(8),
         )
         .width(Fill)
-        .height(INPUT_HEIGHT)
-        .center_y(Fill)
+        .center_y(INPUT_HEIGHT)
         .into(),
         EntryKind::Text { label, error } => {
             let line = text(label).size(if error { 13 } else { 14 });
@@ -536,6 +535,24 @@ mod tests {
     use super::*;
     use qlaunch_core::model::{AppRef, Model};
     use qlaunch_core::settings::Settings;
+
+    #[test]
+    fn input_entry_keeps_the_height_used_by_accessibility() {
+        let entry = Entry {
+            key: "name".into(),
+            kind: EntryKind::Input {
+                hint: "App name".into(),
+                value: "Firefox".into(),
+                widget_id: APP_NAME_FIELD_ID,
+                on_input: |value| AppMessage::Overlay(Message::AppRename(value)),
+                on_submit: AppMessage::Overlay(Message::AppRenameSubmit),
+            },
+        };
+        assert_eq!(
+            entry_view(entry).as_widget().size().height,
+            iced::Length::Fixed(INPUT_HEIGHT),
+        );
+    }
 
     fn snapshot() -> ModelSnapshot {
         let model = Model::new_default();

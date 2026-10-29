@@ -40,13 +40,24 @@ TalkBack and touch exploration remain enabled for the manual check. The updated
 release APK was built and installed with `adb install -r`; its Home tree exposes
 the five expected apps. Wallpaper remains visible.
 
-Fresh verification: 123 iced library tests, 20 Kotlin unit tests (including 14
-tree-diff tests), and all five device acceptance methods pass. Device methods
+Fresh verification: 125 iced library tests (plus binary/doc-test targets), 21
+Kotlin unit tests (including 15 tree-diff tests), and all nine device acceptance
+methods pass. Device methods
 cover published order; Firefox launch and app/blank-grid menus; real search IME,
 query/results updates and accessibility focus through `c`, `ca`, `cal`, `calc`;
 vertical scrolling and page steps, focus retention/fallback and removal of old
-page nodes; and dropping an old item action during page motion. Device acceptance
-ran against the debug build; release startup/tree was separately checked.
+page nodes; and an old-item/page-step smoke check. A deterministic Rust test
+separately proves a valid request is rejected during settle and accepted after
+motion is cancelled, without changing the frame/revision. Device acceptance
+ran against the debug build; the final updated release was rebuilt and installed.
+The additional methods cover Rename/Move screens, cancelling the system uninstall
+confirmation, temporary-folder navigation, and TalkBack-off ordinary tap/long
+press, injected hardware key events, a real Gboard key tap, and blank double tap /
+pull-down reaching the existing lock/notification permission screen. The launcher's
+ScreenLockService is not enabled: actual locking/notification expansion was not
+tested, and no new accessibility permission was granted. Temporary edits/folder
+were discarded by restoring the pre-check store byte-for-byte before release
+installation. Screenshots remain outside the repository.
 
 The device test exposed a bridge focus bug: `ExploreByTouchHelper.INVALID_ID`
 was treated as a removed focused node, generating synthetic focus events while
@@ -54,12 +65,70 @@ the helper retained no focus. Absent focus is now filtered out, and fallback
 focus uses the provider's real focus action instead of merely emitting an event.
 The search test failed before this fix and passes afterwards.
 
-Still required before a go decision:
-- Hands-on spoken traversal, forward/backward swipes, double-tap and exploration.
-- Folder navigation and Rename/Move/Uninstall flows (without destructive changes).
-- Screenshot comparison of app/folder/search/overlay bounds within 2 dp.
-- TalkBack-off ordinary gesture, hardware-keyboard and soft-keyboard regressions.
-- Restore the pre-test accessibility-service settings after manual acceptance.
+Review also identified obsolete focus across screen changes: root invalidation
+alone does not clear the helper's old focused ID. The bridge now clears removed
+focus while the old node still exists and transfers it to the first live node
+on the new screen. The new diff regression failed (`expected 2, got null`), then
+passed; the device menu test confirms live focus before explicitly focusing a
+menu control. The reviewer’s motion-test false-positive finding is addressed by
+the deterministic valid-request Rust test and by treating the device race as a
+smoke check, not proof of timing.
+
+An additional real bounds bug was found by the TalkBack-off rename test:
+`.height(INPUT_HEIGHT).center_y(Fill)` overwrote the fixed input height with Fill,
+stretching the card and moving drawn actions away from their semantic targets.
+The regression test `input_entry_keeps_the_height_used_by_accessibility` failed
+with `Fill != Fixed(36)` before the fix; `.center_y(INPUT_HEIGHT)` now keeps the
+view and semantic geometry consistent, and ordinary Back/Cancel taps pass.
+
+Bounds samples (physical pixels, tablet density 320 / 2 px per dp):
+- Home Firefox cell: `(0,140)-(300,455)`; icon `(60,150)-(240,330)` and label
+  lie inside this target; the next rendered row begins at the matching pitch.
+- Folder title: `(115,43)-(1186,140)`; rendered title starts at x=115 and lies
+  inside this header. Header/cell targets have no painted border, so their
+  outer edges cannot independently be pixel-measured from the screenshot.
+- Search result Calculator: `(0,122)-(300,437)`; icon begins at `(60,133)`;
+  the 11 px top inset is intentional cell padding, not an offset of the node.
+- Search field: semantics and pixel-detected blue border both
+  `(14,47)-(1088,119)` — 0 px discrepancy.
+- Overlay rename input: semantics and pixel-detected blue border both
+  `(334,883)-(866,947)` — 0 px discrepancy. Back's reported
+  `(334,1034)-(866,1099)` now contains the rendered action and ordinary taps work.
+
+Hands-on attempt (2026-10-29): TalkBack's selector stayed on the navigation bar
+and left/right swipes did not reach the launcher. Cause: provider nodes were not
+marked important for accessibility, so services that do not request unimportant
+views never saw the virtual tree. `LauncherAccessibilityView` now sets
+`isImportantForAccessibility` on every populated node; the placeholder for a
+racing id sets it too. New test
+`i_nodesAreExposedWithoutIncludingUnimportantViews` failed before the fix
+(`importantForAccessibility: false` for Firefox) and passes after.
+
+Observable evidence after the fix (TalkBack enabled, release build): the focused
+accessibility window is the QLaunch window on cold start (ids 701–704) where it
+was the navigation bar (676) before; this held across three cold starts, and
+opening search kept it on QLaunch. That is machine evidence only — it shows
+TalkBack moved into the app window, not that speech or swipes are correct.
+
+Still required before a go decision: hands-on spoken traversal, forward/backward
+swipes, double-tap and touch exploration, including focus rectangles after a
+finger-driven fling. These cannot be certified by injected accessibility actions.
+The fix was found only because the first hands-on attempt was made; the earlier
+automated passes did not detect it.
+The service settings from the start of this continuation (TalkBack enabled,
+touch exploration on) were restored after the TalkBack-off checks. The older,
+pre-spike service state is not recorded reliably enough to claim it was restored.
+Move destinations were verified without executing a move; actual uninstall was
+cancelled. These are safety-limited checks, not proof of the destructive flows.
+Physical external-keyboard hardware was not available; its key-event path was
+tested through Android input injection.
+
+Verification limitation: the debug native glue also intermittently aborted on
+window resize (`glue.rs:498`, absent window); isolated reruns passed. No native
+fork change was made. This is a separate lifecycle risk, not a successful test.
+Package-scoped Clippy (`--no-deps`) and formatting pass. Strict Clippy including
+dependencies fails on existing `qlaunch_core` module-inception/collapsible-if
+warnings; the core was not edited to suppress them.
 
 ### Device-test safety
 
@@ -80,6 +149,9 @@ The driver preserves TalkBack using `FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES`.
 `UiAutomation.executeShellCommand` does not interpret pipes; filter its output
 in Kotlin. Repeated Home opens search by design, so do not use it as an
 unconditional test reset. Gradle configuration-cache reuse was verified.
+The folder fixture additionally requires `-e allowTemporaryFolder true`; take
+an external store snapshot first and restore it afterwards. The TalkBack-off
+method requires externally disabling TalkBack, then restoring the service list.
 
 ## Building (no Flutter SDK required)
 

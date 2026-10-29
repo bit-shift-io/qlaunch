@@ -56,13 +56,20 @@ class LauncherAccessibilityView(context: Context) : View(context) {
         val focused = helper.accessibilityFocusedVirtualViewId
             .takeUnless { it == ExploreByTouchHelper.HOST_ID || it == ExploreByTouchHelper.INVALID_ID }
         val diff = diffTrees(tree, next, focused)
+        // Clear while the old tree still exists: clearing afterwards can ask
+        // the provider to populate a node which has already been removed.
+        if (focused != null && focused !in next.nodes) {
+            helper.getAccessibilityNodeProvider(this)?.performAction(
+                focused,
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS,
+                null,
+            )
+        }
         revision = payload.revision
         tree = next
 
         if (diff.invalidateRoot) {
             helper.invalidateRoot()
-            if (announce) payload.announcement?.let(::announceForAccessibility)
-            return
         }
         // ExploreByTouchHelper repopulates a virtual view on invalidation, so
         // never invalidate an id that the new tree no longer contains.
@@ -218,6 +225,7 @@ class LauncherAccessibilityView(context: Context) : View(context) {
                 // placeholder instead of letting ExploreByTouchHelper crash.
                 node.text = "QLaunch"
                 node.className = "android.view.View"
+                node.isImportantForAccessibility = true
                 node.isVisibleToUser = false
                 node.setBoundsInParent(Rect())
                 return
@@ -227,6 +235,10 @@ class LauncherAccessibilityView(context: Context) : View(context) {
                 else -> snapshot.label.ifEmpty { "QLaunch" }
             }
             node.className = className(snapshot.role)
+            // Provider nodes are not marked important for the platform the way
+            // real views are. Without this, services that do not request
+            // unimportant views never see the launcher's virtual tree.
+            node.isImportantForAccessibility = true
             if (snapshot.role == "header") node.isHeading = true
             if (snapshot.role == "text_field") node.hintText = snapshot.label
             node.contentDescription = snapshot.label.takeIf {

@@ -537,12 +537,36 @@ mod tests {
     }
 
     #[test]
+    fn valid_item_action_is_rejected_only_while_the_pager_is_settling() {
+        let mut app = app();
+        app.pager.set_count(3, 0);
+        let folder = visible_folder(&mut app);
+        publish(&mut app);
+        let request = request(&app, &format!("item:{}", folder.id), Action::Click);
+        let revision = app.accessibility.publisher.revision();
+        app.pager
+            .step(1, Instant::now(), Duration::from_millis(400));
+        assert!(app.pager.is_animating());
+        let _ = app.update(Message::Accessibility(request.clone()));
+        assert_eq!(app.accessibility.publisher.revision(), revision);
+        assert!(app.folder.is_none());
+        // Cancel motion without publishing another frame: the exact same
+        // request must work, proving the rejection was not stale-id/revision.
+        app.pager.set_count(3, 0);
+        let _ = app.update(Message::Accessibility(request));
+        assert!(app.folder.is_some());
+    }
+
+    #[test]
     fn returning_to_foreground_republishes_the_tree() {
         let mut app = app();
         app.background = true;
         app.accessibility.frame = None;
         app.set_foreground(true);
-        assert!(app.accessibility.frame.is_some(), "foreground did not republish");
+        assert!(
+            app.accessibility.frame.is_some(),
+            "foreground did not republish"
+        );
     }
 
     #[test]

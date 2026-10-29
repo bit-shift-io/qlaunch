@@ -1,6 +1,9 @@
 package bitshift.qlaunch
 
 import android.app.UiAutomation
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.graphics.Bitmap
+import android.graphics.Rect
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
@@ -11,10 +14,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.FixMethodOrder
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
+import java.io.File
 
 /// Drives the virtual tree with the same accessibility actions TalkBack sends.
 /// `adb shell input` cannot be used: injected touch bypasses the accessibility
@@ -115,6 +120,26 @@ class AccessibilityAcceptanceTest {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }
         return perform(label, AccessibilityNodeInfo.ACTION_SET_TEXT, arguments)
+    }
+
+    private fun capture(name: String) {
+        val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "task6")
+        directory.mkdirs()
+        File(directory, "$name.png").outputStream().use {
+            check(automation.takeScreenshot().compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        File(directory, "$name.txt").writeText(allNodes().map { node ->
+            val bounds = Rect()
+            node.getBoundsInScreen(bounds)
+            "${label(node)}: $bounds"
+        }.joinToString("\n"))
+    }
+
+    private fun tapNode(text: String) {
+        val bounds = Rect()
+        require(text).getBoundsInScreen(bounds)
+        shell("input tap ${bounds.centerX()} ${bounds.centerY()}")
+        SystemClock.sleep(700)
     }
 
     private fun inLauncher(): Boolean =
@@ -250,17 +275,160 @@ class AccessibilityAcceptanceTest {
     }
 
     @Test
-    fun e_itemActionDuringPageMotionIsIgnored() {
+    fun e_oldItemActionAfterPageStepDoesNotLaunch() {
         launch()
         goHome()
         val firefox = require("Firefox")
         val tab = require("Previous page, Apps")
         assertTrue(tab.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-        // The pager is now animating and the old frame is still published.
+        // Send immediately after the page step; device scheduling is not
+        // deterministic, so rejection may also be due to a stale frame.
         firefox.performAction(AccessibilityNodeInfo.ACTION_CLICK)
         SystemClock.sleep(1500)
         val focus = windowFocus()
-        assertTrue("item action during motion launched Firefox: $focus", focus.contains("bitshift.qlaunch"))
+        assertTrue("old item action launched Firefox: $focus", inLauncher())
+        assertNotNull("page step did not reach Apps: ${labels()}", find("Apps, page 1 of 3"))
+        // This device-level race is a smoke check, not proof of the motion
+        // gate. Rust's deterministic test proves the same valid request is
+        // rejected during settle and accepted once motion is cancelled.
+    }
+
+    @Test
+    fun f_menuSubflowsAndBounds() {
+        launch()
+        goHome()
+        focus("Firefox")
+        capture("home")
+        assertTrue(perform("Firefox", AccessibilityNodeInfo.ACTION_LONG_CLICK))
+        assertTrue("screen change left focus on a hidden node",
+            allNodes().any { it.isAccessibilityFocused })
+        focus("Rename")
+        capture("app-menu")
+        assertTrue(perform("Rename", AccessibilityNodeInfo.ACTION_CLICK))
+        assertNotNull("rename field missing: ${labels()}", find("App name"))
+        assertTrue(perform("App name", AccessibilityNodeInfo.ACTION_CLICK))
+        capture("rename")
+        assertTrue("rename keyboard did not open", shell("dumpsys input_method").contains("mInputShown=true"))
+        assertTrue(perform("Back", AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue(perform("Move", AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue("move destinations missing: ${labels()}", labels().any { it == "Games" })
+        capture("move")
+        assertTrue(perform("Back", AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue(perform("Uninstall", AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue("system uninstall confirmation missing: ${labels()}",
+            root()?.packageName?.toString() != "bitshift.qlaunch" && find("Firefox") != null)
+        // Only verify and cancel the system confirmation. Never uninstall an app.
+        capture("uninstall-confirmation")
+        assertTrue(perform("Cancel", AccessibilityNodeInfo.ACTION_CLICK))
+        launch()
+        if (find("Cancel") != null) perform("Cancel", AccessibilityNodeInfo.ACTION_CLICK)
+        goHome()
+        assertTrue(perform("search apps", AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue(setText("Search apps", "calc"))
+        SystemClock.sleep(700)
+        assertNotNull("Calculator missing: ${labels()}", find("Calculator"))
+        focus("Calculator")
+        capture("search-result")
+        assertTrue(perform("Close search", AccessibilityNodeInfo.ACTION_CLICK))
+    }
+
+    // Requires an external private-store snapshot and restoration after the run.
+    @Test
+    fun g_temporaryFolderNavigationAndBounds() {
+        assumeTrue("requires external store backup/restore",
+            InstrumentationRegistry.getArguments().getString("allowTemporaryFolder") == "true")
+        launch()
+        goHome()
+        assertTrue(perform("Home, page", AccessibilityNodeInfo.ACTION_LONG_CLICK))
+        assertTrue(perform("Create Folder", AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue(setText("Folder name", "Task6 temporary folder"))
+        assertTrue(perform("Create", AccessibilityNodeInfo.ACTION_CLICK))
+        assertTrue(perform("Task6 temporary folder", AccessibilityNodeInfo.ACTION_CLICK))
+        focus("Task6 temporary folder")
+        capture("folder")
+        assertNotNull("folder back missing: ${labels()}", find("Back"))
+        assertTrue(perform("Back", AccessibilityNodeInfo.ACTION_CLICK))
+        assertNotNull("launcher missing: ${labels()}", find("Home, search apps"))
+        assertFalse("closed folder back remains: ${labels()}", labels().contains("Back"))
+    }
+
+    // Run with TalkBack disabled externally, restoring its settings afterwards.
+    @Test
+    fun h_ordinaryTouchAndKeyboardWithTalkBackOff() {
+        assertFalse("disable TalkBack before this check",
+            shell("settings get secure enabled_accessibility_services").contains("talkback"))
+        launch()
+        goHome()
+        tapNode("Firefox")
+        assertTrue("ordinary tap did not launch", windowFocus().contains("org.mozilla.firefox"))
+        launch()
+        goHome()
+        val bounds = Rect()
+        require("Firefox").getBoundsInScreen(bounds)
+        shell("input swipe ${bounds.centerX()} ${bounds.centerY()} ${bounds.centerX()} ${bounds.centerY()} 700")
+        SystemClock.sleep(700)
+        assertNotNull("ordinary long press failed: ${labels()}", find("Rename"))
+        tapNode("Rename")
+        tapNode("App name")
+        assertTrue("ordinary rename keyboard did not open",
+            shell("dumpsys input_method").contains("mInputShown=true"))
+        capture("ordinary-rename-ime")
+        shell("input keyevent KEYCODE_Z")
+        SystemClock.sleep(700)
+        assertTrue("rename did not accept key event: ${labels()}", require("App name").text.toString().contains("z"))
+        // Cancel rather than saving the temporary edit.
+        tapNode("Back")
+        tapNode("Cancel")
+        tapNode("Home, search apps")
+        assertTrue("ordinary search keyboard did not open",
+            shell("dumpsys input_method").contains("mInputShown=true"))
+        shell("input text calc")
+        SystemClock.sleep(1000)
+        assertTrue("search did not accept hardware key events", require("Search apps").text.toString() == "calc")
+        assertNotNull("ordinary search result missing", find("Calculator"))
+        capture("ordinary-search-ime")
+        // Tablet's on-screen Gboard C key (from the captured 1200x1920 layout).
+        shell("input tap 485 1650")
+        SystemClock.sleep(700)
+        assertTrue("soft keyboard tap did not update query", require("Search apps").text.toString() == "calcc")
+        tapNode("Close search")
+        // Pull down from blank content, not from the system status bar.
+        shell("input swipe 600 1000 600 1450 400")
+        SystemClock.sleep(1000)
+        val destination = root()?.packageName?.toString()
+        assertTrue("pull-down did not reach notifications or its permission gate: ${windowFocus()}",
+            destination == "com.android.systemui" || destination == "com.android.settings")
+        Log.i(TAG, "Pull-down destination: $destination (Settings means ScreenLockService is disabled)")
+        shell("input keyevent KEYCODE_BACK")
+        SystemClock.sleep(700)
+        goHome()
+        // With ScreenLockService absent this opens its permission screen rather
+        // than locking the user's device; never run this with that service on.
+        assertFalse(shell("settings get secure enabled_accessibility_services").contains("ScreenLockService"))
+        shell("input tap 600 1000")
+        shell("input tap 600 1000")
+        SystemClock.sleep(1000)
+        assertTrue("blank double tap did not reach lock permission gate",
+            root()?.packageName?.toString() == "com.android.settings")
+        shell("input keyevent KEYCODE_BACK")
+    }
+
+    @Test
+    fun i_nodesAreExposedWithoutIncludingUnimportantViews() {
+        val original = automation.serviceInfo
+        val flags = original.flags
+        original.flags = flags and AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS.inv()
+        automation.serviceInfo = original
+        try {
+            launch()
+            goHome()
+            val node = require("Firefox")
+            assertTrue("Firefox is not important for accessibility: $node", node.isImportantForAccessibility)
+        } finally {
+            val restored = automation.serviceInfo
+            restored.flags = flags
+            automation.serviceInfo = restored
+        }
     }
 
     private companion object {
