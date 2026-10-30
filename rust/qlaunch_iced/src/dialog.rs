@@ -728,8 +728,14 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
     let gap = if list { 0.0 } else { 16.0 };
     let mut row_rects = Vec::with_capacity(rows.len());
     let mut cursor = 0.0;
-    let mut chip_index = 0;
     let body = typography.role(TextRole::BodyMedium);
+    let chip_text = typography.role(TextRole::LabelLarge);
+    // Chips flow left to right and wrap only when the next one would not fit,
+    // matching Flutter's `Wrap` of choice chips. The vertical cursor advances
+    // once per wrapped line, not once per chip.
+    let mut chip_line_used = 0.0f32;
+    let mut chip_line_open = false;
+    let mut chip_height = 0.0f32;
     for (index, row) in rows.iter().enumerate() {
         let height = row_height(row).max(match row {
             Row::Field { .. } | Row::Select { .. } => {
@@ -740,7 +746,7 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
             Row::Text { label, .. } | Row::Note { label } => {
                 wrapped_lines(label, body.size, inner_width) as f32 * body.line_height
             }
-            Row::Chip { .. } => typography.role(TextRole::LabelLarge).line_height + 8.0,
+            Row::Chip { .. } => chip_text.line_height + 8.0,
             Row::Tile { subtitle, .. } => {
                 typography.role(TextRole::BodyLarge).line_height
                     + subtitle
@@ -749,30 +755,53 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
                     + 16.0
             }
         });
-        let chip = matches!(row, Row::Chip { .. });
-        let (x, width) = if chip {
-            (
-                (chip_index % 2) as f32 * (inner_width + 8.0) / 2.0,
-                (inner_width - 8.0) / 2.0,
-            )
-        } else {
-            (0.0, inner_width)
-        };
+        if let Row::Chip {
+            label, selected, ..
+        } = row
+        {
+            let width = components::chip_width(label, chip_text.size, *selected);
+            if chip_line_open && chip_line_used + components::CHIP_SPACING + width > inner_width {
+                cursor += height + gap;
+                chip_line_used = 0.0;
+                chip_line_open = false;
+            }
+            let x = if chip_line_open {
+                chip_line_used + components::CHIP_SPACING
+            } else {
+                0.0
+            };
+            chip_line_used = x + width;
+            chip_line_open = true;
+            chip_height = height;
+            row_rects.push((
+                Rectangle {
+                    x,
+                    y: cursor,
+                    width,
+                    height,
+                },
+                index,
+            ));
+            continue;
+        }
+        if chip_line_open {
+            cursor += chip_height + gap;
+            chip_line_used = 0.0;
+            chip_line_open = false;
+        }
         row_rects.push((
             Rectangle {
-                x,
+                x: 0.0,
                 y: cursor,
-                width,
+                width: inner_width,
                 height,
             },
             index,
         ));
-        if chip {
-            chip_index += 1;
-        }
-        if !chip || chip_index % 2 == 0 {
-            cursor += height + gap;
-        }
+        cursor += height + gap;
+    }
+    if chip_line_open {
+        cursor += chip_height + gap;
     }
     let content_natural = (cursor - if rows.is_empty() { 0.0 } else { gap }).max(0.0);
     let max_card_height = (window.height - 2.0 * theme::metrics::DIALOG_VERTICAL_MARGIN).max(0.0);
@@ -1625,18 +1654,28 @@ mod tests {
     }
 
     #[test]
-    fn group_roles_layout_uses_two_chips_per_row() {
+    fn group_role_chips_share_a_line_until_they_overflow() {
         let (app, _) = dialog_app();
         let dialog = Dialog::GroupEditor(GroupEditorState::new("g".into(), "G".into(), None));
-        let layout = layout(&app, &dialog, Size::new(360.0, 800.0));
-        let chip_rects: Vec<_> = layout
-            .rows
-            .iter()
-            .filter(|(_, index)| matches!(rows(&app, &dialog)[*index], Row::Chip { .. }))
-            .map(|(r, _)| r)
-            .collect();
-        assert_eq!(chip_rects[0].y, chip_rects[1].y);
-        assert!(chip_rects[2].y > chip_rects[0].y);
+        let chips = |size| {
+            let layout = layout(&app, &dialog, size);
+            layout
+                .rows
+                .iter()
+                .filter(|(_, index)| matches!(rows(&app, &dialog)[*index], Row::Chip { .. }))
+                .map(|(r, _)| (r.x, r.y, r.width))
+                .collect::<Vec<_>>()
+        };
+        // Wide enough for all four: one line, left to right.
+        let wide = chips(Size::new(600.0, 800.0));
+        assert_eq!(wide.len(), 4);
+        assert!(wide.iter().all(|(_, y, _)| (*y - wide[0].1).abs() < 0.5));
+        assert!(wide[1].0 > wide[0].0 && wide[2].0 > wide[1].0);
+        // Narrow enough that the last chip no longer fits: it wraps to the left.
+        let narrow = chips(Size::new(360.0, 800.0));
+        assert!(narrow[1].1 == narrow[0].1 && narrow[2].1 == narrow[0].1);
+        assert!(narrow[3].1 > narrow[2].1, "the fourth chip wraps");
+        assert!(narrow[3].0 < narrow[1].0);
     }
 
     #[test]

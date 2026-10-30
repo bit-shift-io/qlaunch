@@ -464,7 +464,7 @@ fn add_scroll(
 }
 
 fn screen_frame(app: &App) -> Frame {
-    use crate::{Message, Screen, screens, theme};
+    use crate::{Message, Screen, components, screens, theme};
     let snapshot = app.snapshot.as_ref().unwrap();
     let typography = theme::Text::new();
     let screen = app.screens.last().unwrap();
@@ -515,15 +515,16 @@ fn screen_frame(app: &App) -> Frame {
         Screen::Settings => {
             use screens::settings::{ActionTarget, Row};
             let rows = screens::settings::rows(&snapshot.settings, app.settings_drag);
+            let available = components::chip_available(viewport.width);
             let height = rows
                 .iter()
-                .map(|r| screens::settings::row_height(r, &typography))
+                .map(|r| screens::settings::row_height(r, &typography, available))
                 .sum::<f32>()
                 + 32.0;
             let offset = add_scroll(app, &mut frame, Region::Screen, viewport, height);
             let mut y = viewport.y - offset;
             for row in rows {
-                let height = screens::settings::row_height(&row, &typography);
+                let height = screens::settings::row_height(&row, &typography, available);
                 let bounds = rect(viewport.x, y, viewport.width, height);
                 match row {
                     Row::Header(label) => push(
@@ -597,30 +598,44 @@ fn screen_frame(app: &App) -> Frame {
                         label,
                         options,
                     } => {
+                        let text_size = typography.role(theme::TextRole::LabelLarge).size;
                         let chip_height = typography
                             .role(theme::TextRole::LabelLarge)
                             .line_height
                             .max(theme::metrics::CHIP_HEIGHT);
-                        for (i, (option, selected)) in options.into_iter().enumerate() {
-                            let bounds = rect(
-                                viewport.x + 16.0 + (i % 2) as f32 * (viewport.width - 32.0) / 2.0,
-                                y + typography.role(theme::TextRole::BodyLarge).line_height
-                                    + 24.0
-                                    + (i / 2) as f32 * (chip_height + 8.0),
-                                (viewport.width - 40.0) / 2.0,
-                                chip_height,
-                            );
-                            control(
-                                app,
-                                &mut frame,
-                                format!("settings:choice:{field:?}:{i}"),
-                                format!("{label}, {option}"),
-                                bounds,
-                                Message::SettingPatch(screens::settings::choice_patch(field, i)),
-                                selected,
-                                true,
-                                Some(viewport),
-                            );
+                        let top =
+                            y + typography.role(theme::TextRole::BodyLarge).line_height + 24.0;
+                        let mut index = 0usize;
+                        for (line, count) in components::chip_rows(&options, available, text_size)
+                            .into_iter()
+                            .enumerate()
+                        {
+                            let mut x = viewport.x + 16.0;
+                            for _ in 0..count {
+                                let (option, selected) = &options[index];
+                                let width = components::chip_width(option, text_size, *selected);
+                                let bounds = rect(
+                                    x,
+                                    top + line as f32 * (chip_height + components::CHIP_SPACING),
+                                    width,
+                                    chip_height,
+                                );
+                                control(
+                                    app,
+                                    &mut frame,
+                                    format!("settings:choice:{field:?}:{index}"),
+                                    format!("{label}, {option}"),
+                                    bounds,
+                                    Message::SettingPatch(screens::settings::choice_patch(
+                                        field, index,
+                                    )),
+                                    *selected,
+                                    true,
+                                    Some(viewport),
+                                );
+                                x += width + components::CHIP_SPACING;
+                                index += 1;
+                            }
                         }
                     }
                     Row::Action {

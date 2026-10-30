@@ -320,21 +320,25 @@ pub(crate) fn choice_patch(field: SettingField, index: usize) -> SettingsPatch {
     patch
 }
 
-pub(crate) fn row_height(row: &Row, text: &theme::Text) -> f32 {
+pub(crate) fn row_height(row: &Row, text: &theme::Text, available: f32) -> f32 {
     let body = text.role(theme::TextRole::BodyLarge).line_height;
     match row {
         Row::Header(_) => text.role(theme::TextRole::TitleSmall).line_height + 48.0,
         Row::Switch { .. } => (body + 16.0).max(theme::metrics::LIST_ONE_LINE),
         Row::Slider { .. } => body + 24.0 + theme::metrics::SLIDER_HEIGHT,
         Row::Choice { options, .. } => {
+            let text_size = text.role(theme::TextRole::LabelLarge).size;
+            let lines = components::chip_rows(options, available, text_size)
+                .len()
+                .max(1) as f32;
             body + 24.0
-                + options.len().div_ceil(2) as f32
+                + lines
                     * (text
                         .role(theme::TextRole::LabelLarge)
                         .line_height
                         .max(theme::metrics::CHIP_HEIGHT)
-                        + 8.0)
-                - 8.0
+                        + components::CHIP_SPACING)
+                - components::CHIP_SPACING
         }
         Row::Action { .. } => (body + text.role(theme::TextRole::BodyMedium).line_height + 16.0)
             .max(theme::metrics::LIST_TWO_LINE),
@@ -346,9 +350,10 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         return container(column![]).into();
     };
     let typography = theme::Text::new();
+    let available = components::chip_available(crate::grid::content_width(app.size, app.insets));
     let mut content = column![];
     for row in rows(&snapshot.settings, app.settings_drag) {
-        let height = row_height(&row, &typography);
+        let height = row_height(&row, &typography, available);
         let element = match row {
             Row::Header(label) => components::section_header(&typography, label),
             Row::Switch {
@@ -382,7 +387,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 field,
                 label,
                 options,
-            } => components::choice_row(&typography, label, &options, move |index| {
+            } => components::choice_row(&typography, label, &options, available, move |index| {
                 Message::SettingPatch(choice_patch(field, index))
             }),
             Row::Action {
@@ -524,13 +529,34 @@ mod tests {
         let settings = Settings::default();
         let typography = theme::Text::new();
         for row in rows(&settings, None) {
-            assert!(row_height(&row, &typography) > 0.0);
+            assert!(row_height(&row, &typography, 388.0) > 0.0);
             if let Row::Switch { .. } = row {
                 assert!(
-                    row_height(&row, &typography)
+                    row_height(&row, &typography, 388.0)
                         >= typography.role(theme::TextRole::BodyLarge).line_height + 16.0
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_choice_row_grows_to_a_second_line_when_the_width_is_tight() {
+        let settings = Settings::default();
+        let typography = theme::Text::new();
+        let typeface = rows(&settings, None)
+            .into_iter()
+            .find(|row| {
+                matches!(
+                    row,
+                    Row::Choice {
+                        field: SettingField::LabelTypeface,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        let wide = row_height(&typeface, &typography, 388.0);
+        let narrow = row_height(&typeface, &typography, 120.0);
+        assert!(narrow > wide, "a tighter row wraps onto more lines");
     }
 }

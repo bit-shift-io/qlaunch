@@ -18,6 +18,7 @@ pub(crate) const LOCK_OUTLINE: char = '\u{e3b1}';
 pub(crate) const NOTIFICATIONS_NONE: char = '\u{e451}';
 pub(crate) const LINK: char = '\u{e380}';
 pub(crate) const CHECKLIST: char = '\u{e15b}';
+pub(crate) const CHECK: char = '\u{e156}';
 pub(crate) const ARROW_UPWARD: char = '\u{e0a0}';
 pub(crate) const ARROW_DOWNWARD: char = '\u{e097}';
 pub(crate) const ARROW_BACK: char = '\u{e092}';
@@ -43,6 +44,7 @@ mod tests {
         assert_eq!(DASHBOARD_CUSTOMIZE, '\u{e1b2}');
         assert_eq!(WALLPAPER, '\u{e6ca}');
         assert_eq!(CHECKLIST, '\u{e15b}');
+        assert_eq!(CHECK, '\u{e156}');
         assert_eq!(ARROW_BACK, '\u{e092}');
         assert_eq!(KEYBOARD_ARROW_DOWN, '\u{e353}');
     }

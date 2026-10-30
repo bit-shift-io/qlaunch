@@ -330,8 +330,60 @@ pub(crate) fn slider_height() -> f32 {
     theme::metrics::SLIDER_HEIGHT
 }
 
-/// How many choice chips fit per wrapping row at phone width.
-const CHIPS_PER_ROW: usize = 2;
+/// Horizontal padding inside a choice chip, per side.
+pub(crate) const CHIP_PADDING_X: f32 = 12.0;
+/// Gap between chips on one line, and between lines.
+pub(crate) const CHIP_SPACING: f32 = 8.0;
+/// Side padding of the chip row within the screen.
+const CHIP_ROW_PADDING: f32 = 16.0;
+/// Width the leading tick adds to a selected chip: an 18 dp glyph plus a 6 dp
+/// gap before the label.
+const CHIP_CHECK_WIDTH: f32 = 24.0;
+/// Rough advance per character as a fraction of the text size. Only used to
+/// decide where a chip row wraps; the chips themselves lay out at their true
+/// width, so a slight overestimate just wraps a touch early.
+const CHIP_CHAR_WIDTH: f32 = 0.6;
+
+/// Width left for chips after the row's 16 dp side padding.
+pub(crate) fn chip_available(content_width: f32) -> f32 {
+    (content_width - 2.0 * CHIP_ROW_PADDING).max(0.0)
+}
+
+/// The horizontal space one chip needs: its label, its padding and, when
+/// selected, the leading tick.
+pub(crate) fn chip_width(label: &str, text_size: f32, selected: bool) -> f32 {
+    let label_width = label.chars().count() as f32 * text_size * CHIP_CHAR_WIDTH;
+    label_width + 2.0 * CHIP_PADDING_X + if selected { CHIP_CHECK_WIDTH } else { 0.0 }
+}
+
+/// Greedy line breaks for a wrapping chip row: how many chips sit on each line
+/// within `available` width. Each chip keeps its own width and always gets a
+/// line, even when it is wider than the row.
+pub(crate) fn chip_rows(options: &[(String, bool)], available: f32, text_size: f32) -> Vec<usize> {
+    let mut rows = Vec::new();
+    let mut count = 0usize;
+    let mut used = 0.0f32;
+    for (label, selected) in options {
+        let width = chip_width(label, text_size, *selected);
+        let next = if count == 0 {
+            width
+        } else {
+            used + CHIP_SPACING + width
+        };
+        if count > 0 && next > available {
+            rows.push(count);
+            count = 1;
+            used = width;
+        } else {
+            count += 1;
+            used = next;
+        }
+    }
+    if count > 0 {
+        rows.push(count);
+    }
+    rows
+}
 
 pub(crate) fn switch_row<'a>(
     text_settings: &Text,
@@ -453,36 +505,49 @@ pub(crate) fn chip<'a>(
     message: Message,
 ) -> Element<'a, Message> {
     let style = text_settings.role(TextRole::LabelLarge);
-    button(
+    let mut content = row![].spacing(6).align_y(iced::Alignment::Center);
+    if selected {
+        content = content.push(
+            text(icons::glyph(icons::CHECK))
+                .font(icons::FONT)
+                .size(18.0),
+        );
+    }
+    content = content.push(
         text(label.to_string())
             .size(style.size)
             .line_height(style.line_height())
             .font(style.font),
-    )
-    .height(theme::metrics::CHIP_HEIGHT.max(style.line_height))
-    .padding([0, 12])
-    .style(if selected {
-        chip_style_selected
-    } else {
-        chip_style_unselected
-    })
-    .on_press_maybe(enabled.then_some(message))
-    .into()
+    );
+    button(container(content).center_y(Length::Fill))
+        .height(theme::metrics::CHIP_HEIGHT.max(style.line_height))
+        .padding([0.0, CHIP_PADDING_X])
+        .style(if selected {
+            chip_style_selected
+        } else {
+            chip_style_unselected
+        })
+        .on_press_maybe(enabled.then_some(message))
+        .into()
 }
 
 pub(crate) fn choice_row<'a>(
     text_settings: &Text,
     label: &str,
     options: &[(String, bool)],
+    available: f32,
     choose: impl Fn(usize) -> Message + 'a,
 ) -> Element<'a, Message> {
     let label_style = text_settings.role(TextRole::BodyLarge);
-    let mut chips = column![].spacing(8);
-    for (chunk_index, chunk) in options.chunks(CHIPS_PER_ROW).enumerate() {
-        let mut line = row![].spacing(8);
-        for (offset, (option, selected)) in chunk.iter().enumerate() {
-            let index = chunk_index * CHIPS_PER_ROW + offset;
+    let text_size = text_settings.role(TextRole::LabelLarge).size;
+    let mut chips = column![].spacing(CHIP_SPACING);
+    let mut index = 0usize;
+    for count in chip_rows(options, available, text_size) {
+        let mut line = row![].spacing(CHIP_SPACING);
+        for _ in 0..count {
+            let (option, selected) = &options[index];
             line = line.push(chip(text_settings, option, *selected, true, choose(index)));
+            index += 1;
         }
         chips = chips.push(line);
     }
@@ -783,5 +848,25 @@ mod tests {
     #[test]
     fn slider_track_is_48_high() {
         assert_eq!(slider_height(), 48.0);
+    }
+
+    #[test]
+    fn chip_rows_wrap_only_when_a_line_is_full() {
+        let options: Vec<(String, bool)> = ["White", "Black", "Grey"]
+            .iter()
+            .map(|label| (label.to_string(), false))
+            .collect();
+        assert_eq!(chip_rows(&options, 400.0, 14.0), vec![3]);
+        let two =
+            chip_width("White", 14.0, false) + CHIP_SPACING + chip_width("Black", 14.0, false);
+        assert_eq!(chip_rows(&options, two, 14.0), vec![2, 1]);
+    }
+
+    #[test]
+    fn a_selected_chip_reserves_room_for_its_tick() {
+        assert!(chip_width("Grey", 14.0, true) > chip_width("Grey", 14.0, false));
+        // A chip wider than the row still gets a line of its own.
+        assert_eq!(chip_rows(&[("Grey".into(), true)], 1.0, 14.0), vec![1]);
+        assert!(chip_rows(&[], 400.0, 14.0).is_empty());
     }
 }
