@@ -6,6 +6,7 @@
 
 use iced::font::{Family, Weight};
 use iced::{Color, Font};
+use iced_android as platform;
 use qlaunch_core::settings::{Settings, Typeface};
 
 /// Flutter's dark Material 3 colour scheme, the subset the UI uses.
@@ -121,16 +122,24 @@ impl Text {
     }
 }
 
-/// The font family a typeface setting names.
+/// The font the launcher's typeface setting names, built on the platform's
+/// default font so `Normal` text resolves to `Roboto` on Android (the generic
+/// `sans-serif` family maps to `Open Sans`, which Android does not load).
 pub(crate) fn base_font(settings: &Settings) -> Font {
-    let family = match settings.label_typeface {
-        Typeface::Normal | Typeface::Sans => Family::SansSerif,
+    typeface_font(settings.label_typeface, platform::DEFAULT_FONT)
+}
+
+/// Resolves a typeface to a font, overriding only the family of `default`.
+fn typeface_font(typeface: Typeface, default: Font) -> Font {
+    let family = match typeface {
+        Typeface::Normal => default.family,
+        Typeface::Sans => Family::SansSerif,
         Typeface::Serif => Family::Serif,
         Typeface::Monospace => Family::Monospace,
     };
     Font {
         family,
-        ..Font::DEFAULT
+        ..default
     }
 }
 
@@ -498,21 +507,35 @@ mod tests {
 
     #[test]
     fn typeface_maps_to_family() {
-        let settings = Settings {
-            label_typeface: Typeface::Serif,
-            ..Settings::default()
-        };
-        assert_eq!(base_font(&settings).family, Family::Serif);
-        let settings = Settings {
-            label_typeface: Typeface::Monospace,
-            ..Settings::default()
-        };
-        assert_eq!(base_font(&settings).family, Family::Monospace);
+        // Android's platform default is `Roboto`, not the generic sans family
+        // cosmic-text maps to `Open Sans` (which Android does not ship), so
+        // `Normal` must follow the platform default instead of hardcoding it.
+        let android_default = Font::with_name("Roboto");
+        assert_eq!(
+            typeface_font(Typeface::Normal, android_default).family,
+            Family::Name("Roboto")
+        );
+        assert_eq!(
+            typeface_font(Typeface::Sans, android_default).family,
+            Family::SansSerif
+        );
+        assert_eq!(
+            typeface_font(Typeface::Serif, android_default).family,
+            Family::Serif
+        );
+        assert_eq!(
+            typeface_font(Typeface::Monospace, android_default).family,
+            Family::Monospace
+        );
+    }
+
+    #[test]
+    fn base_font_defaults_to_the_platform_font() {
         let settings = Settings {
             label_typeface: Typeface::Normal,
             ..Settings::default()
         };
-        assert_eq!(base_font(&settings).family, Family::SansSerif);
+        assert_eq!(base_font(&settings).family, platform::DEFAULT_FONT.family);
     }
 
     #[test]
