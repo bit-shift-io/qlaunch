@@ -43,6 +43,7 @@ pub(crate) mod metrics {
     pub(crate) const DIALOG_MIN_WIDTH: f32 = 280.0;
     pub(crate) const DIALOG_MAX_WIDTH: f32 = 560.0;
     pub(crate) const DIALOG_PADDING: f32 = 24.0;
+    pub(crate) const MENU_VERTICAL_PADDING: f32 = 8.0;
     pub(crate) const CONTENT_TOP_GAP: f32 = 16.0;
     pub(crate) const ACTION_GAP: f32 = 8.0;
     pub(crate) const SNACKBAR_HEIGHT: f32 = 48.0;
@@ -54,6 +55,15 @@ pub(crate) mod metrics {
     pub(crate) const CHECKBOX_SIZE: f32 = 18.0;
     pub(crate) const SELECT_OPTION_HEIGHT: f32 = 48.0;
     pub(crate) const SELECT_MENU_MAX_HEIGHT: f32 = 280.0;
+    pub(crate) const SETTINGS_CARD_RADIUS: f32 = 24.0;
+    pub(crate) const SETTINGS_SIDE_MARGIN: f32 = 16.0;
+    pub(crate) const SETTINGS_SCROLLBAR_GUTTER: f32 = 8.0;
+    pub(crate) const SETTINGS_HEADER_TOP: f32 = 16.0;
+    pub(crate) const SETTINGS_HEADER_BOTTOM: f32 = 8.0;
+    pub(crate) const SETTINGS_ROW_PADDING: f32 = 12.0;
+    pub(crate) const SETTINGS_LABEL_GAP: f32 = 8.0;
+    pub(crate) const GROUP_CARD_HEIGHT: f32 = 72.0;
+    pub(crate) const GROUP_LIST_PADDING_Y: f32 = 8.0;
 }
 
 /// The Material 3 text styles the UI draws.
@@ -135,6 +145,16 @@ pub(crate) fn card(_: &iced::Theme) -> container::Style {
             offset: Vector::new(0.0, 6.0),
             blur_radius: 12.0,
         },
+        ..Default::default()
+    }
+}
+
+/// Flat, rounded surfaces for settings groups and individual action cards.
+pub(crate) fn settings_card(_: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(color::SURFACE_CONTAINER.into()),
+        text_color: Some(color::ON_SURFACE),
+        border: iced::border::rounded(metrics::SETTINGS_CARD_RADIUS),
         ..Default::default()
     }
 }

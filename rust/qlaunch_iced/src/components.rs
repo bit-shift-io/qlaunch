@@ -100,7 +100,12 @@ pub(crate) fn section_header<'a>(text_settings: &Text, label: &str) -> Element<'
             .color(theme::color::ON_SURFACE),
     )
     .width(Fill)
-    .padding([24, 16])
+    .padding(iced::Padding {
+        top: theme::metrics::SETTINGS_HEADER_TOP,
+        bottom: theme::metrics::SETTINGS_HEADER_BOTTOM,
+        left: 16.0,
+        right: 16.0,
+    })
     .into()
 }
 
@@ -113,6 +118,29 @@ pub(crate) fn list_tile<'a>(
     trailing: Option<Element<'a, Message>>,
     message: Option<Message>,
     enabled: bool,
+) -> Element<'a, Message> {
+    list_tile_with_height(
+        text_settings,
+        title,
+        subtitle,
+        leading,
+        trailing,
+        message,
+        enabled,
+        0.0,
+    )
+}
+
+/// A list tile with extra room for wrapped labels in a narrow settings card.
+pub(crate) fn list_tile_with_height<'a>(
+    text_settings: &Text,
+    title: &str,
+    subtitle: Option<&str>,
+    leading: Option<char>,
+    trailing: Option<Element<'a, Message>>,
+    message: Option<Message>,
+    enabled: bool,
+    min_height: f32,
 ) -> Element<'a, Message> {
     let title_style = text_settings.role(TextRole::BodyLarge);
     let subtitle_style = text_settings.role(TextRole::BodyMedium);
@@ -165,7 +193,7 @@ pub(crate) fn list_tile<'a>(
     button(
         container(content)
             .width(Fill)
-            .height(list_tile_height(subtitle.is_some()).max(
+            .height(min_height.max(list_tile_height(subtitle.is_some())).max(
                 title_style.line_height
                     + subtitle.map_or(0.0, |_| subtitle_style.line_height)
                     + 16.0,
@@ -418,6 +446,7 @@ pub(crate) fn switch_row<'a>(
     .width(Fill)
     .height(theme::metrics::LIST_ONE_LINE.max(label_style.line_height + 16.0))
     .padding([0, 16])
+    .align_y(iced::alignment::Vertical::Center)
     .into()
 }
 
@@ -448,7 +477,12 @@ pub(crate) fn slider_row<'a>(
                     .font(value_style.font)
                     .color(theme::color::ON_SURFACE_VARIANT),
             ]
-            .padding([12, 16]),
+            .padding(iced::Padding {
+                top: theme::metrics::SETTINGS_ROW_PADDING,
+                left: 16.0,
+                right: 16.0,
+                ..Default::default()
+            }),
         )
         .width(Fill),
         container(
@@ -560,8 +594,18 @@ pub(crate) fn choice_row<'a>(
                 .color(theme::color::ON_SURFACE)
         )
         .width(Fill)
-        .padding([12, 16]),
-        container(chips).width(Fill).padding([0, 16]),
+        .padding(iced::Padding {
+            top: theme::metrics::SETTINGS_ROW_PADDING,
+            bottom: theme::metrics::SETTINGS_LABEL_GAP,
+            left: 16.0,
+            right: 16.0,
+        }),
+        container(chips).width(Fill).padding(iced::Padding {
+            bottom: theme::metrics::SETTINGS_ROW_PADDING,
+            left: 16.0,
+            right: 16.0,
+            ..Default::default()
+        }),
     ]
     .into()
 }
@@ -787,6 +831,94 @@ pub(crate) fn snackbar<'a>(text_settings: &Text, message: &str) -> Element<'a, M
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn control_layout(mut control: Element<'_, Message>) -> iced::advanced::layout::Node {
+        use iced::advanced::{layout, renderer::Headless, widget::Tree};
+        let renderer = futures::executor::block_on(<iced::Renderer as Headless>::new(
+            iced::Font::DEFAULT,
+            16.0.into(),
+            None,
+        ))
+        .expect("headless wgpu adapter");
+        let mut tree = Tree::new(&control);
+        control.as_widget_mut().layout(
+            &mut tree,
+            &renderer,
+            &layout::Limits::new(iced::Size::ZERO, iced::Size::new(360.0, 1000.0)),
+        )
+    }
+
+    #[test]
+    #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
+    fn settings_layout_centers_switch_content_in_the_tile() {
+        let node = control_layout(switch_row(
+            &Text::new(),
+            "Show icons",
+            true,
+            Message::Back,
+            true,
+        ));
+        let row = &node.children()[0];
+        for child in row.children() {
+            let center = row.bounds().y + child.bounds().center().y;
+            assert!(
+                (center - node.size().height / 2.0).abs() < 0.1,
+                "switch text and control must center within the entire tile: {center}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
+    fn settings_layout_keeps_headings_compact() {
+        let node = control_layout(section_header(&Text::new(), "Display"));
+        assert!(
+            node.size().height <= 44.0,
+            "heading has excessive vertical space"
+        );
+        assert_eq!(node.children()[0].bounds().y, 16.0);
+    }
+
+    #[test]
+    #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
+    fn settings_layout_slider_does_not_double_pad_above_the_track() {
+        let node = control_layout(slider_row(
+            &Text::new(),
+            "Icon size",
+            50.0,
+            "",
+            0.0..=100.0,
+            |_| Message::Back,
+            Message::Back,
+        ));
+        assert_eq!(node.children()[1].bounds().y, 36.0);
+        assert_eq!(
+            node.children()[1].size().height,
+            48.0,
+            "preserve the slider touch target"
+        );
+    }
+
+    #[test]
+    #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
+    fn settings_layout_choice_chips_have_bottom_clearance() {
+        let node = control_layout(choice_row(
+            &Text::new(),
+            "Layout",
+            &[("Tiles".into(), true)],
+            328.0,
+            |_| Message::Back,
+        ));
+        let chips = &node.children()[1];
+        let content_bottom =
+            chips.bounds().y + chips.children()[0].bounds().y + chips.children()[0].size().height;
+        assert_eq!(
+            node.size().height - content_bottom,
+            12.0,
+            "last chips must not hug the card edge"
+        );
+        assert_eq!(chips.bounds().y, 44.0);
+    }
 
     #[test]
     fn list_tile_height_by_subtitle() {

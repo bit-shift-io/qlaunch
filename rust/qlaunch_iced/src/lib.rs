@@ -11,6 +11,7 @@ mod metrics;
 mod overlay;
 pub mod pager;
 mod placeholder;
+mod reorder_list;
 mod screens;
 mod scroll_fade;
 mod slots;
@@ -1289,6 +1290,7 @@ enum Message {
     GroupEdit(Id),
     GroupHidden(Id, bool),
     GroupMove(Id, i32),
+    GroupDragScroll(f32),
     Advanced(screens::advanced::Row),
     BackupDone(Result<String, String>),
     BackupsListed(Result<Vec<String>, String>),
@@ -2523,12 +2525,25 @@ impl App {
             }
             Message::GroupMove(id, index) => {
                 return work(
-                    move || block_on(core::move_group(id, index)),
+                    move || block_on(core::reorder_group(id, index)),
                     |result| Message::ModelDone {
                         result,
                         close: false,
                     },
                 );
+            }
+            Message::GroupDragScroll(offset) => {
+                if self.screens.last() == Some(&Screen::Groups) && self.dialog.is_none() {
+                    self.scroll.insert(Region::Screen, offset);
+                    self.scroll_last = Some(Instant::now());
+                    return iced::widget::operation::scroll_to(
+                        "screen-scroll",
+                        iced::widget::operation::AbsoluteOffset {
+                            x: None,
+                            y: Some(offset),
+                        },
+                    );
+                }
             }
             Message::Advanced(action) => {
                 use screens::advanced::Row;

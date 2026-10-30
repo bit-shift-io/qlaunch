@@ -19,12 +19,11 @@ pub(crate) const NOTIFICATIONS_NONE: char = '\u{e451}';
 pub(crate) const LINK: char = '\u{e380}';
 pub(crate) const CHECKLIST: char = '\u{e15b}';
 pub(crate) const CHECK: char = '\u{e156}';
-pub(crate) const ARROW_UPWARD: char = '\u{e0a0}';
-pub(crate) const ARROW_DOWNWARD: char = '\u{e097}';
 pub(crate) const ARROW_BACK: char = '\u{e092}';
 pub(crate) const FOLDER: char = '\u{e2a3}';
 pub(crate) const KEYBOARD_ARROW_DOWN: char = '\u{e353}';
 pub(crate) const ADD: char = '\u{e047}';
+pub(crate) const DRAG_INDICATOR: char = '\u{e207}';
 pub(crate) const CLOSE: char = '\u{e16a}';
 
 /// The glyph as owned text, for `text(...).font(FONT)`.

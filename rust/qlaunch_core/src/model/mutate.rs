@@ -6,10 +6,9 @@ use unicode_normalization::char::is_combining_mark;
 
 use super::{AppRef, Group, GroupRole, Id, Item, Model, ModelError, ShortcutPayload, new_id};
 
-// `order` is dense and explicit: after any insertion, removal, move or sort the
-// affected list (the pages, or the items of one group) is rewritten to `0..n` in
-// list order. Ties and gaps in loaded data are resolved by position in the
-// backing `Vec`, so the resulting order is deterministic.
+// Group order includes hidden groups, so visible page orders can have gaps.
+// Items are dense within their group. Ties in loaded data are resolved by
+// position in the backing Vec, so the resulting order is deterministic.
 impl Model {
     /// The visible top-level groups: children of the root that are not the
     /// `Hidden` group, by `order`.
@@ -38,17 +37,23 @@ impl Model {
     /// Adds an ordinary group (no role) as the last page.
     pub fn add_group(&mut self, label: &str) -> Id {
         let id = new_id();
-        let order = self.pages().last().map_or(0, |g| g.order.saturating_add(1));
+        let mut ids = self.group_ids();
+        let insertion = self
+            .pages()
+            .last()
+            .and_then(|last| ids.iter().position(|id| *id == last.id))
+            .map_or(0, |i| i + 1);
+        ids.insert(insertion, id.clone());
         self.groups.push(Group {
             id: id.clone(),
             label: label.into(),
             parent_id: Some(self.root_group_id.clone()),
             role: None,
-            order,
+            order: 0,
             hidden: false,
             folder: false,
         });
-        self.renumber_pages();
+        self.set_group_orders(&ids);
         id
     }
 
@@ -134,7 +139,8 @@ impl Model {
     /// Moves the page `id` so that it ends up at position `new_order` (a
     /// zero-based index) in the list of pages, shifting the pages in between.
     /// An index below zero is treated as zero and one past the end as the end,
-    /// so every index is valid. Afterwards the pages are numbered `0..n`.
+    /// so every index is valid. Hidden groups retain their slots in the full
+    /// group sequence; page orders may therefore have gaps.
     ///
     /// The root and the `Hidden` group are not pages: `NotAPage`.
     pub fn move_group(&mut self, id: &Id, new_order: i32) -> Result<(), ModelError> {
@@ -146,6 +152,21 @@ impl Model {
         ids.retain(|p| p != id);
         ids.insert(clamp_index(new_order, ids.len()), id.clone());
         self.set_page_orders(&ids);
+        Ok(())
+    }
+
+    /// Moves a group to a clamped zero-based index among all root children
+    /// except folders, including ordinary hidden groups and the Hidden role.
+    /// Root and folder groups are refused with `NotAPage`.
+    pub fn reorder_group(&mut self, id: &Id, new_order: i32) -> Result<(), ModelError> {
+        let group = self.group(id)?;
+        if group.parent_id.as_ref() != Some(&self.root_group_id) || group.folder {
+            return Err(ModelError::NotAPage(id.clone()));
+        }
+        let mut ids = self.group_ids();
+        ids.retain(|g| g != id);
+        ids.insert(clamp_index(new_order, ids.len()), id.clone());
+        self.set_group_orders(&ids);
         Ok(())
     }
 
@@ -176,19 +197,33 @@ impl Model {
             return Err(ModelError::RoleNotAssignable);
         }
 
+        let mut displaced_hidden = None;
         if let Some(role) = role {
-            let displaced_order = self.pages().last().map_or(0, |g| g.order.saturating_add(1));
             if let Some(previous) = self.groups.iter_mut().find(|g| g.role == Some(role)) {
                 previous.role = None;
                 if role == GroupRole::Hidden {
-                    previous.order = displaced_order;
+                    displaced_hidden = Some(previous.id.clone());
                 }
             }
         }
         if let Some(group) = self.groups.iter_mut().find(|g| g.id == *id) {
             group.role = role;
         }
-        self.renumber_pages();
+        if let Some(previous) = displaced_hidden {
+            let mut ids = self.group_ids();
+            ids.retain(|g| g != id);
+            if let Some(slot) = ids.iter_mut().find(|g| **g == previous) {
+                *slot = id.clone();
+            }
+            let insertion = ids
+                .iter()
+                .rposition(|id| self.is_page(self.group(id).expect("known group")))
+                .map_or(0, |i| i + 1);
+            ids.insert(insertion, previous);
+            self.set_group_orders(&ids);
+        } else {
+            self.renumber_pages();
+        }
         Ok(())
     }
 
@@ -408,6 +443,16 @@ impl Model {
         self.pages().into_iter().map(|g| g.id.clone()).collect()
     }
 
+    fn group_ids(&self) -> Vec<Id> {
+        let mut groups: Vec<_> = self
+            .groups
+            .iter()
+            .filter(|g| g.parent_id.as_ref() == Some(&self.root_group_id) && !g.folder)
+            .collect();
+        groups.sort_by_key(|g| g.order);
+        groups.into_iter().map(|g| g.id.clone()).collect()
+    }
+
     fn item_ids(&self, group: &Id) -> Vec<Id> {
         self.items_in(group)
             .into_iter()
@@ -416,8 +461,8 @@ impl Model {
     }
 
     fn renumber_pages(&mut self) {
-        let ids = self.page_ids();
-        self.set_page_orders(&ids);
+        let ids = self.group_ids();
+        self.set_group_orders(&ids);
     }
 
     fn renumber_items(&mut self, group: &Id) {
@@ -426,11 +471,42 @@ impl Model {
     }
 
     fn set_page_orders(&mut self, ids: &[Id]) {
-        let orders = positions(ids);
-        for group in self.groups.iter_mut() {
-            if let Some(&order) = orders.get(group.id.as_str()) {
-                group.order = order;
-            }
+        // Replace only visible slots, keeping every hidden group in place.
+        let mut pages = ids.iter();
+        let all: Vec<_> = self
+            .group_ids()
+            .into_iter()
+            .map(|id| {
+                if self.is_page(self.group(&id).expect("known group")) {
+                    pages.next().expect("one id per page").clone()
+                } else {
+                    id
+                }
+            })
+            .collect();
+        self.set_group_orders(&all);
+    }
+
+    fn set_group_orders(&mut self, ids: &[Id]) {
+        // Keep legacy trailing hidden orders (notably Hidden's default 999),
+        // while numbering the interleaved prefix as one list. This preserves
+        // old dense-page behavior without losing hidden positions on mutation.
+        let last_page = ids
+            .iter()
+            .rposition(|id| self.is_page(self.group(id).expect("known group")));
+        let mut next = 0;
+        for (index, id) in ids.iter().enumerate() {
+            let group = self
+                .groups
+                .iter_mut()
+                .find(|g| g.id == *id)
+                .expect("known group");
+            group.order = if last_page.is_some_and(|last| index <= last) {
+                next
+            } else {
+                group.order.max(next)
+            };
+            next = group.order.saturating_add(1);
         }
     }
 

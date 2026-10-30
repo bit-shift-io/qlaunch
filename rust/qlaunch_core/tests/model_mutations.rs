@@ -20,6 +20,98 @@ fn role_id(m: &Model, role: GroupRole) -> Id {
     m.role_holder(role).unwrap().id.clone()
 }
 
+fn group_labels(m: &Model) -> Vec<String> {
+    let mut groups: Vec<_> = m
+        .groups
+        .iter()
+        .filter(|g| g.id != m.root_group_id && !g.folder)
+        .collect();
+    groups.sort_by_key(|g| g.order);
+    groups.into_iter().map(|g| g.label.clone()).collect()
+}
+
+#[test]
+fn reorder_group_moves_hidden_groups_and_clamps_indexes() {
+    let mut m = Model::new_default();
+    let hidden = role_id(&m, GroupRole::Hidden);
+    let chat = m.add_group("Chat");
+    m.set_group_hidden(&chat, true).unwrap();
+    m.reorder_group(&hidden, 1).unwrap();
+    assert_eq!(
+        group_labels(&m),
+        ["Apps", "Hidden", "Home", "Games", "Chat"]
+    );
+    m.reorder_group(&chat, 2).unwrap();
+    assert_eq!(
+        group_labels(&m),
+        ["Apps", "Hidden", "Chat", "Home", "Games"]
+    );
+    assert_eq!(page_labels(&m), ["Apps", "Home", "Games"]);
+    m.reorder_group(&hidden, i32::MIN).unwrap();
+    assert_eq!(
+        group_labels(&m),
+        ["Hidden", "Apps", "Chat", "Home", "Games"]
+    );
+    m.reorder_group(&hidden, i32::MAX).unwrap();
+    assert_eq!(
+        group_labels(&m),
+        ["Apps", "Chat", "Home", "Games", "Hidden"]
+    );
+    m.set_group_hidden(&chat, false).unwrap();
+    assert_eq!(page_labels(&m), ["Apps", "Chat", "Home", "Games"]);
+    assert_eq!(m.validate(), Ok(()));
+}
+
+#[test]
+fn reorder_group_rejects_root_folder_and_unknown_without_mutating() {
+    let mut m = Model::new_default();
+    let apps = role_id(&m, GroupRole::Apps);
+    let folder = m.add_folder(&apps, "Folder").unwrap();
+    let before = m.clone();
+    for id in [m.root_group_id.clone(), folder] {
+        assert_eq!(m.reorder_group(&id, 0), Err(ModelError::NotAPage(id)));
+    }
+    assert_eq!(
+        m.reorder_group(&"missing".into(), 0),
+        Err(ModelError::UnknownGroup("missing".into()))
+    );
+    assert_eq!(m, before);
+}
+
+#[test]
+fn reordered_hidden_positions_survive_page_mutations() {
+    let mut m = Model::new_default();
+    let hidden = role_id(&m, GroupRole::Hidden);
+    let apps = role_id(&m, GroupRole::Apps);
+    let games = role_id(&m, GroupRole::Games);
+    let chat = m.add_group("Chat");
+    m.set_group_hidden(&chat, true).unwrap();
+    m.reorder_group(&hidden, 1).unwrap();
+    m.reorder_group(&chat, 3).unwrap();
+    let music = m.add_group("Music");
+    assert_eq!(
+        group_labels(&m),
+        ["Apps", "Hidden", "Home", "Chat", "Games", "Music"]
+    );
+    m.delete_group(&music).unwrap();
+    let folder = m.add_folder(&apps, "Folder").unwrap();
+    m.delete_folder(&folder).unwrap();
+    m.set_group_role(&chat, Some(GroupRole::Home)).unwrap();
+    assert_eq!(
+        group_labels(&m),
+        ["Apps", "Hidden", "Home", "Chat", "Games"]
+    );
+    m.move_group(&games, 0).unwrap();
+    assert_eq!(
+        group_labels(&m),
+        ["Games", "Hidden", "Apps", "Chat", "Home"]
+    );
+    assert_eq!(page_labels(&m), ["Games", "Apps", "Home"]);
+    m.set_group_hidden(&chat, false).unwrap();
+    assert_eq!(page_labels(&m), ["Games", "Apps", "Chat", "Home"]);
+    assert_eq!(m.validate(), Ok(()));
+}
+
 #[test]
 fn set_group_role_moves_the_role_and_never_duplicates() {
     let mut m = Model::new_default();

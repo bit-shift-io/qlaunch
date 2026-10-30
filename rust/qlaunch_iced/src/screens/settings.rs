@@ -1,6 +1,6 @@
 //! Settings presentation and patches; the core owns validation and persistence.
 
-use crate::{App, Message, Screen, components, theme};
+use crate::{App, Message, Screen, components, icons, theme};
 use iced::widget::{column, container};
 use iced::{Element, Fill};
 use qlaunch_core::settings::{
@@ -176,11 +176,6 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             settings.scroll_fade as usize,
         ),
         Row::Header("Window"),
-        Row::Action {
-            label: "Choose wallpaper",
-            subtitle: "Pick one with the system wallpaper chooser.",
-            target: ActionTarget::Wallpaper,
-        },
         number(
             WallpaperAlpha,
             "Wallpaper dimming",
@@ -228,13 +223,16 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             10,
             "",
         ),
-        Row::Header("Groups"),
+        Row::Action {
+            label: "Choose wallpaper",
+            subtitle: "Pick one with the system wallpaper chooser.",
+            target: ActionTarget::Wallpaper,
+        },
         Row::Action {
             label: "Groups",
             subtitle: "Add, rename, reorder and fill the tabs.",
             target: ActionTarget::Groups,
         },
-        Row::Header("Advanced"),
         Row::Action {
             label: "Advanced",
             subtitle: "Restart, backup, restore and factory reset.",
@@ -323,15 +321,22 @@ pub(crate) fn choice_patch(field: SettingField, index: usize) -> SettingsPatch {
 pub(crate) fn row_height(row: &Row, text: &theme::Text, available: f32) -> f32 {
     let body = text.role(theme::TextRole::BodyLarge).line_height;
     match row {
-        Row::Header(_) => text.role(theme::TextRole::TitleSmall).line_height + 48.0,
+        Row::Header(_) => {
+            text.role(theme::TextRole::TitleSmall).line_height
+                + theme::metrics::SETTINGS_HEADER_TOP
+                + theme::metrics::SETTINGS_HEADER_BOTTOM
+        }
         Row::Switch { .. } => (body + 16.0).max(theme::metrics::LIST_ONE_LINE),
-        Row::Slider { .. } => body + 24.0 + theme::metrics::SLIDER_HEIGHT,
+        Row::Slider { .. } => {
+            body + theme::metrics::SETTINGS_ROW_PADDING + theme::metrics::SLIDER_HEIGHT
+        }
         Row::Choice { options, .. } => {
             let text_size = text.role(theme::TextRole::LabelLarge).size;
             let lines = components::chip_rows(options, available, text_size)
                 .len()
                 .max(1) as f32;
-            body + 24.0
+            body + theme::metrics::SETTINGS_ROW_PADDING * 2.0
+                + theme::metrics::SETTINGS_LABEL_GAP
                 + lines
                     * (text
                         .role(theme::TextRole::LabelLarge)
@@ -340,9 +345,43 @@ pub(crate) fn row_height(row: &Row, text: &theme::Text, available: f32) -> f32 {
                         + components::CHIP_SPACING)
                 - components::CHIP_SPACING
         }
-        Row::Action { .. } => (body + text.role(theme::TextRole::BodyMedium).line_height + 16.0)
-            .max(theme::metrics::LIST_TWO_LINE),
+        Row::Action {
+            label, subtitle, ..
+        } => {
+            // `available` already excludes the tile's horizontal padding.
+            // Reserve the same icon and gap as components::list_tile.
+            let width = (available - theme::metrics::ICON_SIZE - 16.0).max(1.0);
+            let title = text.role(theme::TextRole::BodyLarge);
+            let subtitle_style = text.role(theme::TextRole::BodyMedium);
+            (wrapped_lines(label, title.size, width) * title.line_height
+                + wrapped_lines(subtitle, subtitle_style.size, width) * subtitle_style.line_height
+                + 16.0)
+                .max(theme::metrics::LIST_TWO_LINE)
+                + theme::metrics::ACTION_GAP
+        }
     }
+}
+
+/// Conservative word wrapping, matching the fixed chrome font's approximate
+/// advance. Unlike a character count, this accounts for words moving together.
+fn wrapped_lines(label: &str, size: f32, width: f32) -> f32 {
+    let capacity = (width / (size * 0.6)).floor().max(1.0) as usize;
+    let mut lines = 1;
+    let mut used = 0;
+    for word in label.split_whitespace() {
+        let length = word.chars().count();
+        if used > 0 && used + 1 + length > capacity {
+            lines += 1;
+            used = 0;
+        }
+        if used > 0 {
+            used += 1;
+        }
+        used += length;
+        lines += used.saturating_sub(1) / capacity;
+        used = used.saturating_sub(1) % capacity + 1;
+    }
+    lines as f32
 }
 
 pub(crate) fn view(app: &App) -> Element<'_, Message> {
@@ -350,10 +389,25 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         return container(column![]).into();
     };
     let typography = theme::Text::new();
-    let available = components::chip_available(crate::grid::content_width(app.size, app.insets));
+    let side = theme::metrics::SETTINGS_SIDE_MARGIN;
+    let right = side + theme::metrics::SETTINGS_SCROLLBAR_GUTTER;
+    let available =
+        components::chip_available(crate::grid::content_width(app.size, app.insets) - side - right);
     let mut content = column![];
+    let mut group = Vec::new();
     for row in rows(&snapshot.settings, app.settings_drag) {
+        // Headers stay on the page surface; only their controls share a card.
+        if matches!(row, Row::Header(_) | Row::Action { .. }) && !group.is_empty() {
+            content = content.push(
+                container(column(std::mem::take(&mut group)))
+                    .width(Fill)
+                    .style(theme::settings_card)
+                    .clip(true),
+            );
+        }
         let height = row_height(&row, &typography, available);
+        let is_header = matches!(row, Row::Header(_));
+        let is_action = matches!(row, Row::Action { .. });
         let element = match row {
             Row::Header(label) => components::section_header(&typography, label),
             Row::Switch {
@@ -394,23 +448,61 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 label,
                 subtitle,
                 target,
-            } => components::action_tile(
+            } => components::list_tile_with_height(
                 &typography,
                 label,
-                subtitle,
-                match target {
+                Some(subtitle),
+                Some(match target {
+                    ActionTarget::Groups => icons::DASHBOARD_CUSTOMIZE,
+                    ActionTarget::Advanced => icons::SETTINGS,
+                    ActionTarget::Wallpaper => icons::WALLPAPER,
+                }),
+                None,
+                Some(match target {
                     ActionTarget::Groups => Message::Push(Screen::Groups),
                     ActionTarget::Advanced => Message::Push(Screen::Advanced),
                     ActionTarget::Wallpaper => {
                         Message::Dialog(crate::dialog::Message::LauncherWallpaper)
                     }
-                },
+                }),
+                true,
+                height - theme::metrics::ACTION_GAP,
             ),
         };
-        content = content.push(container(element).width(Fill).height(height));
+        if is_action {
+            content = content.push(
+                container(
+                    container(element)
+                        .width(Fill)
+                        .style(theme::settings_card)
+                        .clip(true),
+                )
+                .width(Fill)
+                .height(height)
+                .padding(iced::Padding {
+                    top: theme::metrics::ACTION_GAP,
+                    ..Default::default()
+                }),
+            );
+        } else if is_header {
+            content = content.push(container(element).width(Fill).height(height));
+        } else {
+            group.push(container(element).width(Fill).height(height).into());
+        }
     }
     content = content.push(iced::widget::space().height(32));
-    super::scaffold(app, "Launcher Settings", vec![], content.into())
+    super::scaffold(
+        app,
+        "Launcher Settings",
+        vec![],
+        container(content)
+            .padding(iced::Padding {
+                left: side,
+                right,
+                ..Default::default()
+            })
+            .into(),
+    )
 }
 
 #[cfg(test)]
@@ -433,7 +525,7 @@ mod tests {
     }
 
     #[test]
-    fn rows_are_grouped_display_window_icon_text_groups_advanced() {
+    fn headings_label_the_four_settings_groups_not_individual_actions() {
         let rows = rows(&Settings::default(), None);
         let headers: Vec<_> = rows
             .iter()
@@ -442,10 +534,24 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(
-            headers,
-            ["Display", "Window", "Icon", "Text", "Groups", "Advanced"]
-        );
+        assert_eq!(headers, ["Display", "Window", "Icon", "Text"]);
+    }
+
+    #[test]
+    fn wallpaper_groups_and_advanced_follow_all_settings() {
+        let rows = rows(&Settings::default(), None);
+        let first_action = rows
+            .iter()
+            .position(|row| matches!(row, Row::Action { .. }))
+            .unwrap();
+        let actions: Vec<_> = rows[first_action..]
+            .iter()
+            .map(|row| match row {
+                Row::Action { label, .. } => *label,
+                _ => panic!("settings must precede the bottom action cards"),
+            })
+            .collect();
+        assert_eq!(actions, ["Choose wallpaper", "Groups", "Advanced"]);
     }
 
     #[test]
@@ -521,6 +627,19 @@ mod tests {
         let _ = app.update(Message::SettingsDone(Err("cannot save".into())));
         assert_eq!(app.settings_drag, None);
         assert_eq!(app.snackbar.as_ref().unwrap().1, "cannot save");
+    }
+
+    #[test]
+    fn action_cards_grow_to_fit_subtitles_on_narrow_screens() {
+        let typography = theme::Text::new();
+        for action in rows(&Settings::default(), None)
+            .iter()
+            .filter(|r| matches!(r, Row::Action { .. }))
+        {
+            assert!(
+                row_height(action, &typography, 168.0) > row_height(action, &typography, 388.0)
+            );
+        }
     }
 
     #[test]

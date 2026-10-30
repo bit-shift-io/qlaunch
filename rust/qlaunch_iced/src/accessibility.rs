@@ -515,7 +515,11 @@ fn screen_frame(app: &App) -> Frame {
         Screen::Settings => {
             use screens::settings::{ActionTarget, Row};
             let rows = screens::settings::rows(&snapshot.settings, app.settings_drag);
-            let available = components::chip_available(viewport.width);
+            let side = theme::metrics::SETTINGS_SIDE_MARGIN;
+            let content_x = viewport.x + side;
+            let content_width =
+                viewport.width - side * 2.0 - theme::metrics::SETTINGS_SCROLLBAR_GUTTER;
+            let available = components::chip_available(content_width);
             let height = rows
                 .iter()
                 .map(|r| screens::settings::row_height(r, &typography, available))
@@ -525,7 +529,16 @@ fn screen_frame(app: &App) -> Frame {
             let mut y = viewport.y - offset;
             for row in rows {
                 let height = screens::settings::row_height(&row, &typography, available);
-                let bounds = rect(viewport.x, y, viewport.width, height);
+                let bounds = if matches!(row, Row::Action { .. }) {
+                    rect(
+                        content_x,
+                        y + theme::metrics::ACTION_GAP,
+                        content_width,
+                        height - theme::metrics::ACTION_GAP,
+                    )
+                } else {
+                    rect(content_x, y, content_width, height)
+                };
                 match row {
                     Row::Header(label) => push(
                         app,
@@ -603,14 +616,16 @@ fn screen_frame(app: &App) -> Frame {
                             .role(theme::TextRole::LabelLarge)
                             .line_height
                             .max(theme::metrics::CHIP_HEIGHT);
-                        let top =
-                            y + typography.role(theme::TextRole::BodyLarge).line_height + 24.0;
+                        let top = y
+                            + typography.role(theme::TextRole::BodyLarge).line_height
+                            + theme::metrics::SETTINGS_ROW_PADDING
+                            + theme::metrics::SETTINGS_LABEL_GAP;
                         let mut index = 0usize;
                         for (line, count) in components::chip_rows(&options, available, text_size)
                             .into_iter()
                             .enumerate()
                         {
-                            let mut x = viewport.x + 16.0;
+                            let mut x = content_x + 16.0;
                             for _ in 0..count {
                                 let (option, selected) = &options[index];
                                 let width = components::chip_width(option, text_size, *selected);
@@ -702,26 +717,52 @@ fn screen_frame(app: &App) -> Frame {
                 None,
             );
             let rows = screens::groups::rows(snapshot);
-            let height = |row: &screens::groups::GroupRow| {
-                crate::components::list_tile_height(row.role.is_some()).max(
-                    typography.role(theme::TextRole::BodyLarge).line_height
-                        + row.role.map_or(0.0, |_| {
-                            typography.role(theme::TextRole::BodyMedium).line_height
-                        })
-                        + 16.0,
-                )
-            };
+            let h = theme::metrics::GROUP_CARD_HEIGHT;
+            let gap = theme::metrics::ACTION_GAP;
+            let side = theme::metrics::SETTINGS_SIDE_MARGIN;
+            let width = viewport.width - side * 2.0 - theme::metrics::SETTINGS_SCROLLBAR_GUTTER;
+            let x = viewport.x + side;
+            let count = rows.len();
             let offset = add_scroll(
                 app,
                 &mut frame,
                 Region::Screen,
                 viewport,
-                rows.iter().map(height).sum(),
+                count as f32 * h
+                    + count.saturating_sub(1) as f32 * gap
+                    + theme::metrics::GROUP_LIST_PADDING_Y * 2.0,
             );
-            let mut y = viewport.y - offset;
-            for row in rows {
-                let h = height(&row);
-                let arrows = if row.page_index.is_some() { 96.0 } else { 0.0 };
+            let mut y = viewport.y + theme::metrics::GROUP_LIST_PADDING_Y - offset;
+            for (index, row) in rows.into_iter().enumerate() {
+                let mut actions = Vec::new();
+                if index > 0 {
+                    actions.push(Action::ScrollBackward);
+                }
+                if index + 1 < count {
+                    actions.push(Action::ScrollForward);
+                }
+                push(
+                    app,
+                    &mut frame.nodes,
+                    format!("group:{}:reorder", row.id),
+                    Target::Slider {
+                        step_up: Box::new(Message::GroupMove(
+                            row.id.clone(),
+                            (index + 1).min(count - 1) as i32,
+                        )),
+                        step_down: Box::new(Message::GroupMove(
+                            row.id.clone(),
+                            index.saturating_sub(1) as i32,
+                        )),
+                    },
+                    Role::Button,
+                    format!("Reorder {}", row.label),
+                    rect(x, y, theme::metrics::TOUCH_TARGET, h),
+                    actions,
+                    false,
+                    None,
+                    Some(viewport),
+                );
                 control(
                     app,
                     &mut frame,
@@ -734,7 +775,12 @@ fn screen_frame(app: &App) -> Frame {
                             screens::groups::role_name(r)
                         ))
                     ),
-                    rect(viewport.x, y, viewport.width - arrows - 80.0, h),
+                    rect(
+                        x + theme::metrics::TOUCH_TARGET,
+                        y,
+                        width - theme::metrics::TOUCH_TARGET - 80.0,
+                        h,
+                    ),
                     Message::GroupEdit(row.id.clone()),
                     false,
                     true,
@@ -745,37 +791,13 @@ fn screen_frame(app: &App) -> Frame {
                     &mut frame,
                     format!("group:{}:hidden", row.id),
                     format!("Hide {}, {}", row.label, row.hidden),
-                    rect(viewport.x + viewport.width - arrows - 80.0, y, 64.0, h),
+                    rect(x + width - 80.0, y, 64.0, h),
                     Message::GroupHidden(row.id.clone(), !row.hidden),
                     row.hidden,
                     !row.always_hidden,
                     Some(viewport),
                 );
-                if let Some(index) = row.page_index {
-                    control(
-                        app,
-                        &mut frame,
-                        format!("group:{}:up", row.id),
-                        format!("Move {} up", row.label),
-                        rect(viewport.x + viewport.width - 112.0, y, 48.0, h),
-                        Message::GroupMove(row.id.clone(), index.saturating_sub(1) as i32),
-                        false,
-                        index > 0,
-                        Some(viewport),
-                    );
-                    control(
-                        app,
-                        &mut frame,
-                        format!("group:{}:down", row.id),
-                        format!("Move {} down", row.label),
-                        rect(viewport.x + viewport.width - 64.0, y, 48.0, h),
-                        Message::GroupMove(row.id, (index + 1) as i32),
-                        false,
-                        index + 1 < row.page_count,
-                        Some(viewport),
-                    );
-                }
-                y += h;
+                y += h + gap;
             }
         }
         Screen::GroupApps(group) => {
@@ -1850,6 +1872,50 @@ mod tests {
             .unwrap();
         assert!(!lock.enabled);
         assert!(!lock.actions.contains(&Action::Click));
+    }
+
+    #[test]
+    fn group_cards_expose_reorder_grips_including_hidden_groups() {
+        let mut app = crate::tests::app();
+        app.screens.push(Screen::Groups);
+        let groups = crate::screens::groups::rows(app.snapshot.as_ref().unwrap());
+        let frame = frame(&app).unwrap();
+        for group in &groups {
+            let grip = frame
+                .nodes
+                .iter()
+                .find(|node| node.key == format!("group:{}:reorder", group.id))
+                .expect("every group needs a reorder grip");
+            assert!(
+                grip.actions.contains(&Action::ScrollForward)
+                    || grip.actions.contains(&Action::ScrollBackward)
+            );
+            assert_eq!(grip.bounds[2], 48.0);
+            assert!(
+                !frame
+                    .nodes
+                    .iter()
+                    .any(|node| node.key == format!("group:{}:up", group.id)
+                        || node.key == format!("group:{}:down", group.id))
+            );
+        }
+    }
+
+    #[test]
+    fn settings_controls_leave_a_gutter_for_the_scrollbar() {
+        let mut app = crate::tests::app();
+        app.screens.push(Screen::Settings);
+        let frame = frame(&app).unwrap();
+        let control = frame
+            .nodes
+            .iter()
+            .find(|n| n.key == "settings:control:ContinuousScroll")
+            .unwrap();
+        close(control.bounds[0], app.insets.left + 16.0);
+        close(
+            control.bounds[0] + control.bounds[2],
+            app.size.width - app.insets.right - 24.0,
+        );
     }
 
     #[test]

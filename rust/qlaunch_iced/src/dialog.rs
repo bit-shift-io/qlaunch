@@ -384,7 +384,7 @@ pub(crate) fn heading(dialog: &Dialog) -> Option<String> {
         Dialog::App(_) => None,
         Dialog::Folder(FolderEditor::Create { .. }) => Some("New Folder".into()),
         Dialog::Folder(FolderEditor::Edit { label, .. }) => Some(label.clone()),
-        Dialog::Launcher => Some("Launcher".into()),
+        Dialog::Launcher => None,
         Dialog::AddShortcut(_) => Some("Add Shortcut".into()),
         Dialog::CommandShortcut(_) => Some("Command Shortcut".into()),
         Dialog::AddGroup(_) => Some("Add group".into()),
@@ -682,11 +682,23 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
     let labels = action_labels(dialog);
     let typography = dialog_text();
     let title_height = typography.role(TextRole::HeadlineSmall).line_height;
-    let padding = theme::metrics::DIALOG_PADDING.min(window.width / 4.0);
+    // Menu rows supply their own horizontal padding. Only form dialogs need
+    // the additional inset; the launcher menu keeps a small vertical edge gap.
+    let launcher_menu = matches!(dialog, Dialog::Launcher);
+    let padding = if launcher_menu {
+        0.0
+    } else {
+        theme::metrics::DIALOG_PADDING.min(window.width / 4.0)
+    };
+    let edge_padding = if launcher_menu {
+        theme::metrics::MENU_VERTICAL_PADDING
+    } else {
+        padding
+    };
     let title_block = if heading(dialog).is_some() {
         padding + title_height + theme::metrics::CONTENT_TOP_GAP
     } else {
-        padding
+        edge_padding
     };
     let card_width = (window.width - 2.0 * theme::metrics::DIALOG_SIDE_MARGIN)
         .clamp(
@@ -715,7 +727,7 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
     } else {
         1
     };
-    let actions_height = padding
+    let actions_height = edge_padding
         + if action_rows == 0 {
             0.0
         } else {
@@ -1613,6 +1625,30 @@ mod tests {
             .find(|(_, index)| matches!(rows(&app, &dialog)[*index], Row::Note { .. }))
             .unwrap();
         assert!(row.height >= 2.0 * text.role(TextRole::BodyMedium).line_height);
+    }
+
+    #[test]
+    fn launcher_popup_has_no_title_block() {
+        let app = dialog_app().0;
+        let layout = layout(&app, &Dialog::Launcher, Size::new(360.0, 800.0));
+        assert!(layout.title.is_none(), "launcher actions need no heading");
+    }
+
+    #[test]
+    fn launcher_popup_uses_row_padding_not_extra_dialog_padding() {
+        let app = dialog_app().0;
+        let layout = layout(&app, &Dialog::Launcher, Size::new(360.0, 800.0));
+        assert_eq!(layout.content.x, layout.card.x);
+        assert_eq!(layout.content.width, layout.card.width);
+        assert_eq!(layout.content.y - layout.card.y, 8.0);
+        assert_eq!(
+            layout.card.y + layout.card.height - layout.content.y - layout.content.height,
+            8.0
+        );
+        assert_eq!(layout.rows.len(), 5);
+        for (row, _) in &layout.rows {
+            assert_eq!(row.height, 56.0, "keep full-height menu touch targets");
+        }
     }
 
     #[test]

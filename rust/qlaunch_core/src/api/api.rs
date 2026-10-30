@@ -194,6 +194,11 @@ pub async fn move_group(id: Id, new_order: i32) -> Result<ModelSnapshot, String>
     state::mutate_model(|m| m.move_group(&id, new_order))
 }
 
+/// Reorders all top-level non-folder groups, including hidden groups.
+pub async fn reorder_group(id: Id, new_order: i32) -> Result<ModelSnapshot, String> {
+    state::mutate_model(|m| m.reorder_group(&id, new_order))
+}
+
 pub async fn set_group_role(id: Id, role: Option<GroupRole>) -> Result<ModelSnapshot, String> {
     state::mutate_model(|m| m.set_group_role(&id, role))
 }

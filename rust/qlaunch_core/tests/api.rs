@@ -1044,6 +1044,61 @@ fn groups_and_items_can_be_arranged() {
 }
 
 #[test]
+fn reordered_hidden_groups_survive_mutations_and_reinitialization() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let hidden = group_id(&snap, GroupRole::Hidden);
+    let snap = block_on(api::add_group("Chat".into())).unwrap();
+    let chat = snap
+        .groups
+        .iter()
+        .find(|g| g.label == "Chat")
+        .unwrap()
+        .id
+        .clone();
+    block_on(api::set_group_hidden(chat.clone(), true)).unwrap();
+    block_on(api::reorder_group(hidden, 1)).unwrap();
+    block_on(api::reorder_group(chat.clone(), 2)).unwrap();
+    let snap = block_on(api::add_group("Music".into())).unwrap();
+    let music = snap
+        .groups
+        .iter()
+        .find(|g| g.label == "Music")
+        .unwrap()
+        .id
+        .clone();
+    block_on(api::delete_group(music)).unwrap();
+    api::reset_for_test();
+    let snap = init_fake(dir.path());
+    let mut groups: Vec<_> = snap
+        .groups
+        .iter()
+        .filter(|g| g.id != snap.root_group_id && !g.folder)
+        .collect();
+    groups.sort_by_key(|g| g.order);
+    assert_eq!(
+        groups.iter().map(|g| g.label.as_str()).collect::<Vec<_>>(),
+        ["Apps", "Hidden", "Chat", "Home", "Games"]
+    );
+    assert!(groups.iter().find(|g| g.id == chat).unwrap().hidden);
+    let snap = block_on(api::set_group_hidden(chat, false)).unwrap();
+    let labels: Vec<_> = snap
+        .page_ids
+        .iter()
+        .map(|id| {
+            snap.groups
+                .iter()
+                .find(|g| g.id == *id)
+                .unwrap()
+                .label
+                .as_str()
+        })
+        .collect();
+    assert_eq!(labels, ["Apps", "Chat", "Home", "Games"]);
+}
+
+#[test]
 fn home_group_id_search_and_launch() {
     let _guard = serial();
     assert_eq!(block_on(api::home_group_id()), None);
