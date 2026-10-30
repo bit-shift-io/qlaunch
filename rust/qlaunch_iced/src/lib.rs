@@ -1,14 +1,18 @@
 //! Iced Android/desktop launcher UI. The core remains the source of truth.
 mod accessibility;
+mod components;
+mod dialog;
 mod folder;
 pub mod gesture;
 pub mod grid;
-mod material;
+mod icons;
 mod metrics;
 mod overlay;
 pub mod pager;
 mod placeholder;
+mod screens;
 mod slots;
+mod theme;
 mod view;
 
 use accessibility::{ActionRequest, Target};
@@ -45,12 +49,240 @@ fn android_main(app: platform::AndroidApp) {
 const SCROLLBAR_IDLE: Duration = Duration::from_millis(800);
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::accessibility::{Action, Target};
     use qlaunch_core::{model::Model, settings::Settings};
 
-    fn app() -> App {
+    #[test]
+    fn back_order_closes_select_then_dialog_then_screen() {
+        let mut app = app();
+        app.screens.push(Screen::Settings);
+        app.dialog = Some(dialog::Dialog::Launcher);
+        app.select = Some(dialog::Select {
+            field: dialog::SelectField::AppGroup,
+            options: vec![],
+            selected: "apps".into(),
+        });
+        let _ = app.update(Message::Back);
+        assert!(app.select.is_none() && app.dialog.is_some() && !app.screens.is_empty());
+        let _ = app.update(Message::Back);
+        assert!(app.dialog.is_none() && !app.screens.is_empty());
+        let _ = app.update(Message::Back);
+        assert!(app.screens.is_empty());
+    }
+
+    #[test]
+    fn home_clears_dialog_screens_and_select() {
+        let mut app = app();
+        app.screens.push(Screen::Groups);
+        app.dialog = Some(dialog::Dialog::Launcher);
+        let _ = app.update(Message::Event(CoreEvent::HomePressed));
+        assert!(app.dialog.is_none() && app.screens.is_empty());
+    }
+
+    #[test]
+    fn blank_press_is_ignored_with_a_screen_open() {
+        let mut app = app();
+        app.screens.push(Screen::Settings);
+        let _ = app.update(Message::BlankPressed);
+        assert!(app.pending_target.is_none());
+    }
+
+    #[test]
+    fn search_gear_opens_settings() {
+        let mut app = app();
+        app.searching = true;
+        let _ = app.update(Message::Push(Screen::Settings));
+        assert_eq!(app.screens.last(), Some(&Screen::Settings));
+        assert!(app.searching);
+    }
+
+    #[test]
+    fn role_completion_releases_busy_and_uses_the_saved_role() {
+        let mut app = app();
+        let snapshot = app.snapshot.clone().unwrap();
+        let group = snapshot
+            .groups
+            .iter()
+            .find(|g| g.role == Some(qlaunch_core::model::GroupRole::Home))
+            .unwrap();
+        let mut editor = dialog::GroupEditorState::new(group.id.clone(), group.label.clone(), None);
+        editor.busy = true;
+        app.dialog = Some(dialog::Dialog::GroupEditor(editor));
+        let _ = app.update(Message::ModelDone {
+            result: Ok(snapshot),
+            close: false,
+        });
+        let Some(dialog::Dialog::GroupEditor(editor)) = &app.dialog else {
+            panic!()
+        };
+        assert!(!editor.busy);
+        assert_eq!(editor.role, Some(qlaunch_core::model::GroupRole::Home));
+    }
+
+    #[test]
+    fn failed_screen_mutation_preserves_error_in_snackbar() {
+        let mut app = app();
+        app.screens.push(Screen::Groups);
+        let _ = app.update(Message::ModelDone {
+            result: Err("disk is full".into()),
+            close: false,
+        });
+        assert_eq!(
+            app.snackbar.as_ref().map(|(_, s)| s.as_str()),
+            Some("disk is full")
+        );
+    }
+
+    #[test]
+    fn accessibility_long_click_on_blank_opens_the_dialog_not_the_overlay() {
+        let mut app = app();
+        publish(&mut app);
+        let request = request(&app, "grid:container", Action::LongClick);
+        let _ = app.update(Message::Accessibility(request));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::Launcher)));
+        assert!(app.overlay.is_none());
+    }
+
+    #[test]
+    fn step_is_ignored_while_a_screen_is_open() {
+        let mut app = app();
+        let before = app.pager.committed();
+        app.screens.push(Screen::Settings);
+        let _ = app.update(Message::Step(1));
+        assert_eq!(app.pager.committed(), before);
+    }
+
+    #[test]
+    fn late_backup_list_does_not_open_over_another_screen() {
+        let mut app = app();
+        let _ = app.update(Message::Push(Screen::Settings));
+        let _ = app.update(Message::BackupsListed(Ok(vec!["a.json".into()])));
+        assert!(app.dialog.is_none());
+    }
+
+    #[test]
+    fn snackbar_text_is_announced() {
+        let mut app = app();
+        let _ = app.update(Message::Snackbar("Backup saved.".into()));
+        assert_eq!(accessibility::announcement(&app), "Backup saved.");
+    }
+
+    #[test]
+    fn confirmation_ignores_a_second_activation_while_busy() {
+        let mut app = app();
+        app.dialog = Some(dialog::Dialog::Confirm(dialog::ConfirmState {
+            title: "Factory Reset".into(),
+            body: "Wipe?".into(),
+            confirm_label: "Reset".into(),
+            destructive: true,
+            busy: false,
+            action: dialog::ConfirmAction::FactoryReset,
+        }));
+        let _ = app.dialog_message(dialog::Message::ConfirmYes);
+        let Some(dialog::Dialog::Confirm(state)) = &app.dialog else {
+            panic!("confirmation should stay open while the request runs")
+        };
+        assert!(state.busy);
+        assert_eq!(app.dialog_message(dialog::Message::ConfirmYes).units(), 0);
+    }
+
+    #[test]
+    fn late_completion_does_not_close_another_dialog() {
+        let mut app = app();
+        app.dialog = Some(dialog::Dialog::Launcher);
+        let generation = app.dialog_generation;
+        let snapshot = app.snapshot.clone().unwrap();
+        let _ = app.update(Message::Back);
+        let _ = app.update(Message::GroupAdd);
+        let _ = app.update(Message::ScopedDialog(
+            generation,
+            Box::new(Message::ModelDone {
+                result: Ok(snapshot),
+                close: true,
+            }),
+        ));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::AddGroup(_))));
+    }
+
+    #[test]
+    fn cancelling_delete_confirmation_restores_group_editor() {
+        let mut app = app();
+        app.dialog = Some(dialog::Dialog::GroupEditor(dialog::GroupEditorState::new(
+            "fun".into(),
+            "Fun".into(),
+            None,
+        )));
+        let _ = app.update(Message::Dialog(dialog::Message::GroupDelete));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::Confirm(_))));
+        let _ = app.update(Message::Dialog(dialog::Message::Close));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::GroupEditor(_))));
+    }
+
+    #[test]
+    fn busy_app_remove_and_shortcut_actions_ignore_repeat_activation() {
+        let mut app = app();
+        let mut editor = dialog::AppEditor::new(item(&app, "busy"));
+        editor.busy = true;
+        app.dialog = Some(dialog::Dialog::App(editor));
+        assert_eq!(app.dialog_message(dialog::Message::AppRemove).units(), 0);
+        assert_eq!(app.dialog_message(dialog::Message::AppUninstall).units(), 0);
+        let mut shortcuts = dialog::AddShortcutState::new("apps".into());
+        shortcuts.busy = true;
+        app.dialog = Some(dialog::Dialog::AddShortcut(shortcuts));
+        assert_eq!(app.dialog_message(dialog::Message::ShortcutLock).units(), 0);
+    }
+
+    #[test]
+    fn snackbar_expires_only_for_its_own_generation() {
+        let mut app = app();
+        let _ = app.update(Message::Snackbar("hello".into()));
+        let (generation, _) = app.snackbar.clone().unwrap();
+        let _ = app.update(Message::SnackbarExpired(generation + 1));
+        assert!(app.snackbar.is_some());
+        let _ = app.update(Message::SnackbarExpired(generation));
+        assert!(app.snackbar.is_none());
+    }
+
+    #[test]
+    fn choosing_apps_suspends_editor_until_screen_is_popped() {
+        let mut app = app();
+        app.screens.push(Screen::Groups);
+        app.dialog = Some(dialog::Dialog::GroupEditor(dialog::GroupEditorState::new(
+            "games".into(),
+            "Games".into(),
+            None,
+        )));
+        let _ = app.update(Message::Dialog(dialog::Message::GroupChooseApps));
+        assert_eq!(app.screens.last(), Some(&Screen::GroupApps("games".into())));
+        assert!(app.dialog.is_none());
+        let _ = app.update(Message::Back);
+        assert_eq!(app.screens.last(), Some(&Screen::Groups));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::GroupEditor(_))));
+    }
+
+    #[test]
+    fn home_from_screen_without_dialog_returns_home_not_search() {
+        let mut app = app();
+        app.screens.push(Screen::Settings);
+        let _ = app.update(Message::Event(CoreEvent::HomePressed));
+        assert!(app.screens.is_empty());
+        assert!(!app.searching);
+    }
+
+    #[test]
+    fn expired_snackbar_cannot_dismiss_a_later_message() {
+        let mut app = app();
+        let _ = app.update(Message::Snackbar("first".into()));
+        let first = app.snackbar.as_ref().unwrap().0;
+        let _ = app.update(Message::SnackbarExpired(first));
+        let _ = app.update(Message::Snackbar("second".into()));
+        let _ = app.update(Message::SnackbarExpired(first));
+        assert_eq!(app.snackbar.as_ref().unwrap().1, "second");
+    }
+
+    pub(crate) fn app() -> App {
         let (mut app, _) = App::new();
         let model = Model::new_default();
         app.snapshot = Some(core::ModelSnapshot {
@@ -246,7 +478,7 @@ mod tests {
         assert_eq!(app.pager.committed(), 2);
     }
 
-    fn item(app: &App, id: &str) -> Item {
+    pub(crate) fn item(app: &App, id: &str) -> Item {
         Item {
             id: id.into(),
             group_id: app.snapshot.as_ref().unwrap().page_ids[0].clone(),
@@ -334,7 +566,7 @@ mod tests {
         );
     }
 
-    fn folder_item(app: &App) -> Item {
+    pub(crate) fn folder_item(app: &App) -> Item {
         let mut item = item(app, "games-folder");
         item.folder_group_id = Some("folder-group".into());
         item
@@ -478,12 +710,12 @@ mod tests {
         member.group_id = "folder-group".into();
         app.snapshot.as_mut().unwrap().items.push(member.clone());
         let _ = app.apply_gesture(Outcome::LongPress(Start::Item(member.id)));
-        assert!(app.overlay.is_some());
+        assert!(app.dialog.is_some());
         let _ = app.update(Message::FolderDismiss);
-        assert!(app.overlay.is_some());
+        assert!(app.dialog.is_some());
         assert!(app.folder.is_some());
         let _ = app.update(Message::Back);
-        assert!(app.overlay.is_none());
+        assert!(app.dialog.is_none());
         assert!(app.folder.is_some());
         let _ = app.update(Message::FolderDismiss);
         assert!(app.folder.is_none());
@@ -644,21 +876,64 @@ mod tests {
     }
 
     #[test]
-    fn long_press_opens_the_app_menu_and_clears_the_pressed_cell() {
+    fn long_press_opens_the_app_editor() {
+        let mut app = app();
+        let item = item(&app, "calculator");
+        app.snapshot.as_mut().unwrap().items.push(item.clone());
+        let _ = app.apply_gesture(Outcome::LongPress(Start::Item(item.id.clone())));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::App(_))));
+    }
+
+    #[test]
+    fn long_press_on_folder_tile_opens_folder_editor() {
+        let mut app = app();
+        let folder = folder_item(&app);
+        app.snapshot.as_mut().unwrap().items.push(folder.clone());
+        let _ = app.apply_gesture(Outcome::LongPress(Start::Item(folder.id.clone())));
+        assert!(matches!(
+            app.dialog,
+            Some(dialog::Dialog::Folder(dialog::FolderEditor::Edit { .. }))
+        ));
+    }
+
+    #[test]
+    fn blank_long_press_opens_the_launcher_dialog() {
+        let mut app = app();
+        let _ = app.apply_gesture(Outcome::LongPress(Start::Blank));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::Launcher)));
+    }
+
+    #[test]
+    fn group_delete_opens_a_confirmation() {
+        let mut app = app();
+        app.dialog = Some(dialog::Dialog::GroupEditor(dialog::GroupEditorState::new(
+            "fun".into(),
+            "Fun".into(),
+            None,
+        )));
+        let _ = app.update(Message::Dialog(dialog::Message::GroupDelete));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::Confirm(_))));
+    }
+
+    #[test]
+    fn back_closes_the_dialog_before_search() {
+        let mut app = app();
+        app.searching = true;
+        app.dialog = Some(dialog::Dialog::Launcher);
+        let _ = app.update(Message::Back);
+        assert!(app.dialog.is_none());
+        assert!(app.searching, "Back should only close the dialog");
+    }
+
+    #[test]
+    fn long_press_opens_the_app_editor_and_clears_the_pressed_cell() {
         let mut app = app();
         let app_item = item(&app, "calculator");
         app.snapshot.as_mut().unwrap().items.push(app_item.clone());
         app.pressed = Some(app_item.id.clone());
         let _ = app.apply_gesture(Outcome::LongPress(Start::Item(app_item.id.clone())));
-        assert!(matches!(app.overlay, Some(overlay::Overlay::App(_))));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::App(_))));
         assert!(app.pressed.is_none());
-    }
-
-    #[test]
-    fn long_press_on_blank_opens_the_launcher_menu() {
-        let mut app = app();
-        let _ = app.apply_gesture(Outcome::LongPress(Start::Blank));
-        assert!(matches!(app.overlay, Some(overlay::Overlay::Launcher(_))));
     }
 
     #[test]
@@ -972,11 +1247,15 @@ pub fn run() -> iced::Result {
     for font in platform::fonts() {
         app = app.font(font);
     }
+    app = app.font(include_bytes!("../assets/MaterialIcons-Regular.otf").as_slice());
     app.run()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Region {
+    Screen,
+    Dialog,
+    Select,
     Group(Id),
     Search,
     OverlayCard,
@@ -985,6 +1264,9 @@ pub(crate) enum Region {
 impl Region {
     pub(crate) fn widget_id(&self) -> &'static str {
         match self {
+            Region::Screen => "screen-scroll",
+            Region::Dialog => "dialog-scroll",
+            Region::Select => "select-scroll",
             Region::Group(_) => "apps",
             Region::Search => "search-results",
             Region::OverlayCard => "overlay-card",
@@ -994,6 +1276,26 @@ impl Region {
 
 #[derive(Debug, Clone)]
 enum Message {
+    ScopedDialog(u64, Box<Message>),
+    SimpleDone(Result<(), String>),
+    GroupAppToggle(Id, Id, bool),
+    GroupAdd,
+    GroupEdit(Id),
+    GroupHidden(Id, bool),
+    GroupMove(Id, i32),
+    Advanced(screens::advanced::Row),
+    BackupDone(Result<String, String>),
+    BackupsListed(Result<Vec<String>, String>),
+    RestoreDone(String, Result<core::ModelSnapshot, String>),
+    ResetDone(Result<core::ModelSnapshot, String>),
+    SettingDrag(screens::settings::SettingField, f32),
+    SettingRelease(screens::settings::SettingField),
+    SettingPatch(qlaunch_core::settings::SettingsPatch),
+    SettingsDone(Result<core::ModelSnapshot, String>),
+    Push(Screen),
+    PopScreen,
+    Snackbar(String),
+    SnackbarExpired(u64),
     Opened(window::Id),
     Closed,
     Foreground(bool),
@@ -1023,13 +1325,33 @@ enum Message {
     ScrollTick,
     Frame(Instant),
     Overlay(overlay::Message),
+    Dialog(dialog::Message),
+    ModelDone {
+        result: Result<core::ModelSnapshot, String>,
+        close: bool,
+    },
     Mutated(Result<core::ModelSnapshot, String>),
     ActionDone(Result<(), String>),
     Accessibility(ActionRequest),
     AccessibilitySettled(u64),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Screen {
+    Settings,
+    Advanced,
+    Groups,
+    GroupApps(Id),
+}
+
 struct App {
+    dialog_generation: u64,
+    dialog_parents: Vec<dialog::Dialog>,
+    pub(crate) settings_drag: Option<(screens::settings::SettingField, f32)>,
+    pub(crate) screens: Vec<Screen>,
+    suspended_dialogs: Vec<(usize, dialog::Dialog)>,
+    pub(crate) snackbar: Option<(u64, String)>,
+    snackbar_generation: u64,
     window: Option<window::Id>,
     background: bool,
     pub(crate) insets: Insets,
@@ -1051,6 +1373,8 @@ struct App {
     scroll: HashMap<Region, f32>,
     scroll_last: Option<Instant>,
     overlay: Option<overlay::Overlay>,
+    pub(crate) dialog: Option<dialog::Dialog>,
+    pub(crate) select: Option<dialog::Select>,
     accessibility: accessibility::State,
     metrics: Mutex<metrics::Samples>,
     gesture: Gesture,
@@ -1088,6 +1412,13 @@ impl App {
     fn new() -> (Self, Task<Message>) {
         let (id, open) = window::open(window_settings());
         let app = Self {
+            dialog_generation: 0,
+            dialog_parents: Vec::new(),
+            settings_drag: None,
+            screens: Vec::new(),
+            suspended_dialogs: Vec::new(),
+            snackbar: None,
+            snackbar_generation: 0,
             window: Some(id),
             background: false,
             insets: Insets::default(),
@@ -1109,6 +1440,8 @@ impl App {
             scroll: HashMap::new(),
             scroll_last: None,
             overlay: None,
+            dialog: None,
+            select: None,
             accessibility: accessibility::State::default(),
             metrics: Mutex::new(metrics::Samples::default()),
             gesture: Gesture::new(),
@@ -1210,7 +1543,12 @@ impl App {
     }
 
     fn step(&mut self, delta: i32) {
-        if self.folder.is_some() || self.overlay.is_some() {
+        if self.folder.is_some()
+            || self.overlay.is_some()
+            || self.dialog.is_some()
+            || self.select.is_some()
+            || !self.screens.is_empty()
+        {
             return;
         }
         if self.searching && self.query.is_empty() {
@@ -1306,6 +1644,487 @@ impl App {
             .page_ids
             .get(self.pager.committed())
             .cloned()
+    }
+
+    /// Runs a dialog's core changes in order, then reloads the snapshot.
+    fn run_changes(changes: Vec<dialog::Change>) -> Task<Message> {
+        work(
+            move || {
+                block_on(async move {
+                    for change in changes {
+                        let result = match change {
+                            dialog::Change::RenameItem(id, name) => {
+                                core::rename_item(id, name).await
+                            }
+                            dialog::Change::MoveItem(id, group, order) => {
+                                core::move_item(id, group, order).await
+                            }
+                            dialog::Change::RenameGroup(id, name) => {
+                                core::rename_group(id, name).await
+                            }
+                            dialog::Change::AddFolder(group, name) => {
+                                core::add_folder(group, name).await
+                            }
+                        };
+                        result?;
+                    }
+                    core::snapshot().await
+                })
+            },
+            |result| Message::ModelDone {
+                result,
+                close: true,
+            },
+        )
+    }
+
+    /// Shows an error on the open dialog. Returns false when no dialog can
+    /// carry it, so the caller can fall back to the launcher error line.
+    fn dialog_error(&mut self, error: String) -> bool {
+        match &mut self.dialog {
+            Some(dialog::Dialog::App(editor)) => {
+                editor.busy = false;
+                editor.error = Some(error);
+                true
+            }
+            Some(dialog::Dialog::Folder(editor)) => {
+                editor.set_busy(false);
+                editor.set_error(Some(error));
+                true
+            }
+            Some(dialog::Dialog::GroupEditor(state)) => {
+                state.busy = false;
+                state.error = Some(error);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn dialog_message(&mut self, message: dialog::Message) -> Task<Message> {
+        use dialog::Dialog;
+        use dialog::Message as D;
+        let busy = match &self.dialog {
+            Some(Dialog::App(e)) => e.busy,
+            Some(Dialog::Folder(e)) => e.busy(),
+            Some(Dialog::AddShortcut(e)) => e.busy,
+            Some(Dialog::CommandShortcut(e)) => e.busy,
+            Some(Dialog::AddGroup(e)) => e.busy,
+            Some(Dialog::GroupEditor(e)) => e.busy,
+            _ => false,
+        };
+        if busy
+            && !matches!(
+                message,
+                D::Close | D::CloseSelect | D::Noop | D::Providers(_)
+            )
+        {
+            return Task::none();
+        }
+        match message {
+            D::Noop => {}
+            D::Close => {
+                self.dialog = self.dialog_parents.pop();
+                self.select = None;
+            }
+            D::OpenGroupSelect => {
+                let field = match &self.dialog {
+                    Some(Dialog::App(_)) => dialog::SelectField::AppGroup,
+                    Some(Dialog::Folder(_)) => dialog::SelectField::FolderGroup,
+                    _ => return Task::none(),
+                };
+                self.open_select(field);
+            }
+            D::GroupChosen(id) => {
+                match &mut self.dialog {
+                    Some(Dialog::App(editor)) => editor.group_id = id,
+                    Some(Dialog::Folder(editor)) => editor.set_group(id),
+                    _ => {}
+                }
+                self.select = None;
+            }
+            D::CloseSelect => self.select = None,
+            D::AppName(value) => {
+                if let Some(Dialog::App(editor)) = &mut self.dialog {
+                    editor.name = value;
+                    editor.error = None;
+                }
+            }
+            D::AppSave => {
+                let Some(Dialog::App(editor)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                if !editor.can_save() {
+                    return Task::none();
+                }
+                let Some(snapshot) = self.snapshot.as_ref() else {
+                    return Task::none();
+                };
+                let plan =
+                    dialog::app_save_plan(&editor.item, &editor.name, &editor.group_id, snapshot);
+                editor.busy = true;
+                return Self::run_changes(plan);
+            }
+            D::AppUninstall => {
+                let Some(Dialog::App(editor)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                let Some(app) = editor.item.app.clone() else {
+                    return Task::none();
+                };
+                editor.busy = true;
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::uninstall_app(app.package).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::AppRemove => {
+                let Some(Dialog::App(editor)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                let id = editor.item.id.clone();
+                editor.busy = true;
+                return work(
+                    move || block_on(core::remove_item(id)),
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::FolderName(value) => {
+                if let Some(Dialog::Folder(editor)) = &mut self.dialog {
+                    editor.set_name(value);
+                    editor.set_error(None);
+                }
+            }
+            D::FolderSave => {
+                let Some(snapshot) = self.snapshot.as_ref() else {
+                    return Task::none();
+                };
+                let Some(Dialog::Folder(editor)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                if !editor.can_save() {
+                    return Task::none();
+                }
+                let plan = dialog::folder_save_plan(editor, snapshot);
+                editor.set_busy(true);
+                return Self::run_changes(plan);
+            }
+            D::FolderDelete => {
+                let Some(Dialog::Folder(editor)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                let Some(folder) = (match editor {
+                    dialog::FolderEditor::Edit { folder, .. } => Some(folder.clone()),
+                    dialog::FolderEditor::Create { .. } => None,
+                }) else {
+                    return Task::none();
+                };
+                editor.set_busy(true);
+                return work(
+                    move || block_on(core::delete_folder(folder)),
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::LauncherSettings => {
+                self.dialog = None;
+                return self.update(Message::Push(Screen::Settings));
+            }
+            D::LauncherEditGroups => {
+                self.dialog = None;
+                return self.update(Message::Push(Screen::Groups));
+            }
+            D::LauncherAddShortcut => {
+                let Some(group) = self.page_group_id() else {
+                    return Task::none();
+                };
+                self.dialog = Some(Dialog::AddShortcut(dialog::AddShortcutState::new(group)));
+                return work(
+                    || block_on(core::shortcut_providers()),
+                    |result| Message::Dialog(D::Providers(result)),
+                );
+            }
+            D::LauncherCreateFolder => {
+                let Some(group) = self.page_group_id() else {
+                    return Task::none();
+                };
+                self.dialog = Some(Dialog::Folder(dialog::FolderEditor::create(group)));
+            }
+            D::LauncherWallpaper => {
+                self.dialog = None;
+                return work(|| block_on(core::choose_wallpaper()), Message::SimpleDone);
+            }
+            D::Providers(result) => {
+                if let Some(Dialog::AddShortcut(state)) = &mut self.dialog {
+                    state.providers = Some(result);
+                }
+            }
+            D::ShortcutLock => {
+                let Some(Dialog::AddShortcut(state)) = &self.dialog else {
+                    return Task::none();
+                };
+                let group = state.target_group.clone();
+                self.mark_shortcut_busy();
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::add_lock_shortcut(group).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::ShortcutNotifications => {
+                let Some(Dialog::AddShortcut(state)) = &self.dialog else {
+                    return Task::none();
+                };
+                let group = state.target_group.clone();
+                self.mark_shortcut_busy();
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::add_notifications_shortcut(group).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::ShortcutProvider(id) => {
+                let Some(Dialog::AddShortcut(state)) = &self.dialog else {
+                    return Task::none();
+                };
+                let group = state.target_group.clone();
+                self.mark_shortcut_busy();
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::begin_shortcut(id, group).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::ShortcutCommand => {
+                let Some(Dialog::AddShortcut(state)) = &self.dialog else {
+                    return Task::none();
+                };
+                let group = state.target_group.clone();
+                if let Some(parent) = self.dialog.take() {
+                    self.dialog_parents.push(parent);
+                }
+                self.dialog = Some(Dialog::CommandShortcut(dialog::CommandShortcutState::new(
+                    group,
+                )));
+            }
+            D::CommandName(value) => {
+                if let Some(Dialog::CommandShortcut(state)) = &mut self.dialog {
+                    state.name = value;
+                }
+            }
+            D::CommandText(value) => {
+                if let Some(Dialog::CommandShortcut(state)) = &mut self.dialog {
+                    state.command = value;
+                }
+            }
+            D::CommandAdd => {
+                let Some(Dialog::CommandShortcut(state)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                if !state.ready() {
+                    return Task::none();
+                }
+                let group = state.target_group.clone();
+                let name = state.name.trim().to_string();
+                let command = state.command.trim().to_string();
+                state.busy = true;
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::add_command_shortcut(group, name, command).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::AddGroupName(value) => {
+                if let Some(Dialog::AddGroup(state)) = &mut self.dialog {
+                    state.name = value;
+                }
+            }
+            D::AddGroupConfirm => {
+                let Some(Dialog::AddGroup(state)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                if !state.can_confirm() {
+                    return Task::none();
+                }
+                let label = state.name.trim().to_string();
+                state.busy = true;
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::add_group(label).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::GroupName(value) => {
+                if let Some(Dialog::GroupEditor(state)) = &mut self.dialog {
+                    state.name = value;
+                    state.error = None;
+                }
+            }
+            D::GroupRole(role) => {
+                let Some(Dialog::GroupEditor(state)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                if state.role == role || state.role_locked() {
+                    return Task::none();
+                }
+                let group = state.group.clone();
+                state.busy = true;
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::set_group_role(group, role).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: false,
+                    },
+                );
+            }
+            D::GroupSave => {
+                let Some(Dialog::GroupEditor(state)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                if !state.can_save() {
+                    return Task::none();
+                }
+                let group = state.group.clone();
+                let name = state.name.trim().to_string();
+                let rename = (name != state.label)
+                    .then_some(dialog::Change::RenameGroup(group.clone(), name));
+                state.busy = true;
+                let changes: Vec<dialog::Change> = rename.into_iter().collect();
+                return Self::run_changes(changes);
+            }
+            D::GroupDelete => {
+                let Some(Dialog::GroupEditor(state)) = &self.dialog else {
+                    return Task::none();
+                };
+                if !state.can_delete() {
+                    return Task::none();
+                }
+                let confirmation = dialog::ConfirmState {
+                    title: format!("Delete {}?", state.label),
+                    body: "The apps in this group move to the Apps group.".into(),
+                    confirm_label: "Delete".into(),
+                    destructive: true,
+                    busy: false,
+                    action: dialog::ConfirmAction::DeleteGroup(state.group.clone()),
+                };
+                if let Some(parent) = self.dialog.take() {
+                    self.dialog_parents.push(parent);
+                }
+                self.dialog = Some(Dialog::Confirm(confirmation));
+            }
+            D::GroupChooseApps => {
+                if let Some(Dialog::GroupEditor(state)) = &self.dialog {
+                    return self.update(Message::Push(Screen::GroupApps(state.group.clone())));
+                }
+            }
+            D::RestoreChosen(name) => {
+                self.dialog = Some(Dialog::Confirm(dialog::ConfirmState {
+                    title: "Restore config".into(),
+                    body: format!("This replaces your current layout and settings with {name}."),
+                    confirm_label: "Restore".into(),
+                    destructive: false,
+                    busy: false,
+                    action: dialog::ConfirmAction::Restore(name),
+                }));
+            }
+            D::ConfirmYes => {
+                let Some(Dialog::Confirm(state)) = &self.dialog else {
+                    return Task::none();
+                };
+                if state.busy {
+                    return Task::none();
+                }
+                let Some(Dialog::Confirm(state)) = &mut self.dialog else {
+                    return Task::none();
+                };
+                state.busy = true;
+                match &state.action {
+                    dialog::ConfirmAction::DeleteGroup(id) => {
+                        let id = id.clone();
+                        return work(
+                            move || block_on(core::delete_group(id)),
+                            |result| Message::ModelDone {
+                                result,
+                                close: true,
+                            },
+                        );
+                    }
+                    dialog::ConfirmAction::Restore(name) => {
+                        let name = name.clone();
+                        return work(
+                            move || {
+                                let result = block_on(core::restore_config(name.clone()));
+                                (name, result)
+                            },
+                            |(name, result)| Message::RestoreDone(name, result),
+                        );
+                    }
+                    dialog::ConfirmAction::FactoryReset => {
+                        return work(|| block_on(core::factory_reset()), Message::ResetDone);
+                    }
+                }
+            }
+        }
+        Task::none()
+    }
+
+    fn mark_shortcut_busy(&mut self) {
+        if let Some(dialog::Dialog::AddShortcut(state)) = &mut self.dialog {
+            state.busy = true;
+        }
     }
 
     fn overlay_error(&mut self, error: String) {
@@ -1541,8 +2360,41 @@ impl App {
     /// Times each update and opens or closes the frame-work window around a
     /// drag or settle, keeping the update path itself in `update_inner`.
     fn update(&mut self, message: Message) -> Task<Message> {
+        if matches!(
+            &message,
+            Message::Back
+                | Message::Push(_)
+                | Message::PopScreen
+                | Message::GroupAdd
+                | Message::GroupEdit(_)
+                | Message::Event(
+                    CoreEvent::HomePressed
+                        | CoreEvent::HomePressedFromOverlay
+                        | CoreEvent::BackPressed
+                )
+                | Message::Dialog(
+                    dialog::Message::Close
+                        | dialog::Message::LauncherAddShortcut
+                        | dialog::Message::LauncherCreateFolder
+                        | dialog::Message::ShortcutCommand
+                        | dialog::Message::GroupDelete
+                        | dialog::Message::RestoreChosen(_)
+                )
+        ) {
+            self.dialog_generation += 1;
+        }
         let started = Instant::now();
         let task = self.update_inner(message);
+        let generation = self.dialog_generation;
+        let task = task.map(move |message| match message {
+            Message::ModelDone { .. }
+            | Message::RestoreDone(..)
+            | Message::ResetDone(_)
+            | Message::Dialog(dialog::Message::Providers(_)) => {
+                Message::ScopedDialog(generation, Box::new(message))
+            }
+            _ => message,
+        });
         let elapsed = started.elapsed().as_secs_f32() * 1000.0;
         let moving = self.pager.is_animating() || self.pager.is_dragging();
         let summary = {
@@ -1609,6 +2461,195 @@ impl App {
             self.accessibility.cancel_scroll();
         }
         match message {
+            Message::ScopedDialog(generation, message) => {
+                if generation == self.dialog_generation {
+                    return self.update(*message);
+                }
+            }
+            Message::SimpleDone(result) => {
+                if let Err(error) = result {
+                    return self.update(Message::Snackbar(error));
+                }
+            }
+            Message::GroupAppToggle(item_id, group_id, checked) => {
+                let Some(snapshot) = &self.snapshot else {
+                    return Task::none();
+                };
+                let Some(item) = snapshot.items.iter().find(|i| i.id == item_id) else {
+                    return Task::none();
+                };
+                if let Some(dialog::Change::MoveItem(id, group, order)) =
+                    screens::group_apps::move_plan(snapshot, item, &group_id, checked)
+                {
+                    return work(
+                        move || block_on(core::move_item(id, group, order)),
+                        |result| Message::ModelDone {
+                            result,
+                            close: false,
+                        },
+                    );
+                }
+            }
+            Message::GroupAdd => {
+                self.dialog = Some(dialog::Dialog::AddGroup(dialog::AddGroupState::new()))
+            }
+            Message::GroupEdit(id) => {
+                if let Some(group) = self
+                    .snapshot
+                    .as_ref()
+                    .and_then(|s| s.groups.iter().find(|g| g.id == id))
+                {
+                    self.dialog = Some(dialog::Dialog::GroupEditor(dialog::GroupEditorState::new(
+                        group.id.clone(),
+                        group.label.clone(),
+                        group.role,
+                    )));
+                }
+            }
+            Message::GroupHidden(id, hidden) => {
+                return work(
+                    move || block_on(core::set_group_hidden(id, hidden)),
+                    |result| Message::ModelDone {
+                        result,
+                        close: false,
+                    },
+                );
+            }
+            Message::GroupMove(id, index) => {
+                return work(
+                    move || block_on(core::move_group(id, index)),
+                    |result| Message::ModelDone {
+                        result,
+                        close: false,
+                    },
+                );
+            }
+            Message::Advanced(action) => {
+                use screens::advanced::Row;
+                match action {
+                    Row::Restart => return work(|| block_on(core::init(None)), Message::Loaded),
+                    Row::Backup => {
+                        return work(|| block_on(core::backup_config()), Message::BackupDone);
+                    }
+                    Row::Restore => {
+                        return work(|| block_on(core::list_backups()), Message::BackupsListed);
+                    }
+                    Row::FactoryReset => {
+                        self.dialog = Some(dialog::Dialog::Confirm(dialog::ConfirmState {
+                            title: "Factory Reset".into(),
+                            body: "This wipes every group, item and setting. It cannot be undone."
+                                .into(),
+                            confirm_label: "Reset".into(),
+                            destructive: true,
+                            busy: false,
+                            action: dialog::ConfirmAction::FactoryReset,
+                        }));
+                    }
+                }
+            }
+            Message::BackupDone(result) => {
+                return self.update(Message::Snackbar(screens::advanced::backup_message(
+                    &result,
+                )));
+            }
+            Message::BackupsListed(result) => {
+                if self.screens.last() != Some(&Screen::Advanced) {
+                    return Task::none();
+                }
+                match result {
+                    Ok(names) if names.is_empty() => {
+                        return self
+                            .update(Message::Snackbar("No backups found in Downloads.".into()));
+                    }
+                    Ok(names) => {
+                        self.dialog =
+                            Some(dialog::Dialog::RestorePicker(dialog::RestorePickerState {
+                                backups: Some(Ok(names)),
+                            }))
+                    }
+                    Err(error) => return self.update(Message::Snackbar(error)),
+                }
+            }
+            Message::RestoreDone(name, result) => {
+                let message = screens::advanced::restore_message(&result, &name);
+                if let Ok(snapshot) = result {
+                    self.apply_snapshot(snapshot, false);
+                }
+                self.dialog = None;
+                return self.update(Message::Snackbar(message));
+            }
+            Message::ResetDone(result) => {
+                self.dialog = None;
+                match result {
+                    Ok(snapshot) => {
+                        self.apply_snapshot(snapshot, false);
+                        return self.update(Message::Snackbar("The launcher was reset.".into()));
+                    }
+                    Err(error) => return self.update(Message::Snackbar(error)),
+                }
+            }
+            Message::SettingDrag(field, value) => self.settings_drag = Some((field, value)),
+            Message::SettingRelease(field) => {
+                if let Some((active, value)) = self.settings_drag
+                    && active == field
+                {
+                    return self.update(Message::SettingPatch(screens::settings::message(
+                        field,
+                        value.round() as i64,
+                    )));
+                }
+            }
+            Message::SettingPatch(patch) => {
+                return work(
+                    move || block_on(core::update_settings(patch)),
+                    Message::SettingsDone,
+                );
+            }
+            Message::SettingsDone(result) => {
+                self.settings_drag = None;
+                match result {
+                    Ok(snapshot) => self.apply_snapshot(snapshot, false),
+                    Err(error) => return self.update(Message::Snackbar(error)),
+                }
+            }
+            Message::Push(screen) => {
+                if let Some(dialog) = self.dialog.take() {
+                    self.suspended_dialogs.push((self.screens.len(), dialog));
+                }
+                self.select = None;
+                self.screens.push(screen);
+                self.pressed = None;
+                self.pending_target = None;
+                self.gesture = Gesture::new();
+            }
+            Message::PopScreen => {
+                self.screens.pop();
+                if self
+                    .suspended_dialogs
+                    .last()
+                    .is_some_and(|(depth, _)| *depth == self.screens.len())
+                {
+                    self.dialog = self.suspended_dialogs.pop().map(|(_, dialog)| dialog);
+                }
+            }
+            Message::Snackbar(message) => {
+                self.snackbar_generation += 1;
+                let generation = self.snackbar_generation;
+                self.snackbar = Some((generation, message));
+                return Task::perform(
+                    async { tokio::time::sleep(Duration::from_secs(4)).await },
+                    move |_| Message::SnackbarExpired(generation),
+                );
+            }
+            Message::SnackbarExpired(generation) => {
+                if self
+                    .snackbar
+                    .as_ref()
+                    .is_some_and(|(current, _)| *current == generation)
+                {
+                    self.snackbar = None;
+                }
+            }
             Message::Opened(id) => {
                 self.window = Some(id);
                 return window::scale_factor(id).map(Message::Density);
@@ -1652,14 +2693,56 @@ impl App {
                 }
                 Err(error) => self.overlay_error(error),
             },
+            Message::ModelDone { result, close } => match result {
+                Ok(snapshot) => {
+                    self.apply_snapshot(snapshot, false);
+                    if let Some(dialog::Dialog::GroupEditor(editor)) = &mut self.dialog {
+                        editor.busy = false;
+                        if let Some(group) = self
+                            .snapshot
+                            .as_ref()
+                            .and_then(|s| s.groups.iter().find(|g| g.id == editor.group))
+                        {
+                            editor.role = group.role;
+                        }
+                    }
+                    if close {
+                        self.dialog = None;
+                        self.dialog_parents.clear();
+                        self.select = None;
+                    }
+                }
+                Err(error) => {
+                    if !self.dialog_error(error.clone()) {
+                        match &mut self.dialog {
+                            Some(dialog::Dialog::AddShortcut(e)) => e.busy = false,
+                            Some(dialog::Dialog::CommandShortcut(e)) => e.busy = false,
+                            Some(dialog::Dialog::AddGroup(e)) => e.busy = false,
+                            Some(dialog::Dialog::Confirm(e)) => e.busy = false,
+                            _ => {}
+                        }
+                        return self.update(Message::Snackbar(error));
+                    }
+                }
+            },
             Message::ActionDone(result) => match result {
                 Ok(()) => self.overlay = None,
                 Err(error) => self.overlay_error(error),
             },
             Message::Overlay(message) => return self.overlay_message(message),
+            Message::Dialog(message) => return self.dialog_message(message),
             Message::Event(CoreEvent::HomePressed) => {
-                if self.overlay.is_some() {
+                if self.overlay.is_some()
+                    || self.dialog.is_some()
+                    || self.select.is_some()
+                    || !self.screens.is_empty()
+                {
+                    self.screens.clear();
+                    self.suspended_dialogs.clear();
+                    self.dialog_parents.clear();
                     self.overlay = None;
+                    self.dialog = None;
+                    self.select = None;
                     self.searching = false;
                     self.folder = None;
                     return self.go_home();
@@ -1674,13 +2757,24 @@ impl App {
                 }
             }
             Message::Event(CoreEvent::HomePressedFromOverlay) => {
+                self.screens.clear();
+                self.suspended_dialogs.clear();
+                self.dialog_parents.clear();
                 self.overlay = None;
+                self.dialog = None;
+                self.select = None;
                 self.searching = false;
                 self.folder = None;
                 return self.go_home();
             }
             Message::Event(CoreEvent::BackPressed) | Message::Back => {
-                if self.overlay.is_some() {
+                if self.select.is_some() {
+                    self.select = None;
+                } else if self.dialog.is_some() {
+                    self.dialog = self.dialog_parents.pop();
+                } else if !self.screens.is_empty() {
+                    return self.update(Message::PopScreen);
+                } else if self.overlay.is_some() {
                     return self.overlay_message(overlay::Message::Back);
                 } else {
                     self.searching = false;
@@ -1698,7 +2792,12 @@ impl App {
                 }
             }
             Message::Search => {
-                if self.folder.is_some() || self.overlay.is_some() {
+                if self.folder.is_some()
+                    || self.overlay.is_some()
+                    || self.dialog.is_some()
+                    || self.select.is_some()
+                    || !self.screens.is_empty()
+                {
                     return Task::none();
                 }
                 if self.searching {
@@ -1738,6 +2837,9 @@ impl App {
             }
             Message::ItemPressed(item) => {
                 if self.overlay.is_some()
+                    || !self.screens.is_empty()
+                    || self.dialog.is_some()
+                    || self.select.is_some()
                     || self
                         .folder
                         .as_ref()
@@ -1752,7 +2854,12 @@ impl App {
                 return self.apply_gesture(outcome);
             }
             Message::BlankPressed => {
-                if self.overlay.is_some() || self.folder.is_some() {
+                if self.overlay.is_some()
+                    || !self.screens.is_empty()
+                    || self.dialog.is_some()
+                    || self.select.is_some()
+                    || self.folder.is_some()
+                {
                     return Task::none();
                 }
                 self.pressed = None;
@@ -1762,7 +2869,12 @@ impl App {
             }
             Message::FolderCardPressed => {}
             Message::FolderDismiss => {
-                if self.overlay.is_none() && self.folder.is_some() {
+                if self.overlay.is_none()
+                    && self.screens.is_empty()
+                    && self.dialog.is_none()
+                    && self.select.is_none()
+                    && self.folder.is_some()
+                {
                     self.folder = None;
                     self.suppress_dismiss_pointer = true;
                     self.pressed = None;
@@ -1868,6 +2980,20 @@ impl App {
         }
 
         match node.target {
+            Target::Message(message) => self.update(*message),
+            Target::Slider { step_up, step_down } => match request.action {
+                Action::ScrollForward => self.update(*step_up),
+                Action::ScrollBackward => self.update(*step_down),
+                _ => Task::none(),
+            },
+            Target::Input {
+                widget_id,
+                on_input,
+            } => match request.action {
+                Action::SetText => self.update(on_input(request.value)),
+                Action::Click => iced::widget::operation::focus(widget_id),
+                _ => Task::none(),
+            },
             Target::Item(id) => match request.action {
                 Action::LongClick => self.apply_gesture(Outcome::LongPress(Start::Item(id))),
                 Action::Click => {
@@ -1900,7 +3026,7 @@ impl App {
                     self.accessibility_scroll(region, offset - 0.8 * viewport, viewport, content)
                 }
                 Action::LongClick => {
-                    self.open_launcher_menu();
+                    self.open_launcher_dialog();
                     Task::none()
                 }
                 _ => Task::none(),
@@ -2037,6 +3163,12 @@ impl App {
     }
 
     fn touch_event(&mut self, event: iced::touch::Event) -> Task<Message> {
+        if !self.screens.is_empty() || self.dialog.is_some() || self.select.is_some() {
+            self.gesture = Gesture::new();
+            self.pending_target = None;
+            self.pressed = None;
+            return Task::none();
+        }
         if self.suppress_dismiss_pointer {
             if matches!(
                 event,
@@ -2094,6 +3226,15 @@ impl App {
     /// does, with finger 0 standing in for the pointer.
     fn mouse_event(&mut self, event: iced::mouse::Event) -> Task<Message> {
         use iced::mouse::{Button, Event};
+        if !self.screens.is_empty() || self.dialog.is_some() || self.select.is_some() {
+            if let Event::CursorMoved { position } = event {
+                self.cursor = position;
+            }
+            self.gesture = Gesture::new();
+            self.pending_target = None;
+            self.pressed = None;
+            return Task::none();
+        }
         if self.suppress_dismiss_pointer {
             if matches!(event, Event::ButtonReleased(Button::Left)) {
                 self.suppress_dismiss_pointer = false;
@@ -2135,6 +3276,11 @@ impl App {
     }
 
     fn apply_gesture(&mut self, outcome: Outcome) -> Task<Message> {
+        if !self.screens.is_empty() || self.dialog.is_some() || self.select.is_some() {
+            self.pressed = None;
+            self.pending_target = None;
+            return Task::none();
+        }
         if self.folder.is_some()
             && !matches!(
                 &outcome,
@@ -2172,11 +3318,15 @@ impl App {
                     .and_then(|snapshot| snapshot.items.iter().find(|item| item.id == id))
                     .cloned();
                 if let Some(item) = item {
-                    self.open_app_menu(item);
+                    if item.folder_group_id.is_some() {
+                        self.open_folder_dialog(item);
+                    } else {
+                        self.open_app_dialog(item);
+                    }
                 }
                 self.pressed = None;
             }
-            Outcome::LongPress(Start::Blank) => self.open_launcher_menu(),
+            Outcome::LongPress(Start::Blank) => self.open_launcher_dialog(),
             Outcome::Tap(Start::Item(id)) => {
                 let item = self
                     .snapshot
@@ -2220,23 +3370,95 @@ impl App {
         )
     }
 
+    fn open_app_dialog(&mut self, item: Item) {
+        self.dialog_generation += 1;
+        self.dialog = Some(dialog::Dialog::App(dialog::AppEditor::new(item)));
+        self.select = None;
+        self.pressed = None;
+        self.pending_target = None;
+    }
+
+    fn open_folder_dialog(&mut self, item: Item) {
+        self.dialog_generation += 1;
+        let Some(folder_id) = item.folder_group_id.clone() else {
+            return;
+        };
+        self.dialog = Some(dialog::Dialog::Folder(dialog::FolderEditor::edit(
+            folder_id,
+            item.label.clone(),
+            item.group_id.clone(),
+        )));
+        self.select = None;
+        self.pressed = None;
+        self.pending_target = None;
+    }
+
+    fn open_launcher_dialog(&mut self) {
+        self.dialog_generation += 1;
+        self.dialog = Some(dialog::Dialog::Launcher);
+        self.select = None;
+        self.pressed = None;
+        self.pending_target = None;
+    }
+
+    /// The list of page groups and folders a dialog's select can choose.
+    fn select_options(&self, field: &dialog::SelectField) -> Vec<dialog::SelectOption> {
+        let Some(snapshot) = &self.snapshot else {
+            return Vec::new();
+        };
+        match field {
+            dialog::SelectField::AppGroup => dialog::destinations(snapshot),
+            dialog::SelectField::FolderGroup => {
+                let hidden = snapshot
+                    .groups
+                    .iter()
+                    .filter(|group| group.role == Some(qlaunch_core::model::GroupRole::Hidden))
+                    .map(|group| group.id.clone())
+                    .collect::<Vec<_>>();
+                dialog::destinations(snapshot)
+                    .into_iter()
+                    .filter(|option| !option.folder && !hidden.contains(&option.id))
+                    .collect()
+            }
+        }
+    }
+
+    fn open_select(&mut self, field: dialog::SelectField) {
+        let selected = match (&field, &self.dialog) {
+            (dialog::SelectField::AppGroup, Some(dialog::Dialog::App(editor))) => {
+                editor.group_id.clone()
+            }
+            (dialog::SelectField::FolderGroup, Some(dialog::Dialog::Folder(editor))) => {
+                editor.group_id().clone()
+            }
+            _ => return,
+        };
+        let mut options = self.select_options(&field);
+        if !options.iter().any(|option| option.id == selected)
+            && let Some(group) = self
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.groups.iter().find(|group| group.id == selected))
+        {
+            options.push(dialog::SelectOption {
+                id: group.id.clone(),
+                label: group.label.clone(),
+                folder: group.folder,
+            });
+        }
+        self.select = Some(dialog::Select {
+            field,
+            options,
+            selected,
+        });
+    }
+
+    #[allow(dead_code)] // exercised by the legacy overlay tests only
     fn open_app_menu(&mut self, item: Item) {
         self.scroll.insert(Region::OverlayCard, 0.0);
         self.overlay = Some(overlay::Overlay::App(overlay::AppMenu {
             item,
             step: overlay::AppStep::Actions,
-            error: None,
-        }));
-        self.pressed = None;
-        self.pending_target = None;
-    }
-
-    fn open_launcher_menu(&mut self) {
-        self.scroll.insert(Region::OverlayCard, 0.0);
-        self.overlay = Some(overlay::Overlay::Launcher(overlay::LauncherMenu {
-            step: overlay::LauncherStep::Actions,
-            providers: vec![],
-            providers_loading: false,
             error: None,
         }));
         self.pressed = None;

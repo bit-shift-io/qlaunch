@@ -1,5 +1,9 @@
 //! Menus rendered above the launcher. Actions call the existing core API;
 //! no model rule is reimplemented here.
+//!
+//! Dormant since the dialog migration; kept until the old overlay layer is
+//! removed in a cleanup pass.
+#![allow(dead_code)]
 
 use iced::widget::{
     button, column, container, mouse_area, opaque, scrollable, space, text, text_input,
@@ -9,7 +13,7 @@ use qlaunch_core::api::api::ModelSnapshot;
 use qlaunch_core::api::shortcuts::ShortcutProvider;
 use qlaunch_core::model::{Group, Id, Item};
 
-use crate::{App, Message as AppMessage, Region, material};
+use crate::{App, Message as AppMessage, Region, theme};
 
 // `AppMenu` carries a full `Item`, so the variants differ in size.
 #[allow(clippy::large_enum_variant)]
@@ -462,7 +466,7 @@ pub fn view<'a>(app: &'a App, overlay: &'a Overlay) -> Element<'a, AppMessage> {
                 .width(Fill)
                 .height(Fill)
                 .style(|_| container::Style {
-                    background: Some(material::SCRIM.into()),
+                    background: Some(theme::color::SCRIM.into()),
                     ..Default::default()
                 }),
         )
@@ -474,7 +478,7 @@ pub fn view<'a>(app: &'a App, overlay: &'a Overlay) -> Element<'a, AppMessage> {
             text(heading(overlay))
                 .size(22)
                 .line_height(1.27)
-                .color(material::ON_SURFACE),
+                .color(theme::color::ON_SURFACE),
         )
         .width(Fill)
         .height(layout.title.height)
@@ -489,8 +493,8 @@ pub fn view<'a>(app: &'a App, overlay: &'a Overlay) -> Element<'a, AppMessage> {
             container(
                 scrollable(card)
                     .id("overlay-card")
-                    .direction(material::vertical_scrollbar(app.scrollbars_visible()))
-                    .style(material::scrollable)
+                    .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
+                    .style(theme::scrollable)
                     .width(layout.viewport.width)
                     .height(layout.viewport.height)
                     .on_scroll(|viewport| {
@@ -500,7 +504,7 @@ pub fn view<'a>(app: &'a App, overlay: &'a Overlay) -> Element<'a, AppMessage> {
             .width(layout.bounds.width)
             .height(layout.bounds.height)
             .padding(padding)
-            .style(material::card),
+            .style(theme::card),
         )
         .on_press(AppMessage::Overlay(Message::Noop)),
     );
@@ -529,7 +533,7 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
                 .on_submit(on_submit)
                 .size(16)
                 .padding(16)
-                .style(material::input),
+                .style(theme::input),
         )
         .width(Fill)
         .center_y(INPUT_HEIGHT)
@@ -537,9 +541,9 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
         EntryKind::Text { label, error } => {
             let line = text(label).size(if error { 13 } else { 14 });
             let line = if error {
-                line.color(material::ERROR)
+                line.color(theme::color::ERROR)
             } else {
-                line.color(material::ON_SURFACE)
+                line.color(theme::color::ON_SURFACE)
             };
             container(line)
                 .width(Fill)
@@ -559,9 +563,9 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
 
 fn action<'a>(label: &str, message: Message, height: f32) -> Element<'a, AppMessage> {
     let style = match &message {
-        Message::AppRenameSubmit | Message::LauncherFolderSubmit => material::filled,
-        Message::AppUninstall | Message::AppRemove => material::destructive,
-        _ => material::action,
+        Message::AppRenameSubmit | Message::LauncherFolderSubmit => theme::filled_button,
+        Message::AppUninstall | Message::AppRemove => theme::destructive_button,
+        _ => theme::text_button,
     };
     button(
         container(text(label.to_string()).size(14))

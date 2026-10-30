@@ -28,6 +28,12 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
     if app.searching {
         content = content.push(
             row![
+                crate::components::icon_button(
+                    crate::icons::SETTINGS,
+                    "Launcher Settings",
+                    Message::Push(crate::Screen::Settings),
+                    true
+                ),
                 container(
                     text_input("Search apps", &app.query)
                         .id("search")
@@ -37,11 +43,12 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
                 .width(Fill)
                 .height(grid::SEARCH_CONTENT_HEIGHT)
                 .center_y(Fill),
-                button("×")
-                    .width(grid::SEARCH_CLOSE_WIDTH)
-                    .height(grid::SEARCH_CONTENT_HEIGHT)
-                    .on_press(Message::Search)
-                    .style(button::text)
+                crate::components::icon_button(
+                    crate::icons::CLOSE,
+                    "Close search",
+                    Message::Search,
+                    true
+                )
             ]
             .spacing(grid::SEARCH_GAP)
             .padding([2.0, grid::SEARCH_HORIZONTAL_PADDING])
@@ -118,9 +125,67 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
     } else {
         space().into()
     };
+    let screen: Element<'_, Message> = if app.screens.last() == Some(&crate::Screen::Settings) {
+        crate::screens::settings::view(app)
+    } else if app.screens.last() == Some(&crate::Screen::Advanced) {
+        crate::screens::advanced::view(app)
+    } else if app.screens.last() == Some(&crate::Screen::Groups) {
+        crate::screens::groups::view(app)
+    } else if let Some(crate::Screen::GroupApps(group)) = app.screens.last() {
+        crate::screens::group_apps::view(app, group)
+    } else if let Some(screen) = app.screens.last() {
+        let title = match screen {
+            crate::Screen::Settings => "Launcher Settings",
+            crate::Screen::Advanced => "Advanced",
+            crate::Screen::Groups => "Groups",
+            crate::Screen::GroupApps(_) => "Choose apps",
+        };
+        let typography = crate::theme::Text::from_settings(settings);
+        iced::widget::opaque(
+            mouse_area(
+                container(column![crate::components::app_bar(
+                    &typography,
+                    title,
+                    Some(Message::Back),
+                    vec![],
+                )])
+                .padding(app.insets)
+                .width(Fill)
+                .height(Fill)
+                .style(|_| container::Style {
+                    background: Some(crate::theme::color::SURFACE.into()),
+                    ..Default::default()
+                }),
+            )
+            .on_press(Message::Dialog(crate::dialog::Message::Noop)),
+        )
+    } else {
+        space().into()
+    };
+    let snackbar: Element<'_, Message> = if let Some((_, message)) = &app.snackbar {
+        let typography = crate::theme::Text::from_settings(settings);
+        container(crate::components::snackbar(&typography, message))
+            .width(Fill)
+            .height(Fill)
+            .align_y(iced::alignment::Vertical::Bottom)
+            .padding(app.insets)
+            .into()
+    } else {
+        space().into()
+    };
+    let dialog: Element<'_, Message> = if let Some(dialog) = &app.dialog {
+        crate::dialog::view(app, dialog)
+    } else {
+        space().into()
+    };
+    let select: Element<'_, Message> = if let Some(select) = &app.select {
+        crate::dialog::select_view(app, select)
+    } else {
+        space().into()
+    };
     // Keep the base and folder at stable child indices so modal transitions
     // never reconcile a scrollable against a different tree hierarchy.
-    iced::widget::stack![base, folder, overlay].into()
+    iced::widget::stack![base, folder, overlay, screen, snackbar, dialog, select].into()
 }
 
 /// What each of the three page slots shows, before it becomes a widget. The
@@ -215,10 +280,8 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
         let content: Element<'a, Message> = if planned.scrollable {
             let mut apps = scrollable(rows)
                 .id("apps")
-                .direction(crate::material::vertical_scrollbar(
-                    app.scrollbars_visible(),
-                ))
-                .style(crate::material::scrollable)
+                .direction(crate::theme::vertical_scrollbar(app.scrollbars_visible()))
+                .style(crate::theme::scrollable)
                 .height(Fill);
             if let Some(group) = planned.group.clone() {
                 apps = apps.on_scroll(move |viewport| {
@@ -311,10 +374,8 @@ fn single_grid<'a>(
     let columns = app.columns();
     let rows = grid_rows(app, items, columns, colour, 1.0);
     let mut apps = scrollable(rows)
-        .direction(crate::material::vertical_scrollbar(
-            app.scrollbars_visible(),
-        ))
-        .style(crate::material::scrollable)
+        .direction(crate::theme::vertical_scrollbar(app.scrollbars_visible()))
+        .style(crate::theme::scrollable)
         .height(Fill);
     if searching {
         apps = apps.id("search-results");

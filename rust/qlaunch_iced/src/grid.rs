@@ -66,13 +66,24 @@ pub fn tabs_visible(settings: &Settings, size: Size, page_count: usize) -> bool 
     }
 }
 
+/// Bounds of the Settings gear at the start of the search row.
+pub fn search_gear(_size: Size, insets: Insets) -> Rectangle {
+    rect(
+        insets.left + SEARCH_HORIZONTAL_PADDING,
+        insets.top + 2.0,
+        SEARCH_CLOSE_WIDTH,
+        SEARCH_CONTENT_HEIGHT,
+    )
+}
+
 /// Bounds of the search input inside its padded row.
 pub fn search_field(size: Size, insets: Insets) -> Rectangle {
     let width = content_width(size, insets);
     rect(
-        insets.left + SEARCH_HORIZONTAL_PADDING,
+        insets.left + SEARCH_HORIZONTAL_PADDING + SEARCH_CLOSE_WIDTH + SEARCH_GAP,
         insets.top + 2.0,
-        (width - 2.0 * SEARCH_HORIZONTAL_PADDING - SEARCH_GAP - SEARCH_CLOSE_WIDTH).max(0.0),
+        (width - 2.0 * SEARCH_HORIZONTAL_PADDING - 2.0 * SEARCH_CLOSE_WIDTH - 2.0 * SEARCH_GAP)
+            .max(0.0),
         SEARCH_CONTENT_HEIGHT,
     )
 }
@@ -284,8 +295,9 @@ mod tests {
     #[test]
     fn search_geometry_uses_explicit_rows() {
         let insets = insets();
+        assert_eq!(search_gear(size(), insets), rect(18.0, 52.0, 48.0, 40.0));
         let field = search_field(size(), insets);
-        assert_eq!(field, rect(18.0, 52.0, 970.0, 40.0));
+        assert_eq!(field, rect(72.0, 52.0, 916.0, 40.0));
         let close = search_close(size(), insets);
         assert_eq!(close, rect(994.0, 52.0, 48.0, 40.0));
         let tabs = search_tabs(size(), insets);

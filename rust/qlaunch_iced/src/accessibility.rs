@@ -58,6 +58,15 @@ pub(crate) enum TextField {
 
 #[derive(Debug, Clone)]
 pub(crate) enum Target {
+    Message(Box<crate::Message>),
+    Slider {
+        step_up: Box<crate::Message>,
+        step_down: Box<crate::Message>,
+    },
+    Input {
+        widget_id: &'static str,
+        on_input: fn(String) -> crate::Message,
+    },
     Item(Id),
     Step(i32),
     Search,
@@ -330,19 +339,49 @@ pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onAccessibilityAction(
 
 pub(crate) fn frame(app: &App) -> Option<Frame> {
     app.snapshot.as_ref()?;
-    if let Some(overlay) = &app.overlay {
-        return Some(overlay_frame(app, overlay));
+    let mut frame = if let Some(select) = &app.select {
+        select_frame(app, select)
+    } else if let Some(dialog) = &app.dialog {
+        dialog_frame(app, dialog)
+    } else if !app.screens.is_empty() {
+        screen_frame(app)
+    } else if let Some(overlay) = &app.overlay {
+        overlay_frame(app, overlay)
+    } else if app.searching {
+        search_frame(app)
+    } else if let Some(folder) = &app.folder {
+        folder_frame(app, folder)
+    } else {
+        launcher_frame(app)
+    };
+    if let Some((generation, _)) = &app.snackbar {
+        frame.announcement_key = format!("snackbar:{generation}");
     }
-    if app.searching {
-        return Some(search_frame(app));
-    }
-    if let Some(folder) = &app.folder {
-        return Some(folder_frame(app, folder));
-    }
-    Some(launcher_frame(app))
+    Some(frame)
 }
 
 pub(crate) fn announcement(app: &App) -> String {
+    if let Some((_, message)) = &app.snackbar {
+        return message.clone();
+    }
+    if app.select.is_some() {
+        return "Choose group".into();
+    }
+    if let Some(dialog) = &app.dialog {
+        return crate::dialog::heading(dialog).unwrap_or("App settings".into());
+    }
+    if let Some(screen) = app.screens.last() {
+        return match screen {
+            crate::Screen::Settings => "Launcher Settings".into(),
+            crate::Screen::Advanced => "Advanced".into(),
+            crate::Screen::Groups => "Groups".into(),
+            crate::Screen::GroupApps(id) => app
+                .snapshot
+                .as_ref()
+                .and_then(|s| s.groups.iter().find(|g| &g.id == id))
+                .map_or("Choose apps".into(), |g| g.label.clone()),
+        };
+    }
     if let Some(overlay) = &app.overlay {
         return overlay::heading(overlay);
     }
@@ -363,6 +402,689 @@ pub(crate) fn announcement(app: &App) -> String {
         page_group_label(app),
         snapshot.page_ids.len()
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn control(
+    app: &App,
+    frame: &mut Frame,
+    key: String,
+    label: String,
+    bounds: iced::Rectangle,
+    message: crate::Message,
+    selected: bool,
+    enabled: bool,
+    viewport: Option<iced::Rectangle>,
+) {
+    push(
+        app,
+        &mut frame.nodes,
+        key.clone(),
+        Target::Message(Box::new(message)),
+        Role::Button,
+        label,
+        bounds,
+        if enabled { vec![Action::Click] } else { vec![] },
+        selected,
+        None,
+        viewport,
+    );
+    if let Some(node) = frame.nodes.iter_mut().find(|n| n.key == key) {
+        node.enabled = enabled;
+    }
+}
+
+fn add_scroll(
+    app: &App,
+    frame: &mut Frame,
+    region: Region,
+    viewport: iced::Rectangle,
+    content: f32,
+) -> f32 {
+    let offset = scroll_offset(app, &region, content, viewport.height);
+    push(
+        app,
+        &mut frame.nodes,
+        format!("{}:scroll", frame.screen),
+        Target::Scroll {
+            region,
+            offset,
+            viewport: viewport.height,
+            content,
+        },
+        Role::Scroll,
+        "Scroll",
+        viewport,
+        scroll_actions(offset, viewport.height, content),
+        false,
+        None,
+        None,
+    );
+    offset
+}
+
+fn screen_frame(app: &App) -> Frame {
+    use crate::{Message, Screen, screens, theme};
+    let snapshot = app.snapshot.as_ref().unwrap();
+    let typography = theme::Text::from_settings(&snapshot.settings);
+    let screen = app.screens.last().unwrap();
+    let key = match screen {
+        Screen::Settings => "settings".to_string(),
+        Screen::Advanced => "advanced".into(),
+        Screen::Groups => "groups".into(),
+        Screen::GroupApps(id) => format!("group-apps:{id}"),
+    };
+    let mut frame = screen_with_key(app, key);
+    let bar = rect(
+        app.insets.left,
+        app.insets.top,
+        app.size.width - app.insets.left - app.insets.right,
+        theme::metrics::APP_BAR_HEIGHT,
+    );
+    control(
+        app,
+        &mut frame,
+        "screen:back".into(),
+        "Back".into(),
+        rect(bar.x + 4.0, bar.y + 8.0, 48.0, 48.0),
+        Message::Back,
+        false,
+        true,
+        None,
+    );
+    push(
+        app,
+        &mut frame.nodes,
+        "screen:title",
+        Target::Dismiss,
+        Role::Header,
+        announcement(app),
+        rect(bar.x + 56.0, bar.y, bar.width - 56.0, bar.height),
+        vec![],
+        false,
+        None,
+        None,
+    );
+    let viewport = rect(
+        bar.x,
+        bar.y + bar.height,
+        bar.width,
+        (app.size.height - app.insets.bottom - bar.y - bar.height).max(0.0),
+    );
+    match screen {
+        Screen::Settings => {
+            use screens::settings::{ActionTarget, Row};
+            let rows = screens::settings::rows(&snapshot.settings, app.settings_drag);
+            let height = rows
+                .iter()
+                .map(|r| screens::settings::row_height(r, &typography))
+                .sum::<f32>()
+                + 32.0;
+            let offset = add_scroll(app, &mut frame, Region::Screen, viewport, height);
+            let mut y = viewport.y - offset;
+            for row in rows {
+                let height = screens::settings::row_height(&row, &typography);
+                let bounds = rect(viewport.x, y, viewport.width, height);
+                match row {
+                    Row::Header(label) => push(
+                        app,
+                        &mut frame.nodes,
+                        format!("settings:header:{label}"),
+                        Target::Dismiss,
+                        Role::Header,
+                        label,
+                        bounds,
+                        vec![],
+                        false,
+                        None,
+                        Some(viewport),
+                    ),
+                    Row::Switch {
+                        field,
+                        label,
+                        value,
+                    } => control(
+                        app,
+                        &mut frame,
+                        format!("settings:control:{field:?}"),
+                        format!("{label}, {}", if value { "on" } else { "off" }),
+                        bounds,
+                        Message::SettingPatch(screens::settings::message(field, i64::from(!value))),
+                        value,
+                        true,
+                        Some(viewport),
+                    ),
+                    Row::Slider {
+                        field,
+                        label,
+                        value,
+                        unit,
+                        min,
+                        max,
+                    } => {
+                        let target =
+                            Target::Slider {
+                                step_up: Box::new(Message::SettingPatch(
+                                    screens::settings::message(field, (value + 1).min(max)),
+                                )),
+                                step_down: Box::new(Message::SettingPatch(
+                                    screens::settings::message(field, (value - 1).max(min)),
+                                )),
+                            };
+                        let mut actions = vec![];
+                        if value < max {
+                            actions.push(Action::ScrollForward);
+                        }
+                        if value > min {
+                            actions.push(Action::ScrollBackward);
+                        }
+                        push(
+                            app,
+                            &mut frame.nodes,
+                            format!("settings:control:{field:?}"),
+                            target,
+                            Role::Button,
+                            format!("{label}, {value}{unit}"),
+                            bounds,
+                            actions,
+                            false,
+                            None,
+                            Some(viewport),
+                        );
+                    }
+                    Row::Choice {
+                        field,
+                        label,
+                        options,
+                    } => {
+                        let chip_height = typography
+                            .role(theme::TextRole::LabelLarge)
+                            .line_height
+                            .max(theme::metrics::CHIP_HEIGHT);
+                        for (i, (option, selected)) in options.into_iter().enumerate() {
+                            let bounds = rect(
+                                viewport.x + 16.0 + (i % 2) as f32 * (viewport.width - 32.0) / 2.0,
+                                y + typography.role(theme::TextRole::BodyLarge).line_height
+                                    + 24.0
+                                    + (i / 2) as f32 * (chip_height + 8.0),
+                                (viewport.width - 40.0) / 2.0,
+                                chip_height,
+                            );
+                            control(
+                                app,
+                                &mut frame,
+                                format!("settings:choice:{field:?}:{i}"),
+                                format!("{label}, {option}"),
+                                bounds,
+                                Message::SettingPatch(screens::settings::choice_patch(field, i)),
+                                selected,
+                                true,
+                                Some(viewport),
+                            );
+                        }
+                    }
+                    Row::Action {
+                        label,
+                        subtitle,
+                        target,
+                    } => control(
+                        app,
+                        &mut frame,
+                        format!("settings:action:{label}"),
+                        format!("{label}, {subtitle}"),
+                        bounds,
+                        match target {
+                            ActionTarget::Groups => Message::Push(Screen::Groups),
+                            ActionTarget::Advanced => Message::Push(Screen::Advanced),
+                            ActionTarget::Wallpaper => {
+                                Message::Dialog(crate::dialog::Message::LauncherWallpaper)
+                            }
+                        },
+                        false,
+                        true,
+                        Some(viewport),
+                    ),
+                }
+                y += height;
+            }
+        }
+        Screen::Advanced => {
+            let height = crate::components::list_tile_height(true).max(
+                typography.role(theme::TextRole::BodyLarge).line_height
+                    + typography.role(theme::TextRole::BodyMedium).line_height
+                    + 16.0,
+            );
+            let offset = add_scroll(app, &mut frame, Region::Screen, viewport, height * 4.0);
+            for (i, row) in screens::advanced::rows().into_iter().enumerate() {
+                control(
+                    app,
+                    &mut frame,
+                    format!("advanced:{row:?}"),
+                    format!("{}, {}", row.label(), row.subtitle()),
+                    rect(
+                        viewport.x,
+                        viewport.y + i as f32 * height - offset,
+                        viewport.width,
+                        height,
+                    ),
+                    Message::Advanced(row),
+                    false,
+                    true,
+                    Some(viewport),
+                );
+            }
+        }
+        Screen::Groups => {
+            control(
+                app,
+                &mut frame,
+                "groups:add".into(),
+                "Add group".into(),
+                rect(bar.x + bar.width - 52.0, bar.y + 8.0, 48.0, 48.0),
+                Message::GroupAdd,
+                false,
+                true,
+                None,
+            );
+            let rows = screens::groups::rows(snapshot);
+            let height = |row: &screens::groups::GroupRow| {
+                crate::components::list_tile_height(row.role.is_some()).max(
+                    typography.role(theme::TextRole::BodyLarge).line_height
+                        + row.role.map_or(0.0, |_| {
+                            typography.role(theme::TextRole::BodyMedium).line_height
+                        })
+                        + 16.0,
+                )
+            };
+            let offset = add_scroll(
+                app,
+                &mut frame,
+                Region::Screen,
+                viewport,
+                rows.iter().map(height).sum(),
+            );
+            let mut y = viewport.y - offset;
+            for row in rows {
+                let h = height(&row);
+                let arrows = if row.page_index.is_some() { 96.0 } else { 0.0 };
+                control(
+                    app,
+                    &mut frame,
+                    format!("group:{}", row.id),
+                    format!(
+                        "{}{}",
+                        row.label,
+                        row.role.map_or(String::new(), |r| format!(
+                            ", {}",
+                            screens::groups::role_name(r)
+                        ))
+                    ),
+                    rect(viewport.x, y, viewport.width - arrows - 80.0, h),
+                    Message::GroupEdit(row.id.clone()),
+                    false,
+                    true,
+                    Some(viewport),
+                );
+                control(
+                    app,
+                    &mut frame,
+                    format!("group:{}:hidden", row.id),
+                    format!("Hide {}, {}", row.label, row.hidden),
+                    rect(viewport.x + viewport.width - arrows - 80.0, y, 64.0, h),
+                    Message::GroupHidden(row.id.clone(), !row.hidden),
+                    row.hidden,
+                    !row.always_hidden,
+                    Some(viewport),
+                );
+                if let Some(index) = row.page_index {
+                    control(
+                        app,
+                        &mut frame,
+                        format!("group:{}:up", row.id),
+                        format!("Move {} up", row.label),
+                        rect(viewport.x + viewport.width - 112.0, y, 48.0, h),
+                        Message::GroupMove(row.id.clone(), index.saturating_sub(1) as i32),
+                        false,
+                        index > 0,
+                        Some(viewport),
+                    );
+                    control(
+                        app,
+                        &mut frame,
+                        format!("group:{}:down", row.id),
+                        format!("Move {} down", row.label),
+                        rect(viewport.x + viewport.width - 64.0, y, 48.0, h),
+                        Message::GroupMove(row.id, (index + 1) as i32),
+                        false,
+                        index + 1 < row.page_count,
+                        Some(viewport),
+                    );
+                }
+                y += h;
+            }
+        }
+        Screen::GroupApps(group) => {
+            let rows = screens::group_apps::rows(snapshot, group);
+            let h = theme::metrics::LIST_ONE_LINE
+                .max(typography.role(theme::TextRole::BodyLarge).line_height + 16.0);
+            let offset = add_scroll(
+                app,
+                &mut frame,
+                Region::Screen,
+                viewport,
+                rows.len() as f32 * h,
+            );
+            for (i, row) in rows.into_iter().enumerate() {
+                control(
+                    app,
+                    &mut frame,
+                    format!("group-apps:{}", row.id),
+                    format!(
+                        "{}, {}",
+                        row.label,
+                        if row.checked { "checked" } else { "unchecked" }
+                    ),
+                    rect(
+                        viewport.x,
+                        viewport.y + i as f32 * h - offset,
+                        viewport.width,
+                        h,
+                    ),
+                    Message::GroupAppToggle(row.id, group.clone(), !row.checked),
+                    row.checked,
+                    row.enabled,
+                    Some(viewport),
+                );
+            }
+        }
+    }
+    if let Some((generation, message)) = &app.snackbar {
+        push(
+            app,
+            &mut frame.nodes,
+            format!("snackbar:{generation}"),
+            Target::Dismiss,
+            Role::Text,
+            message,
+            rect(
+                viewport.x,
+                app.size.height - app.insets.bottom - 48.0,
+                viewport.width,
+                48.0,
+            ),
+            vec![],
+            false,
+            None,
+            None,
+        );
+    }
+    frame
+}
+
+fn dialog_frame(app: &App, dialog: &crate::dialog::Dialog) -> Frame {
+    use crate::dialog::{self, Dialog, Row};
+    let title = dialog::heading(dialog).unwrap_or("App settings".into());
+    let mut frame = screen_with_key(app, format!("dialog:{title}"));
+    let layout = dialog::layout(app, dialog, app.size);
+    push(
+        app,
+        &mut frame.nodes,
+        "dialog:title",
+        Target::Dismiss,
+        Role::Header,
+        title,
+        layout
+            .title
+            .unwrap_or(rect(layout.card.x, layout.card.y, layout.card.width, 24.0)),
+        vec![Action::Dismiss],
+        false,
+        None,
+        None,
+    );
+    let offset = add_scroll(
+        app,
+        &mut frame,
+        Region::Dialog,
+        layout.content,
+        layout.content_height,
+    );
+    for ((mut bounds, index), row) in layout.rows.into_iter().zip(dialog::rows(app, dialog)) {
+        bounds.y -= offset;
+        match row {
+            Row::Field {
+                label,
+                value,
+                widget_id,
+            } => {
+                let input: fn(String) -> crate::Message = match widget_id {
+                    dialog::APP_NAME_FIELD_ID => {
+                        |v| crate::Message::Dialog(dialog::Message::AppName(v))
+                    }
+                    dialog::FOLDER_NAME_FIELD_ID => {
+                        |v| crate::Message::Dialog(dialog::Message::FolderName(v))
+                    }
+                    dialog::COMMAND_NAME_FIELD_ID => {
+                        |v| crate::Message::Dialog(dialog::Message::CommandName(v))
+                    }
+                    dialog::COMMAND_TEXT_FIELD_ID => {
+                        |v| crate::Message::Dialog(dialog::Message::CommandText(v))
+                    }
+                    dialog::ADD_GROUP_FIELD_ID => {
+                        |v| crate::Message::Dialog(dialog::Message::AddGroupName(v))
+                    }
+                    _ => |v| crate::Message::Dialog(dialog::Message::GroupName(v)),
+                };
+                push(
+                    app,
+                    &mut frame.nodes,
+                    format!("dialog:field:{widget_id}"),
+                    Target::Input {
+                        widget_id,
+                        on_input: input,
+                    },
+                    Role::TextField,
+                    label,
+                    bounds,
+                    vec![Action::Click, Action::SetText],
+                    false,
+                    Some(value),
+                    Some(layout.content),
+                );
+            }
+            Row::Select { label, value } => control(
+                app,
+                &mut frame,
+                "dialog:group".into(),
+                format!("{label}, {value}"),
+                bounds,
+                crate::Message::Dialog(dialog::Message::OpenGroupSelect),
+                false,
+                true,
+                Some(layout.content),
+            ),
+            Row::Chip {
+                label,
+                selected,
+                enabled,
+            } => {
+                use qlaunch_core::model::GroupRole;
+                let role = match label.as_str() {
+                    "Home" => Some(GroupRole::Home),
+                    "Apps" => Some(GroupRole::Apps),
+                    "Games" => Some(GroupRole::Games),
+                    _ => None,
+                };
+                control(
+                    app,
+                    &mut frame,
+                    format!("dialog:role:{label}"),
+                    label,
+                    bounds,
+                    crate::Message::Dialog(dialog::Message::GroupRole(role)),
+                    selected,
+                    enabled,
+                    Some(layout.content),
+                );
+            }
+            Row::Tile { label, .. } => {
+                let message = match dialog {
+                    Dialog::Launcher => match index {
+                        0 => dialog::Message::LauncherSettings,
+                        1 => dialog::Message::LauncherAddShortcut,
+                        2 => dialog::Message::LauncherCreateFolder,
+                        3 => dialog::Message::LauncherEditGroups,
+                        _ => dialog::Message::LauncherWallpaper,
+                    },
+                    Dialog::GroupEditor(_) => dialog::Message::GroupChooseApps,
+                    Dialog::RestorePicker(_) => dialog::Message::RestoreChosen(label.clone()),
+                    Dialog::AddShortcut(state) => {
+                        if index == 0 {
+                            dialog::Message::ShortcutLock
+                        } else if cfg!(target_os = "android") && index == 1 {
+                            dialog::Message::ShortcutNotifications
+                        } else if let Some(Ok(providers)) = &state.providers {
+                            let index = index - if cfg!(target_os = "android") { 2 } else { 1 };
+                            match providers.get(index) {
+                                Some(provider) if provider.id == "command" => {
+                                    dialog::Message::ShortcutCommand
+                                }
+                                Some(provider) => {
+                                    dialog::Message::ShortcutProvider(provider.id.clone())
+                                }
+                                None => dialog::Message::Noop,
+                            }
+                        } else {
+                            dialog::Message::Noop
+                        }
+                    }
+                    _ => dialog::Message::Noop,
+                };
+                let enabled = !matches!(dialog, Dialog::AddShortcut(state) if state.busy)
+                    && !matches!(dialog, Dialog::Confirm(state) if state.busy);
+                control(
+                    app,
+                    &mut frame,
+                    format!("dialog:tile:{index}"),
+                    label,
+                    bounds,
+                    crate::Message::Dialog(message),
+                    false,
+                    enabled,
+                    Some(layout.content),
+                );
+            }
+            Row::Text { label, error } => push(
+                app,
+                &mut frame.nodes,
+                format!("dialog:text:{index}"),
+                Target::Dismiss,
+                Role::Text,
+                if error {
+                    format!("Error: {label}")
+                } else {
+                    label
+                },
+                bounds,
+                vec![],
+                false,
+                None,
+                Some(layout.content),
+            ),
+            Row::Note { label } => push(
+                app,
+                &mut frame.nodes,
+                format!("dialog:text:{index}"),
+                Target::Dismiss,
+                Role::Text,
+                label,
+                bounds,
+                vec![],
+                false,
+                None,
+                Some(layout.content),
+            ),
+        }
+    }
+    for (bounds, label) in layout.actions {
+        let busy = match dialog {
+            Dialog::AddShortcut(e) => e.busy,
+            Dialog::Confirm(e) => e.busy,
+            _ => false,
+        };
+        let (message, enabled) = match (dialog, label.as_str()) {
+            (_, "Cancel") => (dialog::Message::Close, !busy),
+            (Dialog::App(e), "Save") => (dialog::Message::AppSave, e.can_save()),
+            (Dialog::App(e), "Uninstall") => (dialog::Message::AppUninstall, !e.busy),
+            (Dialog::App(e), _) => (dialog::Message::AppRemove, !e.busy),
+            (Dialog::Folder(e), "Save") => (dialog::Message::FolderSave, e.can_save()),
+            (Dialog::Folder(e), _) => (dialog::Message::FolderDelete, !e.busy()),
+            (Dialog::AddGroup(e), _) => (dialog::Message::AddGroupConfirm, e.can_confirm()),
+            (Dialog::CommandShortcut(e), _) => (dialog::Message::CommandAdd, e.ready()),
+            (Dialog::GroupEditor(e), "Save") => (dialog::Message::GroupSave, e.can_save()),
+            (Dialog::GroupEditor(e), _) => (dialog::Message::GroupDelete, e.can_delete()),
+            _ => (dialog::Message::ConfirmYes, !busy),
+        };
+        control(
+            app,
+            &mut frame,
+            format!("dialog:action:{label}"),
+            label,
+            bounds,
+            crate::Message::Dialog(message),
+            false,
+            enabled,
+            None,
+        );
+    }
+    frame
+}
+
+fn select_frame(app: &App, select: &crate::dialog::Select) -> Frame {
+    let mut frame = screen_with_key(app, "select:group".into());
+    let bounds = crate::components::select_menu_bounds(
+        crate::dialog::select_anchor(app, select),
+        select.options.len(),
+        app.size,
+    );
+    let offset = add_scroll(
+        app,
+        &mut frame,
+        Region::Select,
+        bounds,
+        select.options.len() as f32 * crate::theme::metrics::SELECT_OPTION_HEIGHT,
+    );
+    for (i, option) in select.options.iter().enumerate() {
+        control(
+            app,
+            &mut frame,
+            format!("select:option:{}", option.id),
+            option.label.clone(),
+            rect(
+                bounds.x,
+                bounds.y + i as f32 * 48.0 - offset,
+                bounds.width,
+                48.0,
+            ),
+            crate::Message::Dialog(crate::dialog::Message::GroupChosen(option.id.clone())),
+            option.id == select.selected,
+            true,
+            Some(bounds),
+        );
+    }
+    push(
+        app,
+        &mut frame.nodes,
+        "select:dismiss",
+        Target::Dismiss,
+        Role::Button,
+        "Close menu",
+        bounds,
+        vec![Action::Dismiss],
+        false,
+        None,
+        None,
+    );
+    frame
 }
 
 fn rect(x: f32, y: f32, width: f32, height: f32) -> iced::Rectangle {
@@ -574,6 +1296,17 @@ fn search_frame(app: &App) -> Frame {
     let settings = &snapshot.settings;
     let mut frame = screen_with_key(app, "search".into());
 
+    control(
+        app,
+        &mut frame,
+        "search:gear".into(),
+        "Launcher Settings".into(),
+        grid::search_gear(app.size, app.insets),
+        crate::Message::Push(crate::Screen::Settings),
+        false,
+        true,
+        None,
+    );
     push(
         app,
         &mut frame.nodes,
@@ -1027,6 +1760,97 @@ fn list_label(overlay: &Overlay) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Screen, dialog};
+
+    #[test]
+    fn settings_frame_exposes_back_title_and_controls() {
+        let mut app = crate::tests::app();
+        app.screens.push(Screen::Settings);
+        let frame = frame(&app).unwrap();
+        assert_eq!(frame.screen, "settings");
+        assert!(frame.nodes.iter().any(|n| n.label == "Back"));
+        assert!(frame.nodes.iter().any(|n| n.role == Role::Header));
+        assert!(
+            frame
+                .nodes
+                .iter()
+                .any(|n| n.label.starts_with("Continuous scrolling"))
+        );
+    }
+
+    #[test]
+    fn dialog_frame_hides_the_screen_below() {
+        let mut app = crate::tests::app();
+        app.screens.push(Screen::Groups);
+        app.dialog = Some(dialog::Dialog::Launcher);
+        let frame = frame(&app).unwrap();
+        assert!(frame.screen.starts_with("dialog"));
+        assert!(!frame.nodes.iter().any(|n| n.key.starts_with("group:")));
+    }
+
+    #[test]
+    fn select_frame_exposes_every_option() {
+        let mut app = crate::tests::app();
+        app.select = Some(dialog::Select {
+            field: dialog::SelectField::AppGroup,
+            options: vec![
+                dialog::SelectOption {
+                    id: "apps".into(),
+                    label: "Apps".into(),
+                    folder: false,
+                },
+                dialog::SelectOption {
+                    id: "games".into(),
+                    label: "Games".into(),
+                    folder: false,
+                },
+            ],
+            selected: "apps".into(),
+        });
+        let frame = frame(&app).unwrap();
+        assert!(frame.screen.starts_with("select"));
+        assert!(frame.nodes.iter().any(|n| n.label.contains("Games")));
+    }
+
+    #[test]
+    fn search_frame_exposes_the_settings_gear() {
+        let mut app = crate::tests::app();
+        app.searching = true;
+        let frame = frame(&app).unwrap();
+        assert!(frame.nodes.iter().any(|n| n.key == "search:gear"));
+    }
+
+    #[test]
+    fn busy_add_shortcut_rows_are_disabled() {
+        let mut app = crate::tests::app();
+        let mut state = dialog::AddShortcutState::new("apps".into());
+        state.providers = Some(Ok(vec![]));
+        state.busy = true;
+        app.dialog = Some(dialog::Dialog::AddShortcut(state));
+        let frame = frame(&app).unwrap();
+        let lock = frame
+            .nodes
+            .iter()
+            .find(|n| n.label == "Lock Screen")
+            .unwrap();
+        assert!(!lock.enabled);
+        assert!(!lock.actions.contains(&Action::Click));
+    }
+
+    #[test]
+    fn slider_advertises_scroll_actions() {
+        let mut app = crate::tests::app();
+        app.screens.push(Screen::Settings);
+        let frame = frame(&app).unwrap();
+        let slider = frame
+            .nodes
+            .iter()
+            .find(|n| n.label.starts_with("Page transition duration"))
+            .unwrap();
+        assert!(slider.actions.contains(&Action::ScrollForward));
+        assert!(slider.actions.contains(&Action::ScrollBackward));
+        assert!(!slider.actions.contains(&Action::ScrollLeft));
+    }
     use crate::overlay::{self, AppMenu, AppStep, LauncherMenu, LauncherStep, Overlay};
     use crate::{App, Pager, Region};
     use iced::Size;

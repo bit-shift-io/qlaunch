@@ -1,5 +1,5 @@
 //! Content-sized folder modal. One geometry source for drawing, touch and TalkBack.
-use crate::{App, Message, Region, grid, material, view};
+use crate::{App, Message, Region, grid, theme, view};
 use iced::widget::{container, mouse_area, opaque, scrollable, space, text};
 use iced::{Color, Element, Fill, Rectangle, Size};
 use iced_android::Insets;
@@ -85,15 +85,19 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     };
     let items = app.visible_items();
     let content: Element<'_, Message> = if items.is_empty() {
-        container(text("Empty folder").size(14).color(material::ON_SURFACE))
-            .center(Fill)
-            .into()
+        container(
+            text("Empty folder")
+                .size(14)
+                .color(theme::color::ON_SURFACE),
+        )
+        .center(Fill)
+        .into()
     } else {
         let group = app.folder.as_ref().unwrap().clone();
         scrollable(view::grid_rows(app, items, layout.columns, colour, 1.0))
             .id("folder-apps")
-            .direction(material::vertical_scrollbar(app.scrollbars_visible()))
-            .style(material::scrollable)
+            .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
+            .style(theme::scrollable)
             .on_scroll(move |viewport| {
                 Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
             })
@@ -113,7 +117,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
             .padding(padding)
             .width(layout.bounds.width)
             .height(layout.bounds.height)
-            .style(material::card),
+            .style(theme::card),
         )
         .on_press(Message::FolderCardPressed),
     );
@@ -123,7 +127,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 .width(Fill)
                 .height(Fill)
                 .style(|_| container::Style {
-                    background: Some(material::SCRIM.into()),
+                    background: Some(theme::color::SCRIM.into()),
                     ..Default::default()
                 }),
         )
