@@ -466,7 +466,7 @@ fn add_scroll(
 fn screen_frame(app: &App) -> Frame {
     use crate::{Message, Screen, screens, theme};
     let snapshot = app.snapshot.as_ref().unwrap();
-    let typography = theme::Text::from_settings(&snapshot.settings);
+    let typography = theme::Text::new();
     let screen = app.screens.last().unwrap();
     let key = match screen {
         Screen::Settings => "settings".to_string(),

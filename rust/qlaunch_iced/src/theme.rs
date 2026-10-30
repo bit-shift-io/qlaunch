@@ -4,10 +4,9 @@
 //! here, so no screen invents its own. Values trace to Flutter's default dark
 //! scheme (`theme_data.dart`, `_colorSchemeDarkM3`).
 
-use iced::font::{Family, Weight};
+use iced::font::Weight;
 use iced::{Color, Font};
 use iced_android as platform;
-use qlaunch_core::settings::{Settings, Typeface};
 
 /// Flutter's dark Material 3 colour scheme, the subset the UI uses.
 pub(crate) mod color {
@@ -84,19 +83,19 @@ impl Typography {
     }
 }
 
-/// The launcher's Text settings as a type scale, matching Flutter's
-/// `LauncherFontScope`: the whole scale is multiplied by `label_size / 16`.
+/// The Material type scale the chrome draws. It is fixed: the chrome follows
+/// the platform's own GUI font (and the system font scale the app is scaled
+/// by), never the launcher's Text settings. Those settings drive only the
+/// launcher's labels (`crate::fonts`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Text {
-    pub scale: f32,
     pub font: Font,
 }
 
 impl Text {
-    pub(crate) fn from_settings(settings: &Settings) -> Self {
+    pub(crate) fn new() -> Self {
         Text {
-            scale: settings.label_size as f32 / 16.0,
-            font: base_font(settings),
+            font: platform::DEFAULT_FONT,
         }
     }
 
@@ -112,34 +111,13 @@ impl Text {
             TextRole::LabelMedium => (12.0, 16.0, Weight::Medium),
         };
         Typography {
-            size: size * self.scale,
-            line_height: line_height * self.scale,
+            size,
+            line_height,
             font: Font {
                 weight,
                 ..self.font
             },
         }
-    }
-}
-
-/// The font the launcher's typeface setting names, built on the platform's
-/// default font so `Normal` text resolves to `Roboto` on Android (the generic
-/// `sans-serif` family maps to `Open Sans`, which Android does not load).
-pub(crate) fn base_font(settings: &Settings) -> Font {
-    typeface_font(settings.label_typeface, platform::DEFAULT_FONT)
-}
-
-/// Resolves a typeface to a font, overriding only the family of `default`.
-fn typeface_font(typeface: Typeface, default: Font) -> Font {
-    let family = match typeface {
-        Typeface::Normal => default.family,
-        Typeface::Sans => Family::SansSerif,
-        Typeface::Serif => Family::Serif,
-        Typeface::Monospace => Family::Monospace,
-    };
-    Font {
-        family,
-        ..default
     }
 }
 
@@ -474,7 +452,6 @@ pub(crate) fn checkbox(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use qlaunch_core::settings::{Settings, Typeface};
 
     #[test]
     fn colors_match_flutter_dark_scheme() {
@@ -492,64 +469,15 @@ mod tests {
     }
 
     #[test]
-    fn scale_factor_follows_label_size() {
-        let settings = Settings {
-            label_size: 8,
-            ..Settings::default()
-        };
-        assert_eq!(Text::from_settings(&settings).scale, 0.5);
-        let settings = Settings {
-            label_size: 32,
-            ..Settings::default()
-        };
-        assert_eq!(Text::from_settings(&settings).scale, 2.0);
-    }
-
-    #[test]
-    fn typeface_maps_to_family() {
-        // Android's platform default is `Roboto`, not the generic sans family
-        // cosmic-text maps to `Open Sans` (which Android does not ship), so
-        // `Normal` must follow the platform default instead of hardcoding it.
-        let android_default = Font::with_name("Roboto");
-        assert_eq!(
-            typeface_font(Typeface::Normal, android_default).family,
-            Family::Name("Roboto")
-        );
-        assert_eq!(
-            typeface_font(Typeface::Sans, android_default).family,
-            Family::SansSerif
-        );
-        assert_eq!(
-            typeface_font(Typeface::Serif, android_default).family,
-            Family::Serif
-        );
-        assert_eq!(
-            typeface_font(Typeface::Monospace, android_default).family,
-            Family::Monospace
-        );
-    }
-
-    #[test]
-    fn base_font_defaults_to_the_platform_font() {
-        let settings = Settings {
-            label_typeface: Typeface::Normal,
-            ..Settings::default()
-        };
-        assert_eq!(base_font(&settings).family, platform::DEFAULT_FONT.family);
-    }
-
-    #[test]
-    fn roles_scale_and_weight_like_material() {
-        // label_size 16 is scale 1.0; the default 18 scales the whole scale.
-        let settings = Settings {
-            label_size: 16,
-            ..Settings::default()
-        };
-        let text = Text::from_settings(&settings);
+    fn chrome_roles_have_fixed_material_sizes() {
+        // The chrome type scale does not read the launcher's Text settings;
+        // sizes are the Material 3 values and the font is the platform font.
+        let text = Text::new();
         let title = text.role(TextRole::TitleSmall);
         assert_eq!(title.size, 14.0);
         assert_eq!(title.line_height, 20.0);
         assert_eq!(title.font.weight, Weight::Medium);
+        assert_eq!(title.font.family, platform::DEFAULT_FONT.family);
         let headline = text.role(TextRole::HeadlineSmall);
         assert_eq!(headline.size, 24.0);
         assert_eq!(headline.font.weight, Weight::Normal);

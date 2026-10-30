@@ -345,7 +345,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     let Some(snapshot) = &app.snapshot else {
         return container(column![]).into();
     };
-    let typography = theme::Text::from_settings(&snapshot.settings);
+    let typography = theme::Text::new();
     let mut content = column![];
     for row in rows(&snapshot.settings, app.settings_drag) {
         let height = row_height(&row, &typography);
@@ -519,21 +519,17 @@ mod tests {
     }
 
     #[test]
-    fn row_heights_grow_for_large_text_and_remain_positive_at_zero() {
-        for size in [0, 100] {
-            let settings = Settings {
-                label_size: size,
-                ..Settings::default()
-            };
-            let typography = theme::Text::from_settings(&settings);
-            for row in rows(&settings, None) {
-                assert!(row_height(&row, &typography) > 0.0);
-                if let Row::Switch { .. } = row {
-                    assert!(
-                        row_height(&row, &typography)
-                            >= typography.role(theme::TextRole::BodyLarge).line_height + 16.0
-                    );
-                }
+    fn row_heights_are_positive() {
+        // Chrome text is fixed now, so the heights no longer track label_size.
+        let settings = Settings::default();
+        let typography = theme::Text::new();
+        for row in rows(&settings, None) {
+            assert!(row_height(&row, &typography) > 0.0);
+            if let Row::Switch { .. } = row {
+                assert!(
+                    row_height(&row, &typography)
+                        >= typography.role(theme::TextRole::BodyLarge).line_height + 16.0
+                );
             }
         }
     }

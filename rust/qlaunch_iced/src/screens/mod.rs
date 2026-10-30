@@ -13,12 +13,7 @@ pub(crate) fn scaffold<'a>(
     actions: Vec<Element<'a, Message>>,
     content: Element<'a, Message>,
 ) -> Element<'a, Message> {
-    let settings = app
-        .snapshot
-        .as_ref()
-        .map(|s| s.settings.clone())
-        .unwrap_or_default();
-    let typography = theme::Text::from_settings(&settings);
+    let typography = theme::Text::new();
     iced::widget::opaque(
         mouse_area(
             container(column![

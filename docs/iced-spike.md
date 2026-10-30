@@ -386,6 +386,28 @@ Known limits found while verifying:
   as an unreproduced cosmetic finding.
 - Accessibility exposure is off by default; see the NO-GO section above.
 
+## Unified chrome font (2026-10-30)
+
+The Material chrome — dialogs, long-press menus, the Settings/Groups/Advanced
+screens, buttons, chips, sliders, the snackbar and the app bar — now draws in the
+platform font at fixed Material sizes. It no longer reads the launcher's Text
+settings; those drive only the home interface (grid labels, the tab strip, folder
+items and shortcut labels) through `view::label()`.
+
+This fixes blank chrome text on Android. `theme::Text::from_settings` had set the
+whole UI's type from the Font-size and Typeface settings using iced's generic
+families, and cosmic-text maps those to `Open Sans` / `DejaVu Serif` /
+`Noto Sans Mono`, which Android never loads (it has no fontconfig). Only the
+labels, which used the platform default `Roboto`, rendered. The chrome type scale
+is now fixed (`theme::Text::new()`), the OS font scale still applies globally via
+`scale_factor`, and label typefaces resolve to families that exist per platform
+(`fonts::label_font`): Android uses `Roboto`, `Droid Sans Mono` and a `Noto Serif`
+loaded from `/system/fonts`; Linux keeps the generic families.
+
+Verified on the tablet (Android 14, release): menus, dialogs and Settings render,
+and the grid and tab strip follow Normal, Serif and Mono while the chrome stays
+sans-serif.
+
 ## Tablet frame measurement (2026-10-30)
 
 Tablet: iPlay60 mini Turbo, Android 14, 1200x1920, 90 Hz, release build, saved

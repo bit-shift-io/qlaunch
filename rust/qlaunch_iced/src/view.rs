@@ -3,8 +3,7 @@
 use iced::widget::{
     button, column, container, image, mouse_area, row, scrollable, space, text, text_input,
 };
-use iced::{Color, Element, Fill, Font};
-use iced_android as platform;
+use iced::{Color, Element, Fill};
 use qlaunch_core::model::{Id, Item};
 use qlaunch_core::settings::{LabelColour, LayoutStyle};
 
@@ -140,7 +139,7 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
             crate::Screen::Groups => "Groups",
             crate::Screen::GroupApps(_) => "Choose apps",
         };
-        let typography = crate::theme::Text::from_settings(settings);
+        let typography = crate::theme::Text::new();
         iced::widget::opaque(
             mouse_area(
                 container(column![crate::components::app_bar(
@@ -163,7 +162,7 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
         space().into()
     };
     let snackbar: Element<'_, Message> = if let Some((_, message)) = &app.snackbar {
-        let typography = crate::theme::Text::from_settings(settings);
+        let typography = crate::theme::Text::new();
         container(crate::components::snackbar(&typography, message))
             .width(Fill)
             .height(Fill)
@@ -520,14 +519,7 @@ pub(crate) fn label<'a>(
             .size(settings.label_size as f32)
             .line_height(1.17)
             .color(colour)
-            .font(Font {
-                family: match settings.label_typeface {
-                    qlaunch_core::settings::Typeface::Monospace => iced::font::Family::Monospace,
-                    qlaunch_core::settings::Typeface::Serif => iced::font::Family::Serif,
-                    _ => platform::DEFAULT_FONT.family,
-                },
-                ..platform::DEFAULT_FONT
-            })
+            .font(crate::fonts::label_font(settings.label_typeface))
             .align_x(if centered {
                 iced::alignment::Horizontal::Center
             } else {

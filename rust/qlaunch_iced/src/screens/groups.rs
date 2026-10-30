@@ -51,7 +51,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     let Some(snapshot) = &app.snapshot else {
         return column![].into();
     };
-    let typography = theme::Text::from_settings(&snapshot.settings);
+    let typography = theme::Text::new();
     let mut content = column![];
     for group in rows(snapshot) {
         let id = group.id.clone();

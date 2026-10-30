@@ -51,12 +51,7 @@ pub(crate) fn restore_message(result: &Result<ModelSnapshot, String>, name: &str
 }
 
 pub(crate) fn view(app: &App) -> Element<'_, Message> {
-    let settings = app
-        .snapshot
-        .as_ref()
-        .map(|s| s.settings.clone())
-        .unwrap_or_default();
-    let typography = theme::Text::from_settings(&settings);
+    let typography = theme::Text::new();
     let mut content = column![];
     for row in rows() {
         content = content.push(components::action_tile(

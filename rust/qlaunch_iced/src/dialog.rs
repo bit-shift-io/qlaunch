@@ -680,7 +680,7 @@ pub(crate) const GROUP_NAME_FIELD_ID: &str = "dialog-group-name";
 pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
     let rows = rows(app, dialog);
     let labels = action_labels(dialog);
-    let typography = dialog_text(app);
+    let typography = dialog_text();
     let title_height = typography.role(TextRole::HeadlineSmall).line_height;
     let padding = theme::metrics::DIALOG_PADDING.min(window.width / 4.0);
     let title_block = if heading(dialog).is_some() {
@@ -698,7 +698,7 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
     let widths: Vec<f32> = labels
         .iter()
         .map(|s| {
-            (s.chars().count() as f32 * 8.0 * typography.scale + 24.0)
+            (s.chars().count() as f32 * 8.0 + 24.0)
                 .max(64.0)
                 .min(inner_width)
         })
@@ -871,14 +871,8 @@ pub(crate) fn app_save_plan(
     plan
 }
 
-fn dialog_text(app: &App) -> Text {
-    app.snapshot
-        .as_ref()
-        .map(|snapshot| Text::from_settings(&snapshot.settings))
-        .unwrap_or(Text {
-            scale: 1.0,
-            font: iced::Font::DEFAULT,
-        })
+fn dialog_text() -> Text {
+    Text::new()
 }
 
 fn plain_line<'a>(
@@ -1349,7 +1343,7 @@ fn actions<'a>(app: &App, dialog: &Dialog, text_settings: &Text) -> Vec<Element<
 }
 
 pub(crate) fn view<'a>(app: &'a App, dialog: &'a Dialog) -> Element<'a, AppMessage> {
-    let text_settings = dialog_text(app);
+    let text_settings = dialog_text();
     let layout = layout(app, dialog, app.size);
 
     let mut content =
@@ -1455,7 +1449,7 @@ pub(crate) fn select_anchor(app: &App, select: &Select) -> Rectangle {
 }
 
 pub(crate) fn select_view<'a>(app: &'a App, select: &'a Select) -> Element<'a, AppMessage> {
-    let text_settings = dialog_text(app);
+    let text_settings = dialog_text();
     let anchor = select_anchor(app, select);
     let bounds = components::select_menu_bounds(anchor, select.options.len(), app.size);
     let ids: Vec<String> = select
@@ -1583,7 +1577,7 @@ mod tests {
             action: ConfirmAction::DeleteGroup("fun".into()),
         });
         let layout = layout(&app, &dialog, Size::new(360.0, 800.0));
-        let text = dialog_text(&app);
+        let text = dialog_text();
         let (row, _) = layout
             .rows
             .iter()
@@ -1593,11 +1587,11 @@ mod tests {
     }
 
     #[test]
-    fn tile_rows_grow_with_the_font_setting() {
-        let mut app = dialog_app().0;
-        app.snapshot.as_mut().unwrap().settings.label_size = 100;
+    fn tile_rows_fit_the_fixed_body_large_line_height() {
+        // Chrome rows follow the fixed Material scale, not label_size.
+        let app = dialog_app().0;
         let layout = layout(&app, &Dialog::Launcher, Size::new(360.0, 800.0));
-        let text = dialog_text(&app);
+        let text = dialog_text();
         let (row, _) = layout
             .rows
             .iter()

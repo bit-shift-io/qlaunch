@@ -73,7 +73,7 @@ pub(crate) fn view<'a>(app: &'a App, group_id: &Id) -> Element<'a, Message> {
         .iter()
         .find(|g| &g.id == group_id)
         .map_or("", |g| g.label.as_str());
-    let typography = theme::Text::from_settings(&snapshot.settings);
+    let typography = theme::Text::new();
     let mut content = column![];
     for row in rows(snapshot, group_id) {
         content = content.push(components::checkbox_row(

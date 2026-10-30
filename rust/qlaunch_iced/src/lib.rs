@@ -3,6 +3,7 @@ mod accessibility;
 mod components;
 mod dialog;
 mod folder;
+mod fonts;
 pub mod gesture;
 pub mod grid;
 mod icons;
@@ -1245,6 +1246,10 @@ pub fn run() -> iced::Result {
         .scale_factor(|app: &App, _| app.scale)
         .default_font(platform::DEFAULT_FONT);
     for font in platform::fonts() {
+        app = app.font(font);
+    }
+    #[cfg(target_os = "android")]
+    for font in fonts::android_extra_fonts() {
         app = app.font(font);
     }
     app = app.font(include_bytes!("../assets/MaterialIcons-Regular.otf").as_slice());
