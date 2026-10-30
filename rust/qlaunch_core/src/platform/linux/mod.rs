@@ -34,11 +34,15 @@ pub struct LinuxSource {
 }
 
 impl LinuxSource {
-    /// A source over the XDG data roots, with the desktop, locale, icon
-    /// theme (`XDG_CURRENT_THEME`, which few desktops set) and terminal
-    /// emulator (see [`terminal_emulator`]) taken from the environment now.
+    /// A source over the XDG data roots, with the desktop, locale, icon theme
+    /// and terminal emulator (see [`terminal_emulator`]) taken from the
+    /// environment now. The icon theme is `XDG_CURRENT_THEME` when set,
+    /// otherwise the one the desktop configured in GTK, Cosmic or KDE settings.
     pub fn new() -> Self {
         let var = |name: &str| std::env::var(name).ok();
+        let theme = var("XDG_CURRENT_THEME")
+            .filter(|theme| !theme.trim().is_empty())
+            .or_else(|| dirs::config_dir().and_then(|config| icons::configured_theme(&config)));
         Self::from_parts(
             data_roots(),
             var("XDG_CURRENT_DESKTOP"),
@@ -47,7 +51,7 @@ impl LinuxSource {
                 var("LC_MESSAGES").as_deref(),
                 var("LANG").as_deref(),
             ),
-            var("XDG_CURRENT_THEME"),
+            theme,
             terminal_emulator(),
         )
     }
@@ -182,14 +186,27 @@ impl AppSource for LinuxSource {
 
     /// The PNG bytes of the icon named by the app's desktop file, or `None`:
     /// for an unknown id, an entry without an icon, an icon that cannot be
-    /// found or read, and an `svg` or `xpm` icon, which is not rasterised. An
-    /// icon is cosmetic, so none of these is an error.
+    /// found or read, an `xpm` icon, which is not rasterised, and an `svg`
+    /// that cannot be parsed. An icon is cosmetic, so none of these is an
+    /// error. An `svg` is rasterised to a PNG at `size_px`.
     fn icon_image(&self, app: &AppRef, size_px: u32) -> Result<Option<IconImage>, PlatformError> {
-        Ok(self
-            .icon_path(&app.package, size_px)
-            .filter(|path| icons::is_png(path))
-            .and_then(|path| fs::read(path).ok())
-            .map(IconImage::png))
+        let Some(path) = self.icon_path(&app.package, size_px) else {
+            return Ok(None);
+        };
+        let Ok(bytes) = fs::read(&path) else {
+            return Ok(None);
+        };
+        let png = if icons::is_png(&path) {
+            bytes
+        } else if icons::is_svg(&path) {
+            let Some(png) = icons::rasterise_svg(&bytes, size_px) else {
+                return Ok(None);
+            };
+            png
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(IconImage::png(png)))
     }
 
     /// Starts the app's `Exec` line without a shell and without waiting for

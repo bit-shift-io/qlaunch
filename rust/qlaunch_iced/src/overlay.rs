@@ -1,13 +1,15 @@
 //! Menus rendered above the launcher. Actions call the existing core API;
 //! no model rule is reimplemented here.
 
-use iced::widget::{button, column, container, mouse_area, scrollable, space, text, text_input};
-use iced::{Color, Element, Fill};
+use iced::widget::{
+    button, column, container, mouse_area, opaque, scrollable, space, text, text_input,
+};
+use iced::{Element, Fill};
 use qlaunch_core::api::api::ModelSnapshot;
 use qlaunch_core::api::shortcuts::ShortcutProvider;
 use qlaunch_core::model::{Group, Id, Item};
 
-use crate::{App, Message as AppMessage, view};
+use crate::{App, Message as AppMessage, Region, material};
 
 // `AppMenu` carries a full `Item`, so the variants differ in size.
 #[allow(clippy::large_enum_variant)]
@@ -67,26 +69,26 @@ pub enum Message {
 }
 
 pub(crate) const CARD_WIDTH: f32 = 320.0;
-pub(crate) const CARD_PADDING: f32 = 12.0;
-pub(crate) const CARD_GAP: f32 = 6.0;
-pub(crate) const ACTION_HEIGHT: f32 = 36.0;
-pub(crate) const INPUT_HEIGHT: f32 = 36.0;
+pub(crate) const CARD_PADDING: f32 = 24.0;
+pub(crate) const CARD_GAP: f32 = 8.0;
+pub(crate) const ACTION_HEIGHT: f32 = 48.0;
+pub(crate) const INPUT_HEIGHT: f32 = 56.0;
 pub(crate) const TEXT_HEIGHT: f32 = 18.0;
-pub(crate) const LIST_HEIGHT: f32 = 240.0;
 pub(crate) const LIST_ROW_GAP: f32 = 2.0;
 pub(crate) const APP_NAME_FIELD_ID: &str = "overlay-app-name";
 pub(crate) const FOLDER_NAME_FIELD_ID: &str = "overlay-folder-name";
 
-/// Deterministic, clipped card-title height: `(label_size * 1.17).max(22.0)`.
-/// Matches the label's natural height at the default size and never reflows
-/// the rows below it.
-pub(crate) fn heading_height(settings: &qlaunch_core::settings::Settings) -> f32 {
-    (settings.label_size as f32 * 1.17).max(22.0)
+/// Material dialog title typography is independent of launcher icon labels.
+pub(crate) fn heading_height(_: &qlaunch_core::settings::Settings) -> f32 {
+    28.0
 }
 
 pub(crate) struct CardLayout {
     pub bounds: iced::Rectangle,
     pub title: iced::Rectangle,
+    pub viewport: iced::Rectangle,
+    pub content_height: f32,
+    pub offset: f32,
     pub entries: Vec<EntryLayout>,
 }
 
@@ -317,7 +319,9 @@ fn entry_height(kind: &EntryKind) -> f32 {
         EntryKind::Action { .. } => ACTION_HEIGHT,
         EntryKind::Input { .. } => INPUT_HEIGHT,
         EntryKind::Text { .. } => TEXT_HEIGHT,
-        EntryKind::List { .. } => LIST_HEIGHT,
+        EntryKind::List { rows } => {
+            rows.len() as f32 * ACTION_HEIGHT + rows.len().saturating_sub(1) as f32 * LIST_ROW_GAP
+        }
     }
 }
 
@@ -330,25 +334,43 @@ pub(crate) fn card(app: &App, overlay: &Overlay) -> CardLayout {
         .map_or(&default_settings, |snapshot| &snapshot.settings);
     let entries = entries(app, overlay);
     let title_height = heading_height(settings);
-    let height = 2.0 * CARD_PADDING
-        + title_height
+    let content_height = title_height
         + entries
             .iter()
             .map(|entry| entry_height(&entry.kind))
             .sum::<f32>()
         + entries.len() as f32 * CARD_GAP;
-    let x = ((app.size.width - CARD_WIDTH) / 2.0).max(0.0);
-    let y = ((app.size.height - height) / 2.0).max(0.0);
+    let usable_width = (app.size.width - app.insets.left - app.insets.right).max(0.0);
+    let usable_height = (app.size.height - app.insets.top - app.insets.bottom).max(0.0);
+    let margin = 24.0_f32.min(usable_width / 8.0).min(usable_height / 8.0);
+    let width = CARD_WIDTH.min((usable_width - 2.0 * margin).max(0.0));
+    let available_height = (usable_height - 2.0 * margin).max(0.0);
+    let padding = CARD_PADDING.min(width / 4.0).min(available_height / 4.0);
+    let height = (content_height + 2.0 * padding).min(available_height);
+    let x = app.insets.left + (usable_width - width) / 2.0;
+    let y = app.insets.top + (usable_height - height) / 2.0;
     let bounds = iced::Rectangle {
         x,
         y,
-        width: CARD_WIDTH,
+        width,
         height,
     };
+    let viewport = iced::Rectangle {
+        x: x + padding,
+        y: y + padding,
+        width: (width - 2.0 * padding).max(0.0),
+        height: (height - 2.0 * padding).max(0.0),
+    };
+    let offset = app
+        .scroll
+        .get(&Region::OverlayCard)
+        .copied()
+        .unwrap_or(0.0)
+        .clamp(0.0, (content_height - viewport.height).max(0.0));
     let title = iced::Rectangle {
-        x: x + CARD_PADDING,
-        y: y + CARD_PADDING,
-        width: CARD_WIDTH - 2.0 * CARD_PADDING,
+        x: viewport.x,
+        y: viewport.y - offset,
+        width: viewport.width,
         height: title_height,
     };
     let mut cursor = title.y + title.height + CARD_GAP;
@@ -357,9 +379,9 @@ pub(crate) fn card(app: &App, overlay: &Overlay) -> CardLayout {
         .map(|entry| {
             let height = entry_height(&entry.kind);
             let bounds = iced::Rectangle {
-                x: x + CARD_PADDING,
+                x: viewport.x,
                 y: cursor,
-                width: CARD_WIDTH - 2.0 * CARD_PADDING,
+                width: viewport.width,
                 height,
             };
             cursor += height + CARD_GAP;
@@ -372,6 +394,9 @@ pub(crate) fn card(app: &App, overlay: &Overlay) -> CardLayout {
     CardLayout {
         bounds,
         title,
+        viewport,
+        content_height,
+        offset,
         entries,
     }
 }
@@ -437,39 +462,55 @@ pub fn view<'a>(app: &'a App, overlay: &'a Overlay) -> Element<'a, AppMessage> {
                 .width(Fill)
                 .height(Fill)
                 .style(|_| container::Style {
-                    background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.5).into()),
+                    background: Some(material::SCRIM.into()),
                     ..Default::default()
                 }),
         )
         .on_press(AppMessage::Overlay(Message::Close));
 
-    let default_settings = qlaunch_core::settings::Settings::default();
-    let settings = app
-        .snapshot
-        .as_ref()
-        .map_or(&default_settings, |snapshot| &snapshot.settings);
+    let layout = card(app, overlay);
     let mut card = column![].spacing(CARD_GAP).push(
-        container(view::label(app, heading(overlay), Color::WHITE, false))
-            .width(Fill)
-            .height(heading_height(settings))
-            .clip(true),
+        container(
+            text(heading(overlay))
+                .size(22)
+                .line_height(1.27)
+                .color(material::ON_SURFACE),
+        )
+        .width(Fill)
+        .height(layout.title.height)
+        .clip(true),
     );
     for entry in entries(app, overlay) {
         card = card.push(entry_view(entry));
     }
-    let card = mouse_area(
-        container(card)
-            .width(CARD_WIDTH)
-            .padding(CARD_PADDING)
-            .style(|_| container::Style {
-                background: Some(Color::from_rgba8(20, 20, 24, 0.96).into()),
-                border: iced::border::rounded(14),
-                ..Default::default()
-            }),
-    )
-    .on_press(AppMessage::Overlay(Message::Noop));
+    let padding = layout.viewport.x - layout.bounds.x;
+    let card = opaque(
+        mouse_area(
+            container(
+                scrollable(card)
+                    .id("overlay-card")
+                    .direction(material::vertical_scrollbar(app.scrollbars_visible()))
+                    .style(material::scrollable)
+                    .width(layout.viewport.width)
+                    .height(layout.viewport.height)
+                    .on_scroll(|viewport| {
+                        AppMessage::Scrolled(Region::OverlayCard, viewport.absolute_offset().y)
+                    }),
+            )
+            .width(layout.bounds.width)
+            .height(layout.bounds.height)
+            .padding(padding)
+            .style(material::card),
+        )
+        .on_press(AppMessage::Overlay(Message::Noop)),
+    );
 
-    iced::widget::stack![scrim, container(card).center(Fill)].into()
+    opaque(iced::widget::stack![
+        scrim,
+        iced::widget::pin(card)
+            .x(layout.bounds.x)
+            .y(layout.bounds.y)
+    ])
 }
 
 fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
@@ -486,7 +527,9 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
                 .id(widget_id)
                 .on_input(on_input)
                 .on_submit(on_submit)
-                .padding(8),
+                .size(16)
+                .padding(16)
+                .style(material::input),
         )
         .width(Fill)
         .center_y(INPUT_HEIGHT)
@@ -494,9 +537,9 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
         EntryKind::Text { label, error } => {
             let line = text(label).size(if error { 13 } else { 14 });
             let line = if error {
-                line.color(Color::from_rgb8(255, 140, 140))
+                line.color(material::ERROR)
             } else {
-                line
+                line.color(material::ON_SURFACE)
             };
             container(line)
                 .width(Fill)
@@ -509,25 +552,28 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
             for row in rows {
                 list = list.push(action(&row.label, row.message, ACTION_HEIGHT));
             }
-            scrollable(list)
-                .id("overlay-list")
-                .height(LIST_HEIGHT)
-                .on_scroll(|viewport| {
-                    AppMessage::Scrolled(crate::Region::OverlayList, viewport.absolute_offset().y)
-                })
-                .into()
+            list.into()
         }
     }
 }
 
 fn action<'a>(label: &str, message: Message, height: f32) -> Element<'a, AppMessage> {
-    button(text(label.to_string()).size(15))
-        .width(Fill)
-        .height(height)
-        .padding([8, 6])
-        .style(button::text)
-        .on_press(AppMessage::Overlay(message))
-        .into()
+    let style = match &message {
+        Message::AppRenameSubmit | Message::LauncherFolderSubmit => material::filled,
+        Message::AppUninstall | Message::AppRemove => material::destructive,
+        _ => material::action,
+    };
+    button(
+        container(text(label.to_string()).size(14))
+            .center_y(Fill)
+            .clip(true),
+    )
+    .width(Fill)
+    .height(height)
+    .padding([0, 16])
+    .style(style)
+    .on_press(AppMessage::Overlay(message))
+    .into()
 }
 
 #[cfg(test)]
@@ -551,6 +597,29 @@ mod tests {
         assert_eq!(
             entry_view(entry).as_widget().size().height,
             iced::Length::Fixed(INPUT_HEIGHT),
+        );
+    }
+
+    #[test]
+    fn move_menu_has_one_scrollable_so_touch_cannot_be_trapped() {
+        use iced::advanced::widget::Tree;
+        let app = test_app();
+        let overlay = app_menu(AppStep::Move);
+        let tree = Tree::new(view(&app, &overlay).as_widget());
+        let probe: Element<'_, AppMessage> = scrollable(space()).into();
+        let scroll_tag = Tree::new(probe.as_widget()).tag;
+        fn count(tree: &Tree, tag: iced::advanced::widget::tree::Tag) -> usize {
+            usize::from(tree.tag == tag)
+                + tree
+                    .children
+                    .iter()
+                    .map(|child| count(child, tag))
+                    .sum::<usize>()
+        }
+        assert_eq!(
+            count(&tree, scroll_tag),
+            1,
+            "a nested list would capture swipes intended to reach Back"
         );
     }
 
@@ -737,10 +806,40 @@ mod tests {
         let app = test_app();
         let layout = card(&app, &app_menu(AppStep::Actions));
         assert_eq!(layout.entries.len(), 5);
-        assert_eq!(layout.bounds.height, 256.0);
-        assert_eq!(layout.title.height, 22.0);
+        assert_eq!(layout.bounds.height, 356.0);
+        assert_eq!(layout.title.height, 28.0);
         for entry in &layout.entries {
             assert_eq!(entry.bounds.height, ACTION_HEIGHT);
+        }
+    }
+
+    #[test]
+    fn material_cards_fit_narrow_windows_and_keyboard_insets() {
+        for size in [
+            iced::Size::new(280.0, 500.0),
+            iced::Size::new(800.0, 360.0),
+            iced::Size::new(100.0, 100.0),
+        ] {
+            let mut app = test_app();
+            app.size = size;
+            app.insets = iced_android::Insets {
+                left: 8.0,
+                right: 12.0,
+                top: 10.0,
+                bottom: 30.0,
+            };
+            app.snapshot.as_mut().unwrap().settings.label_size = 40;
+            for overlay in [
+                app_menu(AppStep::Actions),
+                app_menu(AppStep::Move),
+                app_menu(AppStep::Rename("Clock".into())),
+            ] {
+                let layout = card(&app, &overlay);
+                assert!(layout.bounds.x >= 8.0);
+                assert!(layout.bounds.y >= 10.0);
+                assert!(layout.bounds.x + layout.bounds.width <= size.width - 12.0 + 0.01);
+                assert!(layout.bounds.y + layout.bounds.height <= size.height - 30.0 + 0.01);
+            }
         }
     }
 
@@ -831,12 +930,12 @@ mod tests {
         let app = test_app();
         let layout = card(&app, &app_menu(AppStep::Actions));
         assert_eq!(layout.bounds.x, 50.0);
-        assert_eq!(layout.bounds.y, 272.0);
+        assert_eq!(layout.bounds.y, 222.0);
         assert_eq!(layout.bounds.width, 320.0);
-        assert_eq!(layout.bounds.height, 256.0);
+        assert_eq!(layout.bounds.height, 356.0);
         for entry in &layout.entries {
-            assert_eq!(entry.bounds.x, 62.0);
-            assert_eq!(entry.bounds.width, 296.0);
+            assert_eq!(entry.bounds.x, 74.0);
+            assert_eq!(entry.bounds.width, 272.0);
             assert!(entry.bounds.y + entry.bounds.height <= layout.bounds.y + layout.bounds.height);
         }
     }

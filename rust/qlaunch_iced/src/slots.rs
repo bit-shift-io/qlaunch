@@ -33,7 +33,7 @@ pub(crate) enum Interaction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Arrangement {
     /// Full-width pages side by side, dragged by the pager offset.
-    Pages,
+    Pages(usize),
     /// Three equal thirds of the width, shifted together.
     Strip,
 }
@@ -46,7 +46,7 @@ pub(crate) fn child_bounds(
     height: f32,
 ) -> Rectangle {
     match arrangement {
-        Arrangement::Pages => Rectangle::new(Point::ORIGIN, Size::new(width, height)),
+        Arrangement::Pages(_) => Rectangle::new(Point::ORIGIN, Size::new(width, height)),
         Arrangement::Strip => {
             let third = width / 3.0;
             Rectangle::new(
@@ -65,9 +65,24 @@ pub(crate) fn translation(
     width: f32,
 ) -> Vector {
     match arrangement {
-        Arrangement::Pages => Vector::new((index as f32 - 1.0 - offset) * width, 0.0),
+        Arrangement::Pages(columns) => Vector::new(
+            (index as f32 - 1.0 - offset) * width * page_travel(columns),
+            0.0,
+        ),
         Arrangement::Strip => Vector::new(-offset * width / 3.0, 0.0),
     }
+}
+
+pub(crate) fn page_travel(columns: usize) -> f32 {
+    if columns <= 1 {
+        0.5
+    } else {
+        1.0 / columns as f32
+    }
+}
+
+pub(crate) fn page_opacity(relative: f32) -> f32 {
+    (1.0 - relative.abs() * 1.5).clamp(0.0, 1.0)
 }
 
 /// Whether an event is the window's redraw request, which every arrangement
@@ -176,11 +191,12 @@ impl<'a> Slots<'a> {
         slots: [Slot<'a>; 3],
         offset: f32,
         width: f32,
+        columns: usize,
         interaction: Interaction,
     ) -> Self {
         Slots {
             slots,
-            arrangement: Arrangement::Pages,
+            arrangement: Arrangement::Pages(columns),
             offset,
             width,
             height: Length::Fill,
@@ -257,7 +273,10 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Slots<'_> {
                 tree.children[index] = Tree::new(slot.content.as_widget());
             }
         }
-        tree.state = tree::State::new(self.keys());
+        match &mut tree.state {
+            tree::State::Some(_) => *tree.state.downcast_mut::<SlotKeys>() = self.keys(),
+            tree::State::None => tree.state = tree::State::new(self.keys()),
+        }
     }
 
     fn layout(
@@ -311,6 +330,11 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Slots<'_> {
                 .zip(layout.children())
                 .enumerate()
             {
+                if matches!(self.arrangement, Arrangement::Pages(_))
+                    && page_opacity(index as f32 - 1.0 - self.offset) == 0.0
+                {
+                    continue;
+                }
                 // Deliberately ungated: every slot is painted, including the
                 // neighbours a drag reveals.
                 let (child_cursor, child_viewport, shift) = slot_geometry(
@@ -619,6 +643,7 @@ mod tests {
             [typed::<First>("a", &log), slot("b", &log), slot("c", &log)],
             0.0,
             WIDTH,
+            4,
             Interaction::Centre,
         );
         let mut tree = Tree::new(Element::from(first));
@@ -628,6 +653,7 @@ mod tests {
             [typed::<Second>("a", &log), slot("b", &log), slot("c", &log)],
             0.0,
             WIDTH,
+            4,
             Interaction::Centre,
         );
         second.diff(&mut tree);
@@ -647,7 +673,7 @@ mod tests {
         assert!(
             slot_input(
                 Interaction::None,
-                Arrangement::Pages,
+                Arrangement::Pages(4),
                 0.0,
                 WIDTH,
                 1,
@@ -661,7 +687,7 @@ mod tests {
         // Settled pages on the centre slot, one page to the left.
         let (slot_cursor, clip, shift) = slot_input(
             Interaction::Centre,
-            Arrangement::Pages,
+            Arrangement::Pages(4),
             1.0,
             WIDTH,
             1,
@@ -670,15 +696,15 @@ mod tests {
             &viewport,
         )
         .expect("the centre slot is live");
-        assert_eq!(shift, Vector::new(-WIDTH, 0.0));
-        assert_eq!(clip.position(), Point::new(WIDTH, 0.0));
-        assert_eq!(slot_cursor.position(), Some(Point::new(1300.0, 100.0)));
+        assert_eq!(shift, Vector::new(-150.0, 0.0));
+        assert_eq!(clip.position(), Point::new(150.0, 0.0));
+        assert_eq!(slot_cursor.position(), Some(Point::new(850.0, 100.0)));
 
         // A neighbour of a settled pages row is not live.
         assert!(
             slot_input(
                 Interaction::Centre,
-                Arrangement::Pages,
+                Arrangement::Pages(4),
                 1.0,
                 WIDTH,
                 2,
@@ -720,9 +746,9 @@ mod tests {
         // Drawing is ungated: a gated neighbour is still painted where it
         // belongs, which is what makes a drag show the incoming page.
         let (_, neighbour_clip, neighbour_shift) =
-            slot_geometry(Arrangement::Pages, 0.5, WIDTH, 2, cursor, &viewport);
-        assert_eq!(neighbour_shift, Vector::new(0.5 * WIDTH, 0.0));
-        assert_eq!(neighbour_clip.position(), Point::new(-0.5 * WIDTH, 0.0));
+            slot_geometry(Arrangement::Pages(4), 0.5, WIDTH, 2, cursor, &viewport);
+        assert_eq!(neighbour_shift, Vector::new(75.0, 0.0));
+        assert_eq!(neighbour_clip.position(), Point::new(-75.0, 0.0));
     }
 
     /// Whether a row lets slot `index` take an ordinary event, through the same
@@ -746,6 +772,7 @@ mod tests {
             [slot(keys[0], log), slot(keys[1], log), slot(keys[2], log)],
             0.0,
             600.0,
+            4,
             interaction,
         )
     }
@@ -754,28 +781,59 @@ mod tests {
     const HEIGHT: f32 = 48.0;
 
     #[test]
+    fn pages_overlap_by_travelling_one_column() {
+        assert_eq!(
+            translation(Arrangement::Pages(4), 1, 0.5, WIDTH),
+            Vector::new(-75.0, 0.0)
+        );
+        assert_eq!(
+            translation(Arrangement::Pages(4), 2, 0.5, WIDTH),
+            Vector::new(75.0, 0.0)
+        );
+        assert_eq!(
+            translation(Arrangement::Pages(4), 1, -0.5, WIDTH),
+            Vector::new(75.0, 0.0)
+        );
+    }
+
+    #[test]
+    fn fade_and_single_column_travel_match_flutter() {
+        for (relative, expected) in [
+            (0.0, 1.0),
+            (0.5, 0.25),
+            (-0.5, 0.25),
+            (1.0, 0.0),
+            (-2.0, 0.0),
+        ] {
+            assert_eq!(page_opacity(relative), expected);
+        }
+        assert_eq!(translation(Arrangement::Pages(1), 1, 0.5, WIDTH).x, -150.0);
+        assert_eq!(translation(Arrangement::Pages(0), 1, -0.5, WIDTH).x, 150.0);
+    }
+
+    #[test]
     fn page_translations_follow_the_pager_offset() {
         for index in 0..3 {
             assert_eq!(
-                child_bounds(Arrangement::Pages, index, WIDTH, HEIGHT),
+                child_bounds(Arrangement::Pages(4), index, WIDTH, HEIGHT),
                 Rectangle::new(Point::ORIGIN, Size::new(WIDTH, HEIGHT)),
             );
         }
         assert_eq!(
-            translation(Arrangement::Pages, 0, 0.0, WIDTH),
-            Vector::new(-WIDTH, 0.0),
+            translation(Arrangement::Pages(4), 0, 0.0, WIDTH),
+            Vector::new(-150.0, 0.0),
         );
         assert_eq!(
-            translation(Arrangement::Pages, 1, 0.0, WIDTH),
+            translation(Arrangement::Pages(4), 1, 0.0, WIDTH),
             Vector::new(0.0, 0.0),
         );
         assert_eq!(
-            translation(Arrangement::Pages, 2, 0.0, WIDTH),
-            Vector::new(WIDTH, 0.0),
+            translation(Arrangement::Pages(4), 2, 0.0, WIDTH),
+            Vector::new(150.0, 0.0),
         );
         assert_eq!(
-            translation(Arrangement::Pages, 1, 0.5, WIDTH),
-            Vector::new(-0.5 * WIDTH, 0.0),
+            translation(Arrangement::Pages(4), 1, 0.5, WIDTH),
+            Vector::new(-75.0, 0.0),
         );
     }
 

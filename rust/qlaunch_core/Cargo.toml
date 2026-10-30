@@ -24,6 +24,10 @@ flutter = ["dep:flutter_rust_bridge"]
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
 
+# Linux desktop icons may be SVG; Android never builds this module.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+resvg = { version = "0.45", default-features = false }
+
 [dev-dependencies]
 futures = { version = "0.3", features = ["executor"] }
 tempfile = "3.27.0"

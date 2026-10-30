@@ -811,8 +811,7 @@ fn a_snapshot_lists_each_groups_items_in_display_order() {
     };
     let check = |snap: &ModelSnapshot, reference: &Model| {
         for group in [&apps, &games] {
-            let mut expected: Vec<Item> =
-                reference.items_in(group).into_iter().cloned().collect();
+            let mut expected: Vec<Item> = reference.items_in(group).into_iter().cloned().collect();
             expected.sort_by_key(|i| i.label.to_lowercase());
             assert_eq!(items_of(snap, group), expected);
         }
@@ -1461,13 +1460,7 @@ fn a_backup_restores_a_folder_and_its_members() {
     let snap = init_fake(dir.path());
     let apps = group_id(&snap, GroupRole::Apps);
     let snap = block_on(api::add_folder(apps.clone(), "Chat".into())).unwrap();
-    let folder = snap
-        .groups
-        .iter()
-        .find(|g| g.folder)
-        .unwrap()
-        .id
-        .clone();
+    let folder = snap.groups.iter().find(|g| g.folder).unwrap().id.clone();
     let alpha = snap
         .items
         .iter()
@@ -1492,7 +1485,10 @@ fn a_backup_restores_a_folder_and_its_members() {
         .find(|i| i.label == "Chat")
         .expect("the folder tile is restored");
     assert_eq!(tile.group_id, apps);
-    assert_eq!(tile.folder_group_id.as_deref(), Some(folder_group.id.as_str()));
+    assert_eq!(
+        tile.folder_group_id.as_deref(),
+        Some(folder_group.id.as_str())
+    );
     let member = restored
         .items
         .iter()
@@ -1519,9 +1515,11 @@ fn a_backup_keeps_a_shortcuts_custom_icon() {
         "payload": { "type": "lock_screen" },
         "icon": icon,
     });
-    let snap =
-        qlaunch_core::api::shortcuts::accept_result(&home, &serde_json::to_string(&result).unwrap())
-            .unwrap();
+    let snap = qlaunch_core::api::shortcuts::accept_result(
+        &home,
+        &serde_json::to_string(&result).unwrap(),
+    )
+    .unwrap();
     let id = snap
         .items
         .iter()
@@ -1628,7 +1626,6 @@ fn restoring_rejects_a_bad_name_or_a_corrupt_backup_and_changes_nothing() {
     assert_eq!(block_on(api::snapshot()).unwrap().groups, before.groups);
 }
 
-
 #[test]
 fn search_finds_an_app_moved_into_a_folder() {
     let _guard = serial();
@@ -1636,13 +1633,7 @@ fn search_finds_an_app_moved_into_a_folder() {
     let snap = init_fake(dir.path());
     let apps = group_id(&snap, GroupRole::Apps);
     let snap = block_on(api::add_folder(apps, "Chat".into())).unwrap();
-    let folder = snap
-        .groups
-        .iter()
-        .find(|g| g.folder)
-        .unwrap()
-        .id
-        .clone();
+    let folder = snap.groups.iter().find(|g| g.folder).unwrap().id.clone();
     let alpha = snap
         .items
         .iter()

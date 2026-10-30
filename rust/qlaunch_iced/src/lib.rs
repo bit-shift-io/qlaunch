@@ -1,7 +1,9 @@
-//! Throwaway Android/desktop comparison UI. The core remains the source of truth.
+//! Iced Android/desktop launcher UI. The core remains the source of truth.
 mod accessibility;
+mod folder;
 pub mod gesture;
 pub mod grid;
+mod material;
 mod metrics;
 mod overlay;
 pub mod pager;
@@ -38,6 +40,9 @@ fn android_main(app: platform::AndroidApp) {
         log::error!("iced failed: {error}");
     }
 }
+
+/// How long a scrollbar stays visible after the last scroll movement.
+const SCROLLBAR_IDLE: Duration = Duration::from_millis(800);
 
 #[cfg(test)]
 mod tests {
@@ -125,10 +130,44 @@ mod tests {
         let mut app = app();
         let _ = app.update(Message::Scrolled(Region::Group("g".into()), 42.0));
         let _ = app.update(Message::Scrolled(Region::Search, 12.0));
-        let _ = app.update(Message::Scrolled(Region::OverlayList, 7.0));
+        let _ = app.update(Message::Scrolled(Region::OverlayCard, 7.0));
         assert_eq!(app.scroll.get(&Region::Group("g".into())), Some(&42.0));
         assert_eq!(app.scroll.get(&Region::Search), Some(&12.0));
-        assert_eq!(app.scroll.get(&Region::OverlayList), Some(&7.0));
+        assert_eq!(app.scroll.get(&Region::OverlayCard), Some(&7.0));
+    }
+
+    #[test]
+    fn scrollbars_are_visible_only_while_scrolling() {
+        let mut app = app();
+        assert!(!app.scrollbar_visible_at(Instant::now()));
+
+        let _ = app.update(Message::Scrolled(Region::Group("apps".into()), 12.0));
+        let last = app.scroll_last.expect("scrolling marks activity");
+        assert!(app.scrollbar_visible_at(last));
+        assert!(app.scrollbar_visible_at(last + SCROLLBAR_IDLE - Duration::from_millis(1)));
+        assert!(!app.scrollbar_visible_at(last + SCROLLBAR_IDLE));
+
+        let _ = app.update(Message::ScrollTick);
+        assert!(
+            app.scroll_last.is_some(),
+            "a tick before the idle delay keeps the bar"
+        );
+
+        app.scroll_last = Some(Instant::now() - SCROLLBAR_IDLE - Duration::from_millis(1));
+        let _ = app.update(Message::ScrollTick);
+        assert!(app.scroll_last.is_none());
+        assert_eq!(app.scroll.get(&Region::Group("apps".into())), Some(&12.0));
+    }
+
+    #[test]
+    fn layout_notifications_do_not_flash_the_scrollbar() {
+        let mut app = app();
+        let _ = app.update(Message::Scrolled(Region::Group("apps".into()), 0.0));
+        assert!(app.scroll_last.is_none());
+        let _ = app.update(Message::Scrolled(Region::Group("apps".into()), 0.0));
+        assert!(app.scroll_last.is_none());
+        let _ = app.update(Message::Scrolled(Region::Group("apps".into()), 24.0));
+        assert!(app.scroll_last.is_some());
     }
 
     #[test]
@@ -141,8 +180,8 @@ mod tests {
     #[test]
     fn overlay_list_reports_its_scroll_offset() {
         let mut app = app();
-        let _ = app.update(Message::Scrolled(Region::OverlayList, 42.0));
-        assert_eq!(app.scroll.get(&Region::OverlayList), Some(&42.0));
+        let _ = app.update(Message::Scrolled(Region::OverlayCard, 42.0));
+        assert_eq!(app.scroll.get(&Region::OverlayCard), Some(&42.0));
     }
 
     #[test]
@@ -401,6 +440,153 @@ mod tests {
             position: Point::new(60.0, 10.0),
         }));
         assert_eq!(app.gesture.target(), None);
+    }
+
+    #[test]
+    fn folder_blocks_background_paging_and_item_messages() {
+        let mut app = app();
+        app.folder = Some("folder-group".into());
+        let page = app.pager.committed();
+        let _ = app.update(Message::Step(1));
+        assert_eq!(app.folder.as_deref(), Some("folder-group"));
+        assert!(!app.pager.is_animating());
+        let _ = app.apply_gesture(Outcome::DragStart);
+        assert!(!app.pager.is_dragging());
+        assert_eq!(app.pager.committed(), page);
+        let background = item(&app, "background");
+        let _ = app.update(Message::ItemPressed(background));
+        assert!(app.pressed.is_none());
+    }
+
+    #[test]
+    fn folder_background_does_not_become_blank_grid() {
+        let mut app = app();
+        app.folder = Some("folder-group".into());
+        let _ = app.begin_gesture(
+            iced::touch::Finger(0),
+            Point::new(5.0, 300.0),
+            Instant::now(),
+        );
+        assert!(app.gesture.target().is_none());
+    }
+
+    #[test]
+    fn folder_dismiss_never_closes_a_nested_app_menu() {
+        let mut app = app();
+        app.folder = Some("folder-group".into());
+        let mut member = item(&app, "member");
+        member.group_id = "folder-group".into();
+        app.snapshot.as_mut().unwrap().items.push(member.clone());
+        let _ = app.apply_gesture(Outcome::LongPress(Start::Item(member.id)));
+        assert!(app.overlay.is_some());
+        let _ = app.update(Message::FolderDismiss);
+        assert!(app.overlay.is_some());
+        assert!(app.folder.is_some());
+        let _ = app.update(Message::Back);
+        assert!(app.overlay.is_none());
+        assert!(app.folder.is_some());
+        let _ = app.update(Message::FolderDismiss);
+        assert!(app.folder.is_none());
+    }
+
+    #[test]
+    fn menu_navigation_resets_card_scroll_before_showing_a_new_step() {
+        let mut app = app();
+        app.open_app_menu(item(&app, "Calculator"));
+        app.scroll.insert(Region::OverlayCard, 150.0);
+        let _ = app.update(Message::Overlay(overlay::Message::AppMove));
+        assert_eq!(app.scroll.get(&Region::OverlayCard), Some(&0.0));
+        app.scroll.insert(Region::OverlayCard, 100.0);
+        let _ = app.update(Message::Back);
+        assert_eq!(app.scroll.get(&Region::OverlayCard), Some(&0.0));
+    }
+
+    #[test]
+    fn folder_semantics_dismiss_closes_only_the_folder() {
+        let mut app = app();
+        app.folder = Some("folder-group".into());
+        publish(&mut app);
+        let request = request(&app, "grid:container", Action::Dismiss);
+        let _ = app.update(Message::Accessibility(request));
+        assert!(app.folder.is_none());
+        assert!(!app.searching);
+    }
+
+    #[test]
+    fn folder_scrim_consumes_the_dismissal_pointer_until_release() {
+        let mut app = app();
+        app.folder = Some("folder-group".into());
+        let finger = iced::touch::Finger(0);
+        let _ = app.update(Message::FolderDismiss);
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
+            id: finger,
+            position: Point::new(5.0, 300.0),
+        }));
+        assert_eq!(app.gesture.phase(), gesture::Phase::Idle);
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerMoved {
+            id: finger,
+            position: Point::new(300.0, 300.0),
+        }));
+        assert!(!app.pager.is_dragging());
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerLifted {
+            id: finger,
+            position: Point::new(300.0, 300.0),
+        }));
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
+            id: finger,
+            position: Point::new(5.0, 300.0),
+        }));
+        assert_eq!(app.gesture.target(), Some(&Start::Blank));
+    }
+
+    fn widget_states(tree: &iced::advanced::widget::Tree) -> Vec<usize> {
+        let mut states = Vec::new();
+        if let iced::advanced::widget::tree::State::Some(state) = &tree.state {
+            states.push(state.as_ref() as *const dyn std::any::Any as *const () as usize);
+        }
+        for child in &tree.children {
+            states.extend(widget_states(child));
+        }
+        states
+    }
+
+    #[test]
+    fn opening_folder_preserves_launcher_widget_state() {
+        use iced::advanced::widget::Tree;
+        let mut app = app();
+        let mut tree = Tree::new(view::launcher(&app).as_widget());
+        let launcher_states = widget_states(&tree);
+        assert!(!launcher_states.is_empty());
+        app.folder = Some("folder-group".into());
+        tree.diff(view::launcher(&app).as_widget());
+        let after = widget_states(&tree);
+        assert!(
+            launcher_states.iter().all(|state| after.contains(state)),
+            "opening a folder recreated launcher widget state, including scroll position"
+        );
+    }
+
+    #[test]
+    fn member_menu_preserves_folder_widget_state() {
+        use iced::advanced::widget::Tree;
+        let mut app = app();
+        app.folder = Some("folder-group".into());
+        let mut member = item(&app, "member");
+        member.group_id = "folder-group".into();
+        app.snapshot.as_mut().unwrap().items.push(member.clone());
+        let mut tree = Tree::new(view::launcher(&app).as_widget());
+        let folder_states = widget_states(&tree);
+        app.open_app_menu(member);
+        tree.diff(view::launcher(&app).as_widget());
+        let after = widget_states(&tree);
+        assert!(
+            folder_states.iter().all(|state| after.contains(state)),
+            "opening a member menu recreated the folder scrollable"
+        );
+        let _ = app.update(Message::Back);
+        tree.diff(view::launcher(&app).as_widget());
+        let after = widget_states(&tree);
+        assert!(folder_states.iter().all(|state| after.contains(state)));
     }
 
     #[test]
@@ -770,7 +956,7 @@ mod tests {
 
 pub fn run() -> iced::Result {
     let mut app = iced::daemon(App::new, App::update, App::view)
-        .title(|_: &App, _| "QLaunch · iced comparison".into())
+        .title(|_: &App, _| "QLaunch".into())
         .subscription(App::subscription)
         .theme(|_: &App, _| Theme::Dark)
         .style(|_, _| iced::theme::Style {
@@ -793,7 +979,7 @@ pub fn run() -> iced::Result {
 pub(crate) enum Region {
     Group(Id),
     Search,
-    OverlayList,
+    OverlayCard,
 }
 
 impl Region {
@@ -801,7 +987,7 @@ impl Region {
         match self {
             Region::Group(_) => "apps",
             Region::Search => "search-results",
-            Region::OverlayList => "overlay-list",
+            Region::OverlayCard => "overlay-card",
         }
     }
 }
@@ -823,6 +1009,8 @@ enum Message {
     HistoryLoaded(Vec<AppRef>, Vec<AppRef>),
     ItemPressed(Item),
     BlankPressed,
+    FolderCardPressed,
+    FolderDismiss,
     LongPressTimer(u64),
     Mouse(iced::mouse::Event),
     Launched(Result<(), String>),
@@ -832,6 +1020,7 @@ enum Message {
     Resized(iced::Size),
     Density(f32),
     Scrolled(Region, f32),
+    ScrollTick,
     Frame(Instant),
     Overlay(overlay::Message),
     Mutated(Result<core::ModelSnapshot, String>),
@@ -860,11 +1049,13 @@ struct App {
     pub(crate) error: Option<String>,
     pub(crate) size: iced::Size,
     scroll: HashMap<Region, f32>,
+    scroll_last: Option<Instant>,
     overlay: Option<overlay::Overlay>,
     accessibility: accessibility::State,
     metrics: Mutex<metrics::Samples>,
     gesture: Gesture,
     pending_target: Option<Start>,
+    suppress_dismiss_pointer: bool,
     pressed: Option<Id>,
     cursor: Point,
     started: Instant,
@@ -916,11 +1107,13 @@ impl App {
             error: None,
             size: iced::Size::new(420.0, 800.0),
             scroll: HashMap::new(),
+            scroll_last: None,
             overlay: None,
             accessibility: accessibility::State::default(),
             metrics: Mutex::new(metrics::Samples::default()),
             gesture: Gesture::new(),
             pending_target: None,
+            suppress_dismiss_pointer: false,
             pressed: None,
             cursor: Point::ORIGIN,
             started: Instant::now(),
@@ -979,7 +1172,21 @@ impl App {
         if self.pager.is_animating() {
             subscriptions.push(window::frames().map(Message::Frame));
         }
+        if self.scroll_last.is_some() {
+            subscriptions
+                .push(iced::time::every(Duration::from_millis(100)).map(|_| Message::ScrollTick));
+        }
         Subscription::batch(subscriptions)
+    }
+
+    /// Scrollbars hide on their own; the view reads this while building.
+    pub(crate) fn scrollbars_visible(&self) -> bool {
+        self.scrollbar_visible_at(Instant::now())
+    }
+
+    fn scrollbar_visible_at(&self, now: Instant) -> bool {
+        self.scroll_last
+            .is_some_and(|last| now.saturating_duration_since(last) < SCROLLBAR_IDLE)
     }
 
     fn home_index(&self) -> usize {
@@ -1003,6 +1210,9 @@ impl App {
     }
 
     fn step(&mut self, delta: i32) {
+        if self.folder.is_some() || self.overlay.is_some() {
+            return;
+        }
         if self.searching && self.query.is_empty() {
             self.show_recent = !self.show_recent;
             return;
@@ -1035,12 +1245,20 @@ impl App {
     fn scroll_region_to_top(&mut self, region: Region) -> Task<Message> {
         self.scroll.insert(region.clone(), 0.0);
         iced::widget::operation::scroll_to(
-            region.widget_id(),
+            self.scroll_widget_id(&region),
             iced::widget::operation::AbsoluteOffset {
                 x: Some(0.0),
                 y: Some(0.0),
             },
         )
+    }
+
+    fn scroll_widget_id(&self, region: &Region) -> &'static str {
+        if matches!(region, Region::Group(group) if self.folder.as_ref() == Some(group)) {
+            "folder-apps"
+        } else {
+            region.widget_id()
+        }
     }
 
     fn go_home(&mut self) -> Task<Message> {
@@ -1098,6 +1316,23 @@ impl App {
     }
 
     fn overlay_message(&mut self, message: overlay::Message) -> Task<Message> {
+        let navigating = matches!(
+            message,
+            overlay::Message::Back
+                | overlay::Message::AppRenameStart
+                | overlay::Message::AppMove
+                | overlay::Message::LauncherAddShortcut
+                | overlay::Message::LauncherCreateFolder
+        );
+        let task = self.overlay_message_inner(message);
+        if navigating {
+            Task::batch([task, self.scroll_region_to_top(Region::OverlayCard)])
+        } else {
+            task
+        }
+    }
+
+    fn overlay_message_inner(&mut self, message: overlay::Message) -> Task<Message> {
         use overlay::Message as Menu;
         match message {
             Menu::Close => self.overlay = None,
@@ -1186,7 +1421,7 @@ impl App {
             }
             Menu::LauncherSettings | Menu::LauncherEditGroups => {
                 if let Some(overlay) = &mut self.overlay {
-                    overlay.set_error("Not ported in this spike".into());
+                    overlay.set_error("Not yet available in the Iced port".into());
                 }
             }
             Menu::LauncherAddShortcut => {
@@ -1365,6 +1600,7 @@ impl App {
         if !matches!(
             &message,
             Message::Scrolled(..)
+                | Message::ScrollTick
                 | Message::AccessibilitySettled(_)
                 | Message::Accessibility(_)
                 | Message::Icons(_)
@@ -1444,10 +1680,8 @@ impl App {
                 return self.go_home();
             }
             Message::Event(CoreEvent::BackPressed) | Message::Back => {
-                if let Some(overlay) = &mut self.overlay {
-                    if overlay.back() {
-                        self.overlay = None;
-                    }
+                if self.overlay.is_some() {
+                    return self.overlay_message(overlay::Message::Back);
                 } else {
                     self.searching = false;
                     self.folder = None;
@@ -1464,6 +1698,9 @@ impl App {
                 }
             }
             Message::Search => {
+                if self.folder.is_some() || self.overlay.is_some() {
+                    return Task::none();
+                }
                 if self.searching {
                     self.searching = false;
                 } else {
@@ -1500,7 +1737,12 @@ impl App {
                 self.recent = recent;
             }
             Message::ItemPressed(item) => {
-                if self.overlay.is_some() {
+                if self.overlay.is_some()
+                    || self
+                        .folder
+                        .as_ref()
+                        .is_some_and(|folder| &item.group_id != folder)
+                {
                     return Task::none();
                 }
                 let target = Start::Item(item.id.clone());
@@ -1510,13 +1752,23 @@ impl App {
                 return self.apply_gesture(outcome);
             }
             Message::BlankPressed => {
-                if self.overlay.is_some() {
+                if self.overlay.is_some() || self.folder.is_some() {
                     return Task::none();
                 }
                 self.pressed = None;
                 self.pending_target = Some(Start::Blank);
                 let outcome = self.gesture.identify(Start::Blank);
                 return self.apply_gesture(outcome);
+            }
+            Message::FolderCardPressed => {}
+            Message::FolderDismiss => {
+                if self.overlay.is_none() && self.folder.is_some() {
+                    self.folder = None;
+                    self.suppress_dismiss_pointer = true;
+                    self.pressed = None;
+                    self.pending_target = None;
+                    self.gesture = Gesture::new();
+                }
             }
             Message::LongPressTimer(sequence) => {
                 let outcome = self.gesture.tick(sequence, Instant::now());
@@ -1535,12 +1787,23 @@ impl App {
                 }
             }
             Message::Scrolled(region, offset) => {
-                self.scroll.insert(region, offset);
+                let previous = self.scroll.insert(region, offset).unwrap_or(0.0);
+                if (previous - offset).abs() > f32::EPSILON {
+                    self.scroll_last = Some(Instant::now());
+                }
                 let generation = self.accessibility.scroll_started();
                 return Task::perform(
                     async move { tokio::time::sleep(accessibility::QUIESCENCE).await },
                     move |_| Message::AccessibilitySettled(generation),
                 );
+            }
+            Message::ScrollTick => {
+                if self
+                    .scroll_last
+                    .is_some_and(|last| last.elapsed() >= SCROLLBAR_IDLE)
+                {
+                    self.scroll_last = None;
+                }
             }
             Message::AccessibilitySettled(generation) => {
                 self.accessibility.scroll_settled(generation);
@@ -1600,7 +1863,7 @@ impl App {
         match request.action {
             Action::ScrollLeft => return self.update(Message::Step(-1)),
             Action::ScrollRight => return self.update(Message::Step(1)),
-            Action::Dismiss => return self.overlay_message(overlay::Message::Back),
+            Action::Dismiss => return self.update(Message::Back),
             _ => {}
         }
 
@@ -1620,7 +1883,6 @@ impl App {
             },
             Target::Step(delta) => self.update(Message::Step(delta)),
             Target::Search => self.update(Message::Search),
-            Target::Back => self.update(Message::Back),
             Target::SearchTab(recent) => self.update(Message::History(recent)),
             Target::TextField(field) => {
                 self.accessibility_text_field(field, request.action, request.value)
@@ -1702,7 +1964,7 @@ impl App {
         let target = next.clamp(0.0, maximum);
         self.scroll.insert(region.clone(), target);
         iced::widget::operation::scroll_to(
-            region.widget_id(),
+            self.scroll_widget_id(&region),
             iced::widget::operation::AbsoluteOffset {
                 x: Some(0.0),
                 y: Some(target),
@@ -1740,7 +2002,9 @@ impl App {
         self.pressed = None;
         let mut tasks = vec![Self::long_press_timer(sequence)];
         let target = self.pending_target.take().or_else(|| {
-            (position.y >= self.body_top() && position.y <= self.size.height - self.insets.bottom)
+            (self.folder.is_none()
+                && position.y >= self.body_top()
+                && position.y <= self.size.height - self.insets.bottom)
                 .then_some(Start::Blank)
         });
         if let Some(target) = target {
@@ -1773,6 +2037,15 @@ impl App {
     }
 
     fn touch_event(&mut self, event: iced::touch::Event) -> Task<Message> {
+        if self.suppress_dismiss_pointer {
+            if matches!(
+                event,
+                iced::touch::Event::FingerLifted { .. } | iced::touch::Event::FingerLost { .. }
+            ) {
+                self.suppress_dismiss_pointer = false;
+            }
+            return Task::none();
+        }
         match event {
             iced::touch::Event::FingerPressed { id, position } => {
                 if self.overlay.is_some() {
@@ -1821,6 +2094,12 @@ impl App {
     /// does, with finger 0 standing in for the pointer.
     fn mouse_event(&mut self, event: iced::mouse::Event) -> Task<Message> {
         use iced::mouse::{Button, Event};
+        if self.suppress_dismiss_pointer {
+            if matches!(event, Event::ButtonReleased(Button::Left)) {
+                self.suppress_dismiss_pointer = false;
+            }
+            return Task::none();
+        }
         let finger = iced::touch::Finger(0);
         match event {
             Event::CursorMoved { position } => {
@@ -1856,6 +2135,15 @@ impl App {
     }
 
     fn apply_gesture(&mut self, outcome: Outcome) -> Task<Message> {
+        if self.folder.is_some()
+            && !matches!(
+                &outcome,
+                Outcome::Tap(Start::Item(_)) | Outcome::LongPress(Start::Item(_)) | Outcome::None
+            )
+        {
+            self.pressed = None;
+            return Task::none();
+        }
         let width = grid::content_width(self.size, self.insets);
         match outcome {
             Outcome::None | Outcome::Tap(Start::Blank) => {}
@@ -1895,7 +2183,11 @@ impl App {
                     .as_ref()
                     .and_then(|snapshot| snapshot.items.iter().find(|item| item.id == id))
                     .cloned();
-                if let Some(item) = item {
+                if let Some(item) = item.filter(|item| {
+                    self.folder
+                        .as_ref()
+                        .is_none_or(|folder| &item.group_id == folder)
+                }) {
                     return self.activate(item);
                 }
             }
@@ -1911,7 +2203,8 @@ impl App {
         if let Some(folder) = item.folder_group_id {
             self.searching = false;
             self.folder = Some(folder);
-            return self.warm_icons();
+            let reset = self.reset_scroll();
+            return Task::batch([reset, self.warm_icons()]);
         }
         work(
             move || {
@@ -1928,6 +2221,7 @@ impl App {
     }
 
     fn open_app_menu(&mut self, item: Item) {
+        self.scroll.insert(Region::OverlayCard, 0.0);
         self.overlay = Some(overlay::Overlay::App(overlay::AppMenu {
             item,
             step: overlay::AppStep::Actions,
@@ -1938,6 +2232,7 @@ impl App {
     }
 
     fn open_launcher_menu(&mut self) {
+        self.scroll.insert(Region::OverlayCard, 0.0);
         self.overlay = Some(overlay::Overlay::Launcher(overlay::LauncherMenu {
             step: overlay::LauncherStep::Actions,
             providers: vec![],

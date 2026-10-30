@@ -61,7 +61,6 @@ pub(crate) enum Target {
     Item(Id),
     Step(i32),
     Search,
-    Back,
     SearchTab(bool),
     TextField(TextField),
     Scroll {
@@ -529,48 +528,10 @@ fn launcher_frame(app: &App) -> Frame {
 
 fn folder_frame(app: &App, folder: &Id) -> Frame {
     let snapshot = app.snapshot.as_ref().expect("frame requires a snapshot");
-    let settings = &snapshot.settings;
     let mut frame = screen_with_key(app, format!("folder:{folder}"));
     let label = group_label(&snapshot.groups, folder).unwrap_or("Folder");
-
-    push(
-        app,
-        &mut frame.nodes,
-        "folder:back",
-        Target::Back,
-        Role::Button,
-        "Back",
-        grid::folder_back(app.size, app.insets, settings),
-        vec![Action::Click],
-        false,
-        None,
-        None,
-    );
-    push(
-        app,
-        &mut frame.nodes,
-        "folder:title",
-        Target::Dismiss,
-        Role::Header,
-        label,
-        grid::folder_title(app.size, app.insets, settings),
-        vec![],
-        false,
-        None,
-        None,
-    );
-
-    let footer = grid::footer_height(app.error.is_some(), snapshot.warnings.len());
-    let viewport = grid::viewport(
-        app.size,
-        app.insets,
-        settings,
-        false,
-        true,
-        true,
-        snapshot.page_ids.len(),
-        footer,
-    );
+    let geometry = crate::folder::for_app(app).expect("open folder geometry");
+    let viewport = geometry.viewport;
     let items = app.visible_items();
     push_grid(
         app,
@@ -579,11 +540,32 @@ fn folder_frame(app: &App, folder: &Id) -> Frame {
         viewport,
         format!("{label}, {} apps", items.len()),
         &items,
-        true,
+        false,
         false,
         false,
     );
-    push_footer(app, &mut frame.nodes, viewport);
+    if let Some(node) = frame
+        .nodes
+        .iter_mut()
+        .find(|node| node.key == "grid:container")
+    {
+        node.actions.push(Action::Dismiss);
+    }
+    if items.is_empty() {
+        push(
+            app,
+            &mut frame.nodes,
+            "folder:empty",
+            Target::Dismiss,
+            Role::Text,
+            "Empty folder",
+            viewport,
+            vec![Action::Dismiss],
+            false,
+            None,
+            None,
+        );
+    }
     frame
 }
 
@@ -762,7 +744,8 @@ fn push_grid(
             .expect("frame requires a snapshot")
             .settings,
     );
-    let columns = app.columns();
+    let columns =
+        crate::folder::for_app(app).map_or_else(|| app.columns(), |geometry| geometry.columns);
     let rows = items.len().div_ceil(columns);
     let content = rows as f32 * row_height;
     let offset = scroll_offset(app, &region, content, viewport.height);
@@ -865,7 +848,42 @@ fn push_footer(app: &App, nodes: &mut Vec<Node>, viewport: iced::Rectangle) {
 fn overlay_frame(app: &App, overlay: &Overlay) -> Frame {
     let mut frame = screen_with_key(app, overlay_screen(overlay));
     let layout = overlay::card(app, overlay);
-    let card_bounds = layout.bounds;
+    let card_bounds = layout.viewport;
+    let entries = overlay::entries(app, overlay);
+    let has_list = entries
+        .iter()
+        .any(|entry| matches!(entry.kind, EntryKind::List { .. }));
+    if has_list || layout.content_height > layout.viewport.height {
+        let mut actions =
+            scroll_actions(layout.offset, layout.viewport.height, layout.content_height);
+        actions.push(Action::Dismiss);
+        push(
+            app,
+            &mut frame.nodes,
+            if has_list {
+                "overlay:list"
+            } else {
+                "overlay:card"
+            },
+            Target::Scroll {
+                region: Region::OverlayCard,
+                offset: layout.offset,
+                viewport: layout.viewport.height,
+                content: layout.content_height,
+            },
+            Role::Scroll,
+            if has_list {
+                list_label(overlay)
+            } else {
+                "Menu"
+            },
+            layout.viewport,
+            actions,
+            false,
+            None,
+            None,
+        );
+    }
     push(
         app,
         &mut frame.nodes,
@@ -880,10 +898,12 @@ fn overlay_frame(app: &App, overlay: &Overlay) -> Frame {
         Some(card_bounds),
     );
 
-    let entries = overlay::entries(app, overlay);
     debug_assert_eq!(entries.len(), layout.entries.len());
     for (entry, layout) in entries.into_iter().zip(layout.entries) {
         debug_assert_eq!(entry.key, layout.key);
+        let Some(entry_clip) = layout.bounds.intersection(&card_bounds) else {
+            continue;
+        };
         match entry.kind {
             EntryKind::Action { label, message } => push(
                 app,
@@ -946,30 +966,6 @@ fn overlay_frame(app: &App, overlay: &Overlay) -> Frame {
                 Some(card_bounds),
             ),
             EntryKind::List { rows } => {
-                let content = rows.len() as f32 * overlay::ACTION_HEIGHT
-                    + rows.len().saturating_sub(1) as f32 * overlay::LIST_ROW_GAP;
-                let offset =
-                    scroll_offset(app, &Region::OverlayList, content, overlay::LIST_HEIGHT);
-                let mut actions = scroll_actions(offset, overlay::LIST_HEIGHT, content);
-                actions.push(Action::Dismiss);
-                push(
-                    app,
-                    &mut frame.nodes,
-                    "overlay:list",
-                    Target::Scroll {
-                        region: Region::OverlayList,
-                        offset,
-                        viewport: overlay::LIST_HEIGHT,
-                        content,
-                    },
-                    Role::Scroll,
-                    list_label(overlay),
-                    layout.bounds,
-                    actions,
-                    false,
-                    None,
-                    Some(card_bounds),
-                );
                 for (index, row) in rows.into_iter().enumerate() {
                     push(
                         app,
@@ -981,15 +977,14 @@ fn overlay_frame(app: &App, overlay: &Overlay) -> Frame {
                         rect(
                             layout.bounds.x,
                             layout.bounds.y
-                                + index as f32 * (overlay::ACTION_HEIGHT + overlay::LIST_ROW_GAP)
-                                - offset,
+                                + index as f32 * (overlay::ACTION_HEIGHT + overlay::LIST_ROW_GAP),
                             layout.bounds.width,
                             overlay::ACTION_HEIGHT,
                         ),
                         vec![Action::Click],
                         false,
                         None,
-                        Some(layout.bounds),
+                        Some(entry_clip),
                     );
                 }
             }
@@ -1375,21 +1370,24 @@ mod tests {
     }
 
     #[test]
-    fn folder_frame_has_back_title_and_folder_items() {
+    fn folder_frame_has_compact_modal_items_and_dismiss() {
         let mut app = sample_app();
         app.folder = Some("folder-group".into());
         let frame = super::frame(&app).unwrap();
-        let settings = &app.snapshot.as_ref().unwrap().settings;
 
         assert_eq!(frame.screen, "folder:folder-group");
         assert_eq!(announcement(&app), "Games");
-        assert_eq!(node(&frame, "folder:back").label, "Back");
-        assert!(matches!(node(&frame, "folder:back").target, Target::Back));
-        assert_eq!(node(&frame, "folder:title").role, Role::Header);
-        assert_eq!(node(&frame, "folder:title").label, "Games");
-        assert_eq!(
-            node(&frame, "folder:back").bounds,
-            bounds_of(crate::grid::folder_back(app.size, app.insets, settings))
+        assert!(!has(&frame, "folder:back"));
+        assert!(!has(&frame, "folder:title"));
+        assert!(actions(&frame, "grid:container").contains(&Action::Dismiss));
+        let bounds = node(&frame, "grid:container").bounds;
+        assert!(bounds[0] > app.insets.left + 16.0);
+        assert!(bounds[2] < app.size.width - 48.0);
+        let first = node(&frame, "item:folder-0").bounds;
+        let third = node(&frame, "item:folder-2").bounds;
+        assert!(
+            third[1] > first[1],
+            "three items form two columns, not the full-screen grid"
         );
         assert_eq!(node(&frame, "grid:container").label, "Games, 3 apps");
         assert!(has(&frame, "item:folder-0"));
@@ -1502,6 +1500,7 @@ mod tests {
     #[test]
     fn overlay_list_is_one_scroll_node_plus_visible_rows() {
         let mut app = sample_app();
+        app.size = Size::new(420.0, 420.0);
         app.overlay = Some(app_menu("Calculator", AppStep::Move));
         let frame = super::frame(&app).unwrap();
         let list = node(&frame, "overlay:list");
@@ -1509,7 +1508,7 @@ mod tests {
         assert!(matches!(
             list.target,
             Target::Scroll {
-                region: Region::OverlayList,
+                region: Region::OverlayCard,
                 ..
             }
         ));
@@ -1517,17 +1516,17 @@ mod tests {
         assert!(list.actions.contains(&Action::Dismiss));
         assert!(!list.actions.contains(&Action::ScrollBackward));
         assert!(has(&frame, "overlay:item:home"));
-        assert!(has(&frame, "overlay:item:spare-4"));
+        assert!(has(&frame, "overlay:item:spare-2"));
         assert!(!has(&frame, "overlay:item:apps"));
         assert!(!has(&frame, "overlay:item:spare-8"));
 
         let row = node(&frame, "overlay:item:home").bounds;
         close(row[0], list.bounds[0]);
-        close(row[1], list.bounds[1]);
+        close(row[1], list.bounds[1] + 36.0);
         close(row[2], list.bounds[2]);
         close(row[3], overlay::ACTION_HEIGHT);
 
-        app.scroll.insert(Region::OverlayList, 200.0);
+        app.scroll.insert(Region::OverlayCard, 400.0);
         let frame = super::frame(&app).unwrap();
         assert!(!has(&frame, "overlay:item:home"));
         assert!(actions(&frame, "overlay:list").contains(&Action::ScrollBackward));
@@ -1537,6 +1536,28 @@ mod tests {
             if row.key.starts_with("overlay:item:") {
                 assert!(row.bounds[1] >= list_top);
             }
+        }
+    }
+
+    #[test]
+    fn short_overlay_scroll_exposes_actions_without_leaking_bounds() {
+        let mut app = sample_app();
+        app.size = Size::new(280.0, 240.0);
+        app.insets = Insets::default();
+        app.overlay = Some(app_menu("Calculator", AppStep::Actions));
+        let frame = super::frame(&app).unwrap();
+        assert!(has(&frame, "overlay:card"));
+        assert!(actions(&frame, "overlay:card").contains(&Action::ScrollForward));
+        assert!(!has(&frame, "overlay:action:cancel"));
+        app.scroll.insert(Region::OverlayCard, 1000.0);
+        let frame = super::frame(&app).unwrap();
+        assert!(has(&frame, "overlay:action:cancel"));
+        assert!(!has(&frame, "overlay:title"));
+        assert!(actions(&frame, "overlay:card").contains(&Action::ScrollBackward));
+        let viewport = node(&frame, "overlay:card").bounds;
+        for node in &frame.nodes {
+            assert!(node.bounds[1] >= viewport[1]);
+            assert!(node.bounds[1] + node.bounds[3] <= viewport[1] + viewport[3] + 0.01);
         }
     }
 
@@ -1603,7 +1624,7 @@ mod tests {
 
         let mut moving = sample_app();
         moving.overlay = Some(app_menu("Calculator", AppStep::Move));
-        moving.scroll.insert(Region::OverlayList, 200.0);
+        moving.scroll.insert(Region::OverlayCard, 200.0);
         scenarios.push(moving);
 
         let mut shortcuts = sample_app();
@@ -1640,10 +1661,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    fn bounds_of(rect: iced::Rectangle) -> [f32; 4] {
-        [rect.x, rect.y, rect.width, rect.height]
     }
 
     #[test]

@@ -247,9 +247,7 @@ pub async fn add_lock_shortcut(target_group_id: String) -> Result<ModelSnapshot,
     )
 }
 
-pub async fn add_notifications_shortcut(
-    target_group_id: String,
-) -> Result<ModelSnapshot, String> {
+pub async fn add_notifications_shortcut(target_group_id: String) -> Result<ModelSnapshot, String> {
     super::shortcuts::add(
         &target_group_id,
         "Notifications",

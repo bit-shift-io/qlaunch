@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use qlaunch_core::model::{AppRef, IconImage};
+use qlaunch_core::model::{AppRef, IconFormat, IconImage};
 use qlaunch_core::platform::AppSource;
 use qlaunch_core::platform::linux::{
     LinuxSource, applications_dirs_from, data_roots_from, icon_dirs_from, resolve_icon,
@@ -361,6 +361,161 @@ fn a_hostile_theme_name_is_ignored() {
     );
 }
 
+// ---- theme inheritance ----
+
+fn theme_with(dir: &Path, name: &str, inherits: &str) {
+    let theme = dir.join(name);
+    fs::create_dir_all(&theme).unwrap();
+    fs::write(
+        theme.join("index.theme"),
+        format!("[Icon Theme]\nName={name}\nInherits={inherits}\n"),
+    )
+    .unwrap();
+}
+
+fn icon_at(dir: &Path, relative: &str) -> PathBuf {
+    let path = dir.join(relative);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, b"icon").unwrap();
+    path
+}
+
+#[test]
+fn a_named_theme_inherits_icons_from_its_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    theme_with(dir.path(), "Child", "Parent");
+    let parent = icon_at(dir.path(), "Parent/48x48/apps/inherited.png");
+    assert_eq!(
+        resolve_icon_themed("inherited", 48, &[dir.path().to_path_buf()], Some("Child")),
+        Some(parent)
+    );
+}
+
+#[test]
+fn theme_inheritance_is_transitive_and_cycles_are_bounded() {
+    let dir = tempfile::tempdir().unwrap();
+    theme_with(dir.path(), "Child", "Middle");
+    theme_with(dir.path(), "Middle", "Parent,Child");
+    theme_with(dir.path(), "Parent", "Middle");
+    let parent = icon_at(dir.path(), "Parent/48x48/apps/deep.png");
+    assert_eq!(
+        resolve_icon_themed("deep", 48, &[dir.path().to_path_buf()], Some("Child")),
+        Some(parent)
+    );
+}
+
+#[test]
+fn a_theme_beats_its_parent_for_the_same_name_and_size() {
+    let dir = tempfile::tempdir().unwrap();
+    theme_with(dir.path(), "Child", "Parent");
+    let child = icon_at(dir.path(), "Child/48x48/apps/shared.png");
+    icon_at(dir.path(), "Parent/48x48/apps/shared.png");
+    assert_eq!(
+        resolve_icon_themed("shared", 48, &[dir.path().to_path_buf()], Some("Child")),
+        Some(child)
+    );
+}
+
+#[test]
+fn hicolor_stays_the_last_fallback_after_inherited_themes() {
+    let dir = tempfile::tempdir().unwrap();
+    theme_with(dir.path(), "Child", "Parent");
+    let hicolor = icon_at(dir.path(), "hicolor/48x48/apps/only-in-hicolor.png");
+    assert_eq!(
+        resolve_icon_themed(
+            "only-in-hicolor",
+            48,
+            &[dir.path().to_path_buf()],
+            Some("Child")
+        ),
+        Some(hicolor)
+    );
+}
+
+#[test]
+fn a_hostile_inherited_theme_name_is_ignored() {
+    let dir = tempfile::tempdir().unwrap();
+    theme_with(dir.path(), "Child", "../Parent");
+    icon_at(dir.path(), "Parent/48x48/apps/escaped.png");
+    assert_eq!(
+        resolve_icon_themed("escaped", 48, &[dir.path().to_path_buf()], Some("Child")),
+        None
+    );
+}
+
+// ---- categories other than apps ----
+
+#[test]
+fn an_icon_is_found_in_a_category_other_than_apps() {
+    let dir = tempfile::tempdir().unwrap();
+    let printer = icon_at(dir.path(), "hicolor/48x48/devices/printer.png");
+    assert_eq!(
+        resolve_icon("printer", 48, &[dir.path().to_path_buf()]),
+        Some(printer)
+    );
+}
+
+#[test]
+fn an_icon_is_found_in_a_category_without_a_size_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let vector = icon_at(dir.path(), "hicolor/scalable/devices/printer.svg");
+    assert_eq!(
+        resolve_icon("printer", 48, &[dir.path().to_path_buf()]),
+        Some(vector)
+    );
+}
+
+#[test]
+fn the_apps_category_beats_another_category_on_an_exact_tie() {
+    let dir = tempfile::tempdir().unwrap();
+    let apps = icon_at(dir.path(), "hicolor/48x48/apps/shared.png");
+    icon_at(dir.path(), "hicolor/48x48/devices/shared.png");
+    assert_eq!(
+        resolve_icon("shared", 48, &[dir.path().to_path_buf()]),
+        Some(apps)
+    );
+}
+
+#[test]
+fn an_icon_is_found_in_a_kde_category_size_layout() {
+    let dir = tempfile::tempdir().unwrap();
+    let theme = icon_at(
+        dir.path(),
+        "Breeze/preferences/32/preferences-desktop-theme.svg",
+    );
+    assert_eq!(
+        resolve_icon_themed(
+            "preferences-desktop-theme",
+            32,
+            &[dir.path().to_path_buf()],
+            Some("Breeze")
+        ),
+        Some(theme)
+    );
+}
+
+#[test]
+fn an_icon_is_found_in_an_inherited_kde_theme_category() {
+    let dir = tempfile::tempdir().unwrap();
+    theme_with(dir.path(), "Dark", "Breeze");
+    let device = icon_at(dir.path(), "Breeze/devices/64/printer.svg");
+    assert_eq!(
+        resolve_icon_themed("printer", 64, &[dir.path().to_path_buf()], Some("Dark")),
+        Some(device)
+    );
+}
+
+#[test]
+fn a_kde_category_does_not_hide_a_sized_standard_icon() {
+    let dir = tempfile::tempdir().unwrap();
+    let standard = icon_at(dir.path(), "hicolor/48x48/apps/choice.png");
+    icon_at(dir.path(), "hicolor/devices/48/choice.png");
+    assert_eq!(
+        resolve_icon("choice", 48, &[dir.path().to_path_buf()]),
+        Some(standard)
+    );
+}
+
 // ---- the icon name must not escape ----
 
 #[test]
@@ -524,12 +679,67 @@ fn icon_image_reads_the_exact_bytes_of_the_resolved_file() {
 }
 
 #[test]
-fn icon_image_is_none_for_an_svg_icon() {
+fn icon_image_rasterises_an_svg_icon_to_a_png() {
     assert!(fixture("source/icons/hicolor/scalable/apps/vectoricon.svg").is_file());
-    assert_eq!(
-        source().icon_image(&app("vector.desktop"), 48).unwrap(),
-        None
-    );
+    let image = source()
+        .icon_image(&app("vector.desktop"), 48)
+        .unwrap()
+        .expect("an SVG icon is rendered instead of dropped");
+    assert_eq!(image.format, IconFormat::Png);
+    assert_eq!(png_size(&image.bytes), (48, 48));
+}
+
+fn png_size(bytes: &[u8]) -> (u32, u32) {
+    assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert_eq!(&bytes[12..16], b"IHDR");
+    (
+        u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
+        u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
+    )
+}
+
+#[test]
+fn icon_image_preserves_an_svg_aspect_ratio() {
+    let dir = tempfile::tempdir().unwrap();
+    let applications = dir.path().join("applications");
+    let icons = dir.path().join("icons/hicolor/scalable/apps");
+    fs::create_dir_all(&applications).unwrap();
+    fs::create_dir_all(&icons).unwrap();
+    fs::write(
+        applications.join("wide.desktop"),
+        "[Desktop Entry]\nType=Application\nName=Wide\nExec=wide\nIcon=wide\n",
+    )
+    .unwrap();
+    fs::write(
+        icons.join("wide.svg"),
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50"><rect width="100" height="50" fill="#ff0000"/></svg>"##,
+    )
+    .unwrap();
+    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
+
+    let image = source
+        .icon_image(&app("wide.desktop"), 64)
+        .unwrap()
+        .unwrap();
+    assert_eq!(png_size(&image.bytes), (64, 32));
+}
+
+#[test]
+fn icon_image_is_none_for_an_svg_that_cannot_be_parsed() {
+    let dir = tempfile::tempdir().unwrap();
+    let applications = dir.path().join("applications");
+    let icons = dir.path().join("icons/hicolor/scalable/apps");
+    fs::create_dir_all(&applications).unwrap();
+    fs::create_dir_all(&icons).unwrap();
+    fs::write(
+        applications.join("broken.desktop"),
+        "[Desktop Entry]\nType=Application\nName=Broken\nExec=broken\nIcon=broken\n",
+    )
+    .unwrap();
+    fs::write(icons.join("broken.svg"), b"this is not an SVG").unwrap();
+    let source = LinuxSource::from_parts(vec![dir.path().to_path_buf()], None, None, None, None);
+
+    assert_eq!(source.icon_image(&app("broken.desktop"), 48).unwrap(), None);
 }
 
 #[test]

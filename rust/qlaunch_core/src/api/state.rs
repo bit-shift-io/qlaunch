@@ -154,11 +154,7 @@ fn items_in_display_order(model: &Model) -> Vec<Item> {
 /// count, then the most recent launch, then the first in display order. When no
 /// member has usage data, the first member (which may be a shortcut or a plain
 /// placeholder) is used; an empty folder has none.
-pub(crate) fn folder_icon_item(
-    model: &Model,
-    usage: &Usage,
-    folder_group: &Id,
-) -> Option<Id> {
+pub(crate) fn folder_icon_item(model: &Model, usage: &Usage, folder_group: &Id) -> Option<Id> {
     let items = items_in_display_order(model);
     let members: Vec<&Item> = items
         .iter()
@@ -182,9 +178,7 @@ pub(crate) fn folder_icon_item(
             _ => best = Some((item, entry.count, entry.last_used_ms)),
         }
     }
-    Some(
-        best.map_or_else(|| first.id.clone(), |(item, _, _)| item.id.clone()),
-    )
+    Some(best.map_or_else(|| first.id.clone(), |(item, _, _)| item.id.clone()))
 }
 
 /// Builds the snapshot Dart sees. The warnings are the startup ones plus
@@ -755,7 +749,10 @@ mod tests {
             app_usage(2, 200, "b"),
             app_usage(2, 100, "c"),
         ];
-        assert_eq!(folder_icon_item(&model, &usage_data, &folder), Some(a.clone()));
+        assert_eq!(
+            folder_icon_item(&model, &usage_data, &folder),
+            Some(a.clone())
+        );
 
         usage_data.apps[0].count = 2;
         usage_data.apps[2].last_used_ms = 300;

@@ -95,7 +95,11 @@ fn add_folder_creates_group_and_tile_in_order() {
     assert_eq!(group.role, None);
     assert_eq!(group.label, "Chat");
 
-    let tile = m.items.iter().find(|i| i.folder_group_id.is_some()).unwrap();
+    let tile = m
+        .items
+        .iter()
+        .find(|i| i.folder_group_id.is_some())
+        .unwrap();
     assert_eq!(tile.group_id, apps);
     assert_eq!(tile.label, "Chat");
     assert!(tile.app.is_none());
@@ -208,7 +212,10 @@ fn renaming_a_folder_renames_its_tile() {
     let (mut m, folder, tile) = folder_model();
     m.rename_group(&folder, "Friends").unwrap();
 
-    assert_eq!(m.groups.iter().find(|g| g.id == folder).unwrap().label, "Friends");
+    assert_eq!(
+        m.groups.iter().find(|g| g.id == folder).unwrap().label,
+        "Friends"
+    );
     assert_eq!(m.item(&tile).unwrap().label, "Friends");
 }
 

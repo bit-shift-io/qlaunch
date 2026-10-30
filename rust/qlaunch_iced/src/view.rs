@@ -69,30 +69,6 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
             );
         }
         content = content.push(single_grid(app, app.visible_items(), colour, true));
-    } else if let Some(folder) = &app.folder {
-        let label = snapshot
-            .groups
-            .iter()
-            .find(|g| &g.id == folder)
-            .map(|g| g.label.as_str())
-            .unwrap_or("Folder");
-        content = content.push(
-            row![
-                button("‹")
-                    .width(grid::FOLDER_BACK_WIDTH)
-                    .height(Fill)
-                    .on_press(Message::Back)
-                    .style(button::text),
-                text(label).size(settings.label_size as f32)
-            ]
-            .align_y(iced::Center)
-            .height(grid::title_height(settings))
-            .padding([0.0, grid::FOLDER_PADDING]),
-        );
-        content = content.push(
-            mouse_area(single_grid(app, app.visible_items(), colour, false))
-                .on_press(Message::BlankPressed),
-        );
     } else {
         if grid::tabs_visible(settings, app.size, snapshot.page_ids.len()) {
             content = content.push(title_strip(app, colour, content_width));
@@ -132,11 +108,19 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
         ..Default::default()
     })
     .into();
-    if let Some(overlay) = &app.overlay {
-        iced::widget::stack![base, crate::overlay::view(app, overlay)].into()
+    let folder: Element<'_, Message> = if app.folder.is_some() {
+        crate::folder::view(app)
     } else {
-        base
-    }
+        space().into()
+    };
+    let overlay: Element<'_, Message> = if let Some(overlay) = &app.overlay {
+        crate::overlay::view(app, overlay)
+    } else {
+        space().into()
+    };
+    // Keep the base and folder at stable child indices so modal transitions
+    // never reconcile a scrollable against a different tree hierarchy.
+    iced::widget::stack![base, folder, overlay].into()
 }
 
 /// What each of the three page slots shows, before it becomes a widget. The
@@ -226,9 +210,16 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
             .iter()
             .filter(|item| Some(&item.group_id) == planned.group.as_ref())
             .collect();
-        let rows = grid_rows(app, items, columns, colour);
+        let alpha = crate::slots::page_opacity(index as f32 - 1.0 - app.pager.offset());
+        let rows = grid_rows(app, items, columns, colour, alpha);
         let content: Element<'a, Message> = if planned.scrollable {
-            let mut apps = scrollable(rows).id("apps").height(Fill);
+            let mut apps = scrollable(rows)
+                .id("apps")
+                .direction(crate::material::vertical_scrollbar(
+                    app.scrollbars_visible(),
+                ))
+                .style(crate::material::scrollable)
+                .height(Fill);
             if let Some(group) = planned.group.clone() {
                 apps = apps.on_scroll(move |viewport| {
                     Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
@@ -254,6 +245,7 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
         slots,
         app.pager.offset(),
         content_width,
+        columns,
         interaction,
     ))
     .on_press(Message::BlankPressed)
@@ -304,7 +296,10 @@ fn title_strip<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'
 /// A settled pager is not dragging or animating; only then may its slots take
 /// input, so a tap during a drag or a settle cannot hit a moving page.
 fn settled(app: &App) -> bool {
-    !app.pager.is_dragging() && !app.pager.is_animating()
+    app.folder.is_none()
+        && app.overlay.is_none()
+        && !app.pager.is_dragging()
+        && !app.pager.is_animating()
 }
 
 fn single_grid<'a>(
@@ -314,8 +309,13 @@ fn single_grid<'a>(
     searching: bool,
 ) -> Element<'a, Message> {
     let columns = app.columns();
-    let rows = grid_rows(app, items, columns, colour);
-    let mut apps = scrollable(rows).height(Fill);
+    let rows = grid_rows(app, items, columns, colour, 1.0);
+    let mut apps = scrollable(rows)
+        .direction(crate::material::vertical_scrollbar(
+            app.scrollbars_visible(),
+        ))
+        .style(crate::material::scrollable)
+        .height(Fill);
     if searching {
         apps = apps.id("search-results");
         apps.into()
@@ -330,17 +330,18 @@ fn single_grid<'a>(
     }
 }
 
-fn grid_rows<'a>(
+pub(crate) fn grid_rows<'a>(
     app: &'a App,
     items: Vec<&'a Item>,
     columns: usize,
     colour: Color,
+    alpha: f32,
 ) -> Element<'a, Message> {
     let mut rows = column![].spacing(0);
     for chunk in items.chunks(columns) {
         let mut line = row![].spacing(0);
         for item in chunk {
-            line = line.push(cell(app, item, colour));
+            line = line.push(cell(app, item, colour, alpha));
         }
         for _ in chunk.len()..columns {
             line = line.push(space().width(Fill));
@@ -377,7 +378,7 @@ fn title_button<'a>(
     .into()
 }
 
-fn cell<'a>(app: &'a App, item: &'a Item, colour: Color) -> Element<'a, Message> {
+fn cell<'a>(app: &'a App, item: &'a Item, colour: Color, alpha: f32) -> Element<'a, Message> {
     let settings = &app.snapshot.as_ref().unwrap().settings;
     let icon: Element<'a, Message> = if let Some(handle) = item
         .app
@@ -387,19 +388,22 @@ fn cell<'a>(app: &'a App, item: &'a Item, colour: Color) -> Element<'a, Message>
         image(handle.clone())
             .width(settings.icon_size as f32)
             .height(settings.icon_size as f32)
-            .opacity(settings.icon_alpha as f32 / 100.0)
+            .opacity(settings.icon_alpha as f32 / 100.0 * alpha)
             .into()
     } else {
         image(placeholder::handle(item.folder_group_id.is_some()))
             .width(settings.icon_size as f32)
             .height(settings.icon_size as f32)
-            .opacity(settings.icon_alpha as f32 / 100.0)
+            .opacity(settings.icon_alpha as f32 / 100.0 * alpha)
             .into()
     };
     let label = self::label(
         app,
         item.label.clone(),
-        colour,
+        Color {
+            a: colour.a * alpha,
+            ..colour
+        },
         settings.layout != LayoutStyle::List,
     );
     let label_height = settings.label_size as f32 * 2.34;
@@ -430,7 +434,7 @@ fn cell<'a>(app: &'a App, item: &'a Item, colour: Color) -> Element<'a, Message>
             .padding([6, 5])
             .style(move |_| container::Style {
                 background: if pressed {
-                    Some(Color::from_rgba(1.0, 1.0, 1.0, 0.10).into())
+                    Some(Color::from_rgba(1.0, 1.0, 1.0, 0.10 * alpha).into())
                 } else {
                     None
                 },

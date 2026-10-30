@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 /// How an [`IconImage`]'s bytes are encoded.
 ///
 /// Android hands back raw pixels (the bitmap it already drew), so nothing has to
-/// be encoded or decoded; the Linux host has no rasteriser, so it passes the
-/// icon file's PNG bytes through.
+/// be encoded or decoded; the Linux host passes the icon file's PNG bytes
+/// through and rasterises SVG icons to PNG.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IconFormat {

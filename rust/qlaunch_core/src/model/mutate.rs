@@ -56,16 +56,10 @@ impl Model {
     /// `folder = true` and a tile item in `containing_group` that points at it.
     /// The tile carries the folder's name. Refused when `containing_group` is
     /// the root, a folder, or unknown.
-    pub fn add_folder(
-        &mut self,
-        containing_group: &Id,
-        label: &str,
-    ) -> Result<Id, ModelError> {
+    pub fn add_folder(&mut self, containing_group: &Id, label: &str) -> Result<Id, ModelError> {
         let container = self.group(containing_group)?;
         if container.id == self.root_group_id || container.folder {
-            return Err(ModelError::NotAFolderDestination(
-                containing_group.clone(),
-            ));
+            return Err(ModelError::NotAFolderDestination(containing_group.clone()));
         }
 
         let folder_id = new_id();
@@ -232,10 +226,7 @@ impl Model {
     /// toggled: `NotAPage`.
     pub fn set_group_hidden(&mut self, id: &Id, hidden: bool) -> Result<(), ModelError> {
         let group = self.group(id)?;
-        if group.folder
-            || group.id == self.root_group_id
-            || group.role == Some(GroupRole::Hidden)
-        {
+        if group.folder || group.id == self.root_group_id || group.role == Some(GroupRole::Hidden) {
             return Err(ModelError::NotAPage(id.clone()));
         }
         if let Some(group) = self.groups.iter_mut().find(|g| g.id == *id) {
