@@ -33,6 +33,29 @@ Dependencies are pinned to iced_android v0.1.1 and its matching iced and
 android-activity forks. This is community-maintained mobile support, not official
 iced support. Workability must be established on-device before adoption.
 
+## Scroll fade follow-up
+
+The Iced app grids now consume the saved **Scroll fade** setting, including
+pager pages, search results and folder members:
+
+- **None:** ordinary clipping, without opacity changes.
+- **Gradient:** Flutter's 32 dp top/bottom ramps, eased away within 32 dp of
+  either real list boundary. Content that fits has no gradient.
+- **Tile:** uniform icon/label/highlight opacity based on the visible cell
+  fraction, becoming fully transparent when half the cell leaves the viewport.
+
+The pinned renderer has no alpha-mask layer; gradient mode approximates the
+mask using 1 dp clipped bands with primitive opacity, not a background overlay.
+Wallpaper remains visible and page-transition/icon opacity still multiply in.
+Only edge cells need repeated draws; the opaque middle is drawn once per cell.
+Because opacity is applied per primitive rather than to a composited layer,
+overlapping shadows and pressed highlights can differ slightly from Flutter.
+On-device visual parity and frame pacing still need checking.
+
+Verification (from `rust/`): `cargo test --workspace`. A separate GPU rendering
+test checks transparent-surface output and is opt-in for machines with a wgpu
+adapter: `cargo test -p qlaunch_iced rendered_fades --lib -- --ignored`.
+
 ## Accessibility — Task 6 result: NO-GO (2026-10-29)
 
 **Decision: NO-GO.** Two hands-on attempts with TalkBack failed: the selector

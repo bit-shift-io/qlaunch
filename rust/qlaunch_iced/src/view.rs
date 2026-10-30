@@ -398,10 +398,18 @@ pub(crate) fn grid_rows<'a>(
     alpha: f32,
 ) -> Element<'a, Message> {
     let mut rows = column![].spacing(0);
-    for chunk in items.chunks(columns) {
+    let settings = &app.snapshot.as_ref().unwrap().settings;
+    let row_count = items.len().div_ceil(columns);
+    for (index, chunk) in items.chunks(columns).enumerate() {
         let mut line = row![].spacing(0);
-        for item in chunk {
-            line = line.push(cell(app, item, colour, alpha));
+        for &item in chunk {
+            line = line.push(crate::scroll_fade::cell(
+                settings.scroll_fade,
+                index,
+                row_count,
+                grid::row_height(settings),
+                move |fade| cell(app, item, colour, alpha * fade),
+            ));
         }
         for _ in chunk.len()..columns {
             line = line.push(space().width(Fill));

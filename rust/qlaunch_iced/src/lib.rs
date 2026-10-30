@@ -12,6 +12,7 @@ mod overlay;
 pub mod pager;
 mod placeholder;
 mod screens;
+mod scroll_fade;
 mod slots;
 mod theme;
 mod view;
