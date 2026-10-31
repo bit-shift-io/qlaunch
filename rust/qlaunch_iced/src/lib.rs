@@ -4,6 +4,7 @@ mod components;
 mod dialog;
 mod elastic_scroll;
 mod field;
+mod stretch;
 mod folder;
 mod fonts;
 pub mod gesture;

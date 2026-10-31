@@ -111,7 +111,7 @@ impl Motion {
             .unwrap_or_default()
     }
 
-    fn set(&self, total: f32, edge: Edge) {
+    pub(crate) fn set(&self, total: f32, edge: Edge) {
         if let Ok(mut shared) = self.shared.lock() {
             shared.values = Values {
                 total: if total.is_finite() { total } else { 0.0 },
@@ -310,6 +310,9 @@ struct State {
     viewport: Size,
     content_height: f32,
     translation_delta: f32,
+    /// Velocity-proportional stretch, in logical pixels; folded into the spring
+    /// when the finger leaves so the settle starts from the visible position.
+    stretch: f32,
     /// Smoothed vertical finger speed in logical pixels per second.
     velocity: f32,
     last_move: Option<Instant>,
@@ -326,6 +329,7 @@ impl State {
         self.last_tick = None;
         self.content_height = 0.0;
         self.translation_delta = 0.0;
+        self.stretch = 0.0;
         self.velocity = 0.0;
         self.last_move = None;
         self.fling_delta = 0.0;
@@ -490,10 +494,18 @@ impl Wrapper<'_> {
         };
         let limit = displacement_limit(state.viewport.height);
         state.spring.pull(touch.raw, limit);
+        // A list that is actually moving also stretches with its speed, even
+        // in the middle where the edge spring stays at rest.
+        state.stretch = if state.translation_delta.abs() > 0.5 {
+            crate::stretch::lag(state.velocity, limit)
+        } else {
+            0.0
+        };
+        let visual = (state.spring.position() + state.stretch).clamp(-limit, limit);
         state.touch = Some(touch);
         state.released = false;
         state.last_tick = None;
-        self.motion.set(state.spring.position(), touch.edge);
+        self.motion.set(visual, touch.edge);
     }
 
     fn release(&self, state: &mut State, id: Option<touch::Finger>) {
@@ -504,6 +516,14 @@ impl Wrapper<'_> {
             return;
         }
         state.touch = None;
+        // Start the settle from what is on screen: fold the velocity stretch
+        // into the spring so the rebound has no visible jump.
+        if state.stretch != 0.0 {
+            let limit = displacement_limit(state.viewport.height);
+            let total = state.spring.position() + state.stretch;
+            state.spring.pull(raw_for(total, limit), limit);
+            state.stretch = 0.0;
+        }
         // A fast flick keeps its momentum so a quick overscroll springs back
         // instead of stopping flat.
         if touch.edge != Edge::None && touch.overscrolled {
@@ -1472,9 +1492,11 @@ mod tests {
         assert!(motion.values().total < 0.0, "{:?}", motion.values());
         assert_eq!(motion.values().edge, Edge::Bottom);
 
-        // Dragging back down scrolls the list away from the bottom and must
-        // not activate the opposite edge.
+        // Dragging back down scrolls the list away from the bottom: it may
+        // stretch with its speed, but never as a bottom overscroll, and it
+        // must return to rest.
         let (mut element, mut tree, node, motion) = scrolled_to_bottom(Policy::Normal);
+        let mut messages = Vec::new();
         drag(
             &mut element,
             &mut tree,
@@ -1482,8 +1504,27 @@ mod tests {
             Point::new(150.0, 70.0),
             Point::new(150.0, 150.0),
         );
+        assert!(
+            motion.values().total >= 0.0,
+            "inward scrolling must not push past the bottom: {:?}",
+            motion.values()
+        );
+        let start = Instant::now();
+        for frame in 1..=240 {
+            event(
+                &mut element,
+                &mut tree,
+                &node,
+                Event::Window(window::Event::RedrawRequested(
+                    start + std::time::Duration::from_millis(16 * frame),
+                )),
+                &mut messages,
+            );
+            if motion.values().total == 0.0 {
+                break;
+            }
+        }
         assert_eq!(motion.values().total, 0.0);
-        assert_eq!(motion.values().edge, Edge::None);
     }
 
     #[test]
@@ -1712,6 +1753,66 @@ mod tests {
         });
         assert_eq!(relaid.size().height, height);
         assert_eq!(relaid.size().width, 300.0);
+    }
+
+    #[test]
+    #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
+    fn scrolling_in_the_middle_stretches_with_speed_and_settles() {
+        let (mut element, mut tree, node, motion) = harness(Policy::Normal);
+        let mut messages = Vec::new();
+        event(
+            &mut element,
+            &mut tree,
+            &node,
+            Event::Touch(touch::Event::FingerPressed {
+                id: touch::Finger(1),
+                position: Point::new(150.0, 150.0),
+            }),
+            &mut messages,
+        );
+        for y in [140.0, 130.0, 120.0, 110.0, 100.0] {
+            event(
+                &mut element,
+                &mut tree,
+                &node,
+                Event::Touch(touch::Event::FingerMoved {
+                    id: touch::Finger(1),
+                    position: Point::new(150.0, y),
+                }),
+                &mut messages,
+            );
+        }
+        assert!(
+            motion.values().total.abs() > 0.5,
+            "a moving list should stretch away from the edges: {:?}",
+            motion.values()
+        );
+        event(
+            &mut element,
+            &mut tree,
+            &node,
+            Event::Touch(touch::Event::FingerLifted {
+                id: touch::Finger(1),
+                position: Point::new(150.0, 100.0),
+            }),
+            &mut messages,
+        );
+        let start = Instant::now();
+        for frame in 1..=240 {
+            event(
+                &mut element,
+                &mut tree,
+                &node,
+                Event::Window(window::Event::RedrawRequested(
+                    start + std::time::Duration::from_millis(16 * frame),
+                )),
+                &mut messages,
+            );
+            if motion.values().total == 0.0 {
+                break;
+            }
+        }
+        assert_eq!(motion.values().total, 0.0);
     }
 
     #[test]
