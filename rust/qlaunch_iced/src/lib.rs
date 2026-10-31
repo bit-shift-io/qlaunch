@@ -445,6 +445,99 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn starting_a_page_swipe_hides_the_scrollbar() {
+        let mut app = app();
+        let region = Region::Group("apps".into());
+        let _ = app.update(Message::Scrolled(region.clone(), 12.0));
+        assert!(app.scrollbars_visible());
+
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
+            id: iced::touch::Finger(0),
+            position: Point::new(300.0, 300.0),
+        }));
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerMoved {
+            id: iced::touch::Finger(0),
+            position: Point::new(200.0, 300.0),
+        }));
+        assert!(app.pager.is_dragging());
+        assert!(!app.scrollbars_visible());
+        assert_eq!(app.scroll.get(&region), Some(&12.0));
+
+        // A pending scroll notification must not bring it back during paging.
+        let _ = app.update(Message::Scrolled(region, 24.0));
+        assert!(!app.scrollbars_visible());
+    }
+
+    #[test]
+    fn page_button_hides_the_scrollbar_until_vertical_scrolling_resumes() {
+        let mut app = app();
+        let region = Region::Group("apps".into());
+        let _ = app.update(Message::Scrolled(region.clone(), 12.0));
+        assert!(app.scrollbars_visible());
+        let _ = app.update(Message::Step(1));
+        assert!(app.pager.is_animating());
+        assert!(!app.scrollbars_visible());
+        settle(&mut app);
+        assert!(!app.scrollbars_visible());
+
+        let _ = app.update(Message::Scrolled(region, 48.0));
+        assert!(app.scrollbars_visible());
+    }
+
+    #[test]
+    fn horizontal_flick_does_not_flash_a_hidden_scrollbar_before_drag_start() {
+        let mut app = app();
+        let region = Region::Group(app.current_group_id().unwrap().clone());
+        app.scroll.insert(region.clone(), 100.0);
+        assert!(!app.scrollbars_visible());
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
+            id: iced::touch::Finger(0),
+            position: Point::new(300.0, 300.0),
+        }));
+        // The scroll widget may notify before the raw move reaches the app.
+        let _ = app.update(Message::Scrolled(region.clone(), 99.7));
+        assert!(!app.scrollbars_visible());
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerMoved {
+            id: iced::touch::Finger(0),
+            position: Point::new(290.0, 300.5),
+        }));
+        let _ = app.update(Message::Scrolled(region.clone(), 99.2));
+        assert!(!app.scrollbars_visible());
+        assert_eq!(app.scroll.get(&region), Some(&99.2));
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerMoved {
+            id: iced::touch::Finger(0),
+            position: Point::new(200.0, 302.0),
+        }));
+        assert!(app.pager.is_dragging());
+        assert!(!app.scrollbars_visible());
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerLifted {
+            id: iced::touch::Finger(0),
+            position: Point::new(200.0, 302.0),
+        }));
+        settle(&mut app);
+        assert!(!app.scrollbars_visible());
+    }
+
+    #[test]
+    fn vertical_scroll_shows_the_bar_only_after_the_gesture_leaves_touch_slop() {
+        let mut app = app();
+        let region = Region::Group(app.current_group_id().unwrap().clone());
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
+            id: iced::touch::Finger(0),
+            position: Point::new(300.0, 300.0),
+        }));
+        let _ = app.update(Message::Scrolled(region.clone(), 2.0));
+        assert!(!app.scrollbars_visible());
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerMoved {
+            id: iced::touch::Finger(0),
+            position: Point::new(300.0, 270.0),
+        }));
+        let _ = app.update(Message::Scrolled(region, 30.0));
+        assert!(app.scrollbars_visible());
+        assert!(!app.pager.is_dragging());
+    }
+
+    #[test]
     fn layout_notifications_do_not_flash_the_scrollbar() {
         let mut app = app();
         let _ = app.update(Message::Scrolled(Region::Group("apps".into()), 0.0));
@@ -2482,6 +2575,11 @@ impl App {
         });
         let elapsed = started.elapsed().as_secs_f32() * 1000.0;
         let moving = self.pager.is_animating() || self.pager.is_dragging();
+        if moving {
+            // Dismiss the vertical scrollbar immediately on page takeover;
+            // don't let pending scroll callbacks revive it during a transition.
+            self.scroll_last = None;
+        }
         let summary = {
             let mut samples = self.metrics.lock().unwrap();
             if moving {
@@ -2998,7 +3096,7 @@ impl App {
             }
             Message::Scrolled(region, offset) => {
                 let previous = self.scroll.insert(region, offset).unwrap_or(0.0);
-                if (previous - offset).abs() > f32::EPSILON {
+                if (previous - offset).abs() > f32::EPSILON && !self.gesture.is_pending() {
                     self.scroll_last = Some(Instant::now());
                 }
                 let generation = self.accessibility.scroll_started();

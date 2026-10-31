@@ -21,6 +21,7 @@ pub struct Pager {
     committed: usize,
     offset: f32,
     drag_origin: usize,
+    drag_offset: f32,
     dragging: bool,
     animation: Option<Animation>,
 }
@@ -40,6 +41,7 @@ impl Pager {
             committed: page.min(count.saturating_sub(1)),
             offset: 0.0,
             drag_origin: 0,
+            drag_offset: 0.0,
             dragging: false,
             animation: None,
         }
@@ -85,7 +87,9 @@ impl Pager {
         self.animation = None;
         self.dragging = true;
         self.drag_origin = self.committed;
-        self.offset = 0.0;
+        // Taking over a settle must continue from its last rendered position,
+        // not jump back to the committed page before following the new finger.
+        self.drag_offset = self.offset;
     }
 
     /// `total_dx` is the finger's horizontal travel since the drag began, in
@@ -99,7 +103,7 @@ impl Pager {
             self.offset = 0.0;
             return;
         }
-        let raw = -total_dx / width.max(1.0);
+        let raw = self.drag_offset - total_dx / width.max(1.0);
         let whole = raw.trunc();
         self.committed = wrap(self.drag_origin as i64 + whole as i64, self.count);
         self.offset = if raw == whole { 0.0 } else { raw - whole };
@@ -244,6 +248,78 @@ mod tests {
         pager.end_drag(0.0, 300.0, now, D);
         pager.tick(now + D);
         assert_eq!((pager.committed(), pager.offset()), (0, 0.0));
+    }
+
+    #[test]
+    fn interrupted_settle_keeps_its_position_in_both_directions() {
+        for direction in [-1, 1] {
+            let now = Instant::now();
+            let mut pager = Pager::new(3, 1);
+            pager.step(direction, now, D);
+            pager.tick(now + D / 2);
+            assert_offset(&pager, direction as f32 * 0.875);
+
+            pager.begin_drag();
+            assert!(!pager.is_animating());
+            assert!(pager.is_dragging());
+            assert_eq!(pager.committed(), 1);
+            assert_offset(&pager, direction as f32 * 0.875);
+            pager.drag(0.0, 300.0);
+            assert_offset(&pager, direction as f32 * 0.875);
+        }
+    }
+
+    #[test]
+    fn interrupted_drag_uses_absolute_travel_from_the_preserved_position() {
+        let now = Instant::now();
+        let mut pager = Pager::new(3, 1);
+        pager.step(1, now, D);
+        pager.tick(now + D / 2);
+        pager.begin_drag();
+        pager.drag(30.0, 300.0);
+        assert_offset(&pager, 0.775);
+        pager.drag(90.0, 300.0);
+        assert_offset(&pager, 0.575);
+        pager.drag(300.0, 300.0);
+        assert_eq!(pager.committed(), 1);
+        assert_offset(&pager, -0.125);
+    }
+
+    #[test]
+    fn interrupted_drag_can_cross_and_wrap_a_page_boundary() {
+        for (page, direction, expected_page, expected_offset) in
+            [(2, 1, 0, 0.075), (0, -1, 2, -0.075)]
+        {
+            let now = Instant::now();
+            let mut pager = Pager::new(3, page);
+            pager.step(direction, now, D);
+            pager.tick(now + D / 2);
+            pager.begin_drag();
+            pager.drag(-60.0 * direction as f32, 300.0);
+            assert_eq!(pager.committed(), expected_page);
+            assert_offset(&pager, expected_offset);
+            pager.end_drag(0.0, 300.0, now + D, D);
+            pager.tick(now + D * 2);
+            assert_eq!(pager.committed(), expected_page);
+            assert_offset(&pager, 0.0);
+        }
+    }
+
+    #[test]
+    fn repeated_interruptions_capture_the_latest_position() {
+        let now = Instant::now();
+        let mut pager = Pager::new(3, 1);
+        pager.step(1, now, D);
+        pager.tick(now + D / 2);
+        pager.begin_drag();
+        pager.drag(112.5, 300.0);
+        assert_offset(&pager, 0.5);
+        pager.end_drag(0.0, 300.0, now + D, D);
+        pager.tick(now + D + D / 2);
+        assert_offset(&pager, 0.9375);
+        pager.begin_drag();
+        pager.drag(75.0, 300.0);
+        assert_offset(&pager, 0.6875);
     }
 
     #[test]

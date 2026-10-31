@@ -714,12 +714,78 @@ Tablet, 90 Hz, five runs of the same 2 s drag workload, release build:
 | `layout` | 0.32-0.34 ms | 0.46-0.54 ms | 1.48 ms |
 | `draw` | 0.06-0.11 ms | 0.15-0.21 ms | 0.53 ms |
 
-Frame pacing was unchanged at parity (SF interval p50 11.14 ms, median p99
-11.39 ms, no interval over 1.5x). Total app-side work is about 1.05 ms of an
-11.1 ms budget (~9%).
+The five-run median SF interval p50 was 11.14 ms and median p99 11.39 ms.
+The median run's over-budget rate was zero, but individual runs did miss
+refreshes. These sustained drags do not establish rapid-flick responsiveness.
 
-The `draw` figure is the useful surprise: it is ~0.1 ms, so the scroll fade's
-per-band cell rebuilds were never a large cost, and the banding change bounds
-them rather than rescuing the frame budget. `view` and `layout` are the phases
-that carry the per-frame CPU work, which is why the row window (2) matters for
-large groups and the others do not.
+Measurement scope: `draw` times widget primitive recording, not renderer
+preparation, GPU execution, swapchain acquisition, or presentation. The sum of
+phase medians (~1.05 ms) is neither total frame time nor a measured per-frame
+CPU total. The timings alone cannot establish that fading is cheap downstream
+or predict the savings from a raster tile cache.
+
+## Paging-specific investigation (2026-10-31)
+
+Release on the same 90 Hz tablet, with temporary icon-load and pager logging:
+
+- The icon working set contained 50 apps against a 157-icon limit at 200 px.
+  No icon reloads or budget-triggered cache clears occurred during the tested
+  flicks. Cache churn was not implicated in this reproduction.
+- Twelve completed short-flick settles took 422–433 ms from release to the
+  app reporting settled (median 427 ms), with the saved transition duration
+  set to 400 ms. This includes frame-event delivery delay, not just animation.
+- Nine deliberately interrupted settles began the next drag at absolute
+  offsets of 0.66–0.74. `Pager::begin_drag` resets the offset to zero, and
+  `Pager::drag` then uses displacement from the new gesture alone. This is a
+  reproducible position discontinuity that a raster cache would not fix.
+- A Perfetto capture covering 22 drag windows recorded 604 consecutive
+  `QueuePresentKHR` start-to-start intervals within motion: p50 11.12 ms,
+  p95 12.43 ms, p99 13.84 ms, max 17.55 ms. These are **frame submissions**,
+  not actual presentation intervals or GPU execution times. Idle gaps between
+  gestures were excluded. No comparable long submission stall was observed.
+
+The native app did not expose app FrameTimeline slices in this capture;
+system-level pacing therefore does not rule out input/presentation latency.
+One negative-timestamp trace event was dropped. The attempted vertical control
+invoked the notifications/accessibility settings path and was excluded.
+
+These results establish an interruption defect, not that every reported hitch
+has the same cause. Preserve the current visual offset when taking over an
+animation before evaluating more expensive raster-cache work. No paging
+behaviour was changed by that investigation; temporary logging was removed.
+
+### Interrupted-drag fix and retest
+
+`Pager` now records the fractional offset at drag takeover and adds the new
+gesture's absolute displacement to that origin. Four regression tests cover
+both directions, reversal without accumulating displacement, page-boundary
+wrapping, and repeated interruptions. All four failed before the fix and pass
+with it. Duration, easing, and cache policy are unchanged.
+
+The same short-flick workload was repeated on the release build: 22 drag
+windows, including nine deliberately interrupted settles. Every interrupted
+drag logged identical before/after offsets at takeover, instead of resetting
+to zero. Eight additional interruptions while swiping repeatedly in the same
+direction (four each way, including wrapping) also preserved their offsets:
+17 checked takeovers in total. Temporary diagnostics were removed afterward.
+
+| Frame-submission interval within motion | Before | After |
+| --- | ---: | ---: |
+| Samples | 604 | 598 |
+| p50 | 11.12 ms | 11.13 ms |
+| p95 | 12.43 ms | 12.31 ms |
+| p99 | 13.84 ms | 13.16 ms |
+| max | 17.55 ms | 22.02 ms |
+
+This is not evidence of a rendering speedup: one trace per build, different
+motion after takeover, and submission rather than presentation timing. The
+after trace dropped three negative-timestamp events. Completed settles still
+took a median 426 ms (max 434 ms), consistent with retaining the saved 400 ms
+duration. Remaining perceived sluggishness needs separate investigation; the
+fix specifically removes the reset at interruption.
+
+The clean release was then rebuilt, installed without clearing data, and
+profiled over five sustained horizontal drags. Median-run SF p50/p95/p99 was
+11.14/11.16/11.38 ms; one run contained a 22.29 ms interval. Workspace
+verification passed all 717 tests, including 276 Iced tests and ignored GPU
+checks. Independent code review found no issues with the pager change.

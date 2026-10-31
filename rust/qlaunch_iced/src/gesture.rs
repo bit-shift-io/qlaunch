@@ -88,6 +88,12 @@ impl Gesture {
         self.target.as_ref()
     }
 
+    /// A pointer is down, but its motion has not yet exceeded touch slop.
+    /// Scroll notifications in this phase may be jitter in a future page swipe.
+    pub fn is_pending(&self) -> bool {
+        self.phase == Phase::Pressed && !self.slop_exceeded
+    }
+
     /// True while a release at the current position would be a tap.
     pub fn is_tap_candidate(&self) -> bool {
         self.phase == Phase::Pressed && self.target.is_some() && !self.slop_exceeded
