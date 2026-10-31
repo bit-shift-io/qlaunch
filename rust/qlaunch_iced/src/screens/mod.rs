@@ -14,19 +14,22 @@ pub(crate) fn scaffold<'a>(
     content: Element<'a, Message>,
 ) -> Element<'a, Message> {
     let typography = theme::Text::new();
+    let motion = app.motion(Region::Screen);
+    let scroller = scrollable(crate::elastic_scroll::content(content, &motion))
+        .id("screen-scroll")
+        .width(Fill)
+        .height(Fill)
+        .style(theme::scrollable)
+        .on_scroll(|viewport| Message::Scrolled(Region::Screen, viewport.absolute_offset().y));
     iced::widget::opaque(
         mouse_area(
             container(column![
                 components::app_bar(&typography, title, Some(Message::Back), actions),
-                scrollable(content)
-                    .id("screen-scroll")
-                    .width(Fill)
-                    .height(Fill)
-                    .style(theme::scrollable)
-                    .on_scroll(|viewport| Message::Scrolled(
-                        Region::Screen,
-                        viewport.absolute_offset().y
-                    )),
+                crate::elastic_scroll::wrap(
+                    scroller.into(),
+                    motion,
+                    crate::elastic_scroll::Policy::Normal,
+                ),
             ])
             .padding(app.insets)
             .width(Fill)

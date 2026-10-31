@@ -1088,7 +1088,7 @@ fn select_frame(app: &App, select: &crate::dialog::Select) -> Frame {
         &mut frame,
         Region::Select,
         bounds,
-        select.options.len() as f32 * crate::theme::metrics::SELECT_OPTION_HEIGHT,
+        crate::components::select_content_height(select.options.len()),
     );
     for (i, option) in select.options.iter().enumerate() {
         control(
@@ -1096,12 +1096,7 @@ fn select_frame(app: &App, select: &crate::dialog::Select) -> Frame {
             &mut frame,
             format!("select:option:{}", option.id),
             option.label.clone(),
-            rect(
-                bounds.x,
-                bounds.y + i as f32 * 48.0 - offset,
-                bounds.width,
-                48.0,
-            ),
+            crate::components::select_option_bounds(bounds, i, offset),
             crate::Message::Dialog(crate::dialog::Message::GroupChosen(option.id.clone())),
             option.id == select.selected,
             true,

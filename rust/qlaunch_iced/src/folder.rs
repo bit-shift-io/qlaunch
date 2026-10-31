@@ -106,23 +106,30 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
             layout.viewport.height,
             offset,
         );
-        scrollable(view::grid_rows(
+        let motion = app.motion(Region::Group(group.clone()));
+        let rows = view::grid_rows(
             app,
             items,
             layout.columns,
             colour,
             1.0,
             Some(&window),
-        ))
-        .id("folder-apps")
-        .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
-        .style(theme::scrollable)
-        .on_scroll(move |viewport| {
-            Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
-        })
-        .width(Fill)
-        .height(Fill)
-        .into()
+            Some(&motion),
+        );
+        crate::elastic_scroll::wrap(
+            scrollable(crate::elastic_scroll::content(rows, &motion))
+                .id("folder-apps")
+                .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
+                .style(theme::scrollable)
+                .on_scroll(move |viewport| {
+                    Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
+                })
+                .width(Fill)
+                .height(Fill)
+                .into(),
+            motion,
+            crate::elastic_scroll::Policy::Normal,
+        )
     };
     let padding = layout.viewport.x - layout.bounds.x;
     let card = opaque(

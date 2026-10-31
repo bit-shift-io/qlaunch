@@ -33,12 +33,13 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
                     Message::Push(crate::Screen::Settings),
                     true
                 ),
-                container(
+                container(crate::field::input(
                     text_input("Search apps", &app.query)
                         .id("search")
                         .on_input(Message::Query)
-                        .padding(10),
-                )
+                        .padding([10, 0])
+                        .style(crate::theme::input)
+                ),)
                 .width(Fill)
                 .height(grid::SEARCH_CONTENT_HEIGHT)
                 .center_y(Fill),
@@ -301,19 +302,35 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
             app.size.height,
             offset,
         );
-        let rows = grid_rows(app, items, columns, colour, alpha, Some(&window));
+        let motion = planned
+            .scrollable
+            .then(|| planned.group.clone())
+            .flatten()
+            .map(|group| app.motion(Region::Group(group)));
+        let rows = grid_rows(
+            app,
+            items,
+            columns,
+            colour,
+            alpha,
+            Some(&window),
+            motion.as_ref(),
+        );
         // Every slot scrolls, so its rows are laid out at their true height. A
         // plain container would let iced compress a long group down to the page
         // height, shrinking every icon in it. Only the committed slot answers
         // scroll input, and only it shows a scrollbar; the neighbours stay at
         // the top of their group.
-        let mut apps = scrollable(rows)
-            .direction(crate::theme::vertical_scrollbar(
-                planned.scrollable && app.scrollbars_visible(),
-            ))
-            .style(crate::theme::scrollable)
-            .width(Fill)
-            .height(Fill);
+        let mut apps = scrollable(match &motion {
+            Some(motion) => crate::elastic_scroll::content(rows, motion),
+            None => rows,
+        })
+        .direction(crate::theme::vertical_scrollbar(
+            planned.scrollable && app.scrollbars_visible(),
+        ))
+        .style(crate::theme::scrollable)
+        .width(Fill)
+        .height(Fill);
         if planned.scrollable {
             apps = apps.id("apps");
             if let Some(group) = planned.group.clone() {
@@ -322,7 +339,14 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
                 });
             }
         }
-        let content: Element<'a, Message> = apps.into();
+        let content: Element<'a, Message> = match &motion {
+            Some(motion) => crate::elastic_scroll::wrap(
+                apps.into(),
+                motion.clone(),
+                crate::elastic_scroll::Policy::LauncherTop,
+            ),
+            None => apps.into(),
+        };
         Slot {
             key: planned.key.clone(),
             content: mouse_area(content).on_press(Message::BlankPressed).into(),
@@ -419,14 +443,27 @@ fn single_grid<'a>(
         app.size.height,
         offset,
     );
-    let rows = grid_rows(app, items, columns, colour, 1.0, Some(&window));
-    let mut apps = scrollable(rows)
+    let region = if searching {
+        Region::Search
+    } else {
+        Region::Group(app.current_group_id().cloned().unwrap_or_default())
+    };
+    let motion = app.motion(region.clone());
+    let rows = grid_rows(
+        app,
+        items,
+        columns,
+        colour,
+        1.0,
+        Some(&window),
+        Some(&motion),
+    );
+    let mut apps = scrollable(crate::elastic_scroll::content(rows, &motion))
         .direction(crate::theme::vertical_scrollbar(app.scrollbars_visible()))
         .style(crate::theme::scrollable)
         .height(Fill);
     if searching {
         apps = apps.id("search-results");
-        apps.into()
     } else {
         apps = apps.id("apps");
         if let Some(group) = app.current_group_id().cloned() {
@@ -434,8 +471,13 @@ fn single_grid<'a>(
                 Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
             });
         }
-        apps.into()
     }
+    let policy = if searching {
+        crate::elastic_scroll::Policy::Normal
+    } else {
+        crate::elastic_scroll::Policy::LauncherTop
+    };
+    crate::elastic_scroll::wrap(apps.into(), motion, policy)
 }
 
 pub(crate) fn grid_rows<'a>(
@@ -445,6 +487,7 @@ pub(crate) fn grid_rows<'a>(
     colour: Color,
     alpha: f32,
     window: Option<&grid::RowWindow>,
+    motion: Option<&crate::elastic_scroll::Motion>,
 ) -> Element<'a, Message> {
     let mut rows = column![].spacing(0);
     let settings = &app.snapshot.as_ref().unwrap().settings;
@@ -474,7 +517,10 @@ pub(crate) fn grid_rows<'a>(
         for _ in chunk.len()..columns {
             line = line.push(space().width(Fill));
         }
-        rows = rows.push(line);
+        rows = rows.push(match motion {
+            Some(motion) => crate::elastic_scroll::row(line.into(), motion),
+            None => line.into(),
+        });
     }
     if below > 0.0 {
         rows = rows.push(space().height(below));

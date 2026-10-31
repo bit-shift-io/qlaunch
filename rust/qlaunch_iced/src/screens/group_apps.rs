@@ -74,14 +74,18 @@ pub(crate) fn view<'a>(app: &'a App, group_id: &Id) -> Element<'a, Message> {
         .find(|g| &g.id == group_id)
         .map_or("", |g| g.label.as_str());
     let typography = theme::Text::new();
+    let motion = app.motion(crate::Region::Screen);
     let mut content = column![];
     for row in rows(snapshot, group_id) {
-        content = content.push(components::checkbox_row(
-            &typography,
-            &row.label,
-            row.checked,
-            Message::GroupAppToggle(row.id, group_id.clone(), !row.checked),
-            row.enabled,
+        content = content.push(crate::elastic_scroll::row(
+            components::checkbox_row(
+                &typography,
+                &row.label,
+                row.checked,
+                Message::GroupAppToggle(row.id, group_id.clone(), !row.checked),
+                row.enabled,
+            ),
+            &motion,
         ));
     }
     super::scaffold(app, title, vec![], content.into())

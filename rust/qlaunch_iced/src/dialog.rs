@@ -992,20 +992,21 @@ struct BodyLayout<'a> {
     layout: DialogLayout,
     layers: iced::widget::Stack<'a, AppMessage>,
     index: usize,
+    motion: crate::elastic_scroll::Motion,
 }
 
 impl<'a> BodyLayout<'a> {
     fn push(mut self, child: impl Into<Element<'a, AppMessage>>) -> Self {
         if let Some((bounds, _)) = self.layout.rows.get(self.index) {
+            let child: Element<'a, AppMessage> = container(child)
+                .width(bounds.width)
+                .height(bounds.height)
+                .clip(true)
+                .into();
             self.layers = self.layers.push(
-                iced::widget::pin(
-                    container(child)
-                        .width(bounds.width)
-                        .height(bounds.height)
-                        .clip(true),
-                )
-                .x(bounds.x - self.layout.content.x)
-                .y(bounds.y - self.layout.content.y),
+                iced::widget::pin(crate::elastic_scroll::row(child, &self.motion))
+                    .x(bounds.x - self.layout.content.x)
+                    .y(bounds.y - self.layout.content.y),
             );
         }
         self.index += 1;
@@ -1026,6 +1027,7 @@ fn body<'a>(app: &'a App, dialog: &'a Dialog, text_settings: &Text) -> Element<'
         ],
         layout,
         index: 0,
+        motion: app.motion(crate::Region::Dialog),
     };
     match dialog {
         Dialog::App(editor) => {
@@ -1408,17 +1410,22 @@ pub(crate) fn view<'a>(app: &'a App, dialog: &'a Dialog) -> Element<'a, AppMessa
             .y(bounds.y - layout.card.y),
         );
     }
+    let motion = app.motion(crate::Region::Dialog);
+    let scroller = scrollable(crate::elastic_scroll::content(
+        body(app, dialog, &text_settings),
+        &motion,
+    ))
+    .id("dialog-scroll")
+    .on_scroll(|viewport| AppMessage::Scrolled(crate::Region::Dialog, viewport.absolute_offset().y))
+    .height(layout.content.height)
+    .width(layout.content.width)
+    .style(theme::scrollable);
     content = content.push(
-        iced::widget::pin(
-            scrollable(body(app, dialog, &text_settings))
-                .id("dialog-scroll")
-                .on_scroll(|viewport| {
-                    AppMessage::Scrolled(crate::Region::Dialog, viewport.absolute_offset().y)
-                })
-                .height(layout.content.height)
-                .width(layout.content.width)
-                .style(theme::scrollable),
-        )
+        iced::widget::pin(crate::elastic_scroll::wrap(
+            scroller.into(),
+            motion,
+            crate::elastic_scroll::Policy::Normal,
+        ))
         .x(layout.content.x - layout.card.x)
         .y(layout.content.y - layout.card.y),
     );
@@ -1511,10 +1518,10 @@ pub(crate) fn select_view<'a>(app: &'a App, select: &'a Select) -> Element<'a, A
         options,
         Some(select.selected.as_str()),
         move |index| AppMessage::Dialog(Message::GroupChosen(ids[index].clone())),
+        &app.motion(crate::Region::Select),
     ))
     .width(bounds.width)
-    .max_height(bounds.height)
-    .style(theme::menu);
+    .max_height(bounds.height);
 
     iced::widget::opaque(iced::widget::stack![
         barrier,

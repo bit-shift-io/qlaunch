@@ -302,7 +302,7 @@ pub(crate) fn icon_button(_: &iced::Theme, status: button::Status) -> button::St
 }
 
 pub(crate) fn input(_: &iced::Theme, status: text_input::Status) -> text_input::Style {
-    let focused = matches!(status, text_input::Status::Focused { .. });
+    let _ = status;
     text_input::Style {
         background: Color::TRANSPARENT.into(),
         value: color::ON_SURFACE,
@@ -311,16 +311,16 @@ pub(crate) fn input(_: &iced::Theme, status: text_input::Status) -> text_input::
             a: 0.35,
             ..color::PRIMARY
         },
-        border: iced::Border {
-            color: if focused {
-                color::PRIMARY
-            } else {
-                color::OUTLINE
-            },
-            width: if focused { 2.0 } else { 1.0 },
-            radius: 4.0.into(),
-        },
+        border: iced::Border::default(),
         icon: color::ON_SURFACE_VARIANT,
+    }
+}
+
+pub(crate) fn input_underline(focused: bool) -> (Color, f32) {
+    if focused {
+        (color::PRIMARY, 2.0)
+    } else {
+        (color::OUTLINE, 1.0)
     }
 }
 
@@ -570,12 +570,17 @@ mod tests {
     }
 
     #[test]
-    fn input_underline_focus_colors() {
+    fn input_has_no_enclosing_border() {
         use iced::widget::text_input::Status;
         let idle = input(&iced::Theme::Dark, Status::Active);
         let focused = input(&iced::Theme::Dark, Status::Focused { is_hovered: false });
-        assert_eq!(idle.border.width, 1.0);
-        assert_eq!(focused.border.width, 2.0);
-        assert_eq!(focused.border.color, color::PRIMARY);
+        assert_eq!(idle.border.width, 0.0);
+        assert_eq!(focused.border.width, 0.0);
+    }
+
+    #[test]
+    fn input_underline_tracks_focus_without_drawing_a_box() {
+        assert_eq!(input_underline(false), (color::OUTLINE, 1.0));
+        assert_eq!(input_underline(true), (color::PRIMARY, 2.0));
     }
 }

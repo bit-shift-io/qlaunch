@@ -2,11 +2,14 @@
 mod accessibility;
 mod components;
 mod dialog;
+mod elastic_scroll;
+mod field;
 mod folder;
 mod fonts;
 pub mod gesture;
 pub mod grid;
 mod icons;
+mod label;
 mod metrics;
 mod overlay;
 pub mod pager;
@@ -1525,6 +1528,7 @@ struct App {
     pub(crate) error: Option<String>,
     pub(crate) size: iced::Size,
     scroll: HashMap<Region, f32>,
+    elastic: Mutex<HashMap<Region, elastic_scroll::Motion>>,
     scroll_last: Option<Instant>,
     overlay: Option<overlay::Overlay>,
     pub(crate) dialog: Option<dialog::Dialog>,
@@ -1605,6 +1609,7 @@ impl App {
             error: None,
             size: iced::Size::new(420.0, 800.0),
             scroll: HashMap::new(),
+            elastic: Mutex::new(HashMap::new()),
             scroll_last: None,
             overlay: None,
             dialog: None,
@@ -1680,6 +1685,14 @@ impl App {
     }
 
     /// Scrollbars hide on their own; the view reads this while building.
+    /// The shared visual motion for one scroll region. Wrapper widgets own
+    /// touch and spring state in the tree; this handle only lets content and
+    /// row decorators read the same values while the app rebuilds.
+    pub(crate) fn motion(&self, region: Region) -> elastic_scroll::Motion {
+        let mut motions = self.elastic.lock().expect("elastic motion poisoned");
+        motions.entry(region).or_default().clone()
+    }
+
     pub(crate) fn scrollbars_visible(&self) -> bool {
         self.scrollbar_visible_at(Instant::now())
     }

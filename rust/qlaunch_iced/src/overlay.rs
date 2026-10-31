@@ -473,7 +473,8 @@ pub fn view<'a>(app: &'a App, overlay: &'a Overlay) -> Element<'a, AppMessage> {
         .on_press(AppMessage::Overlay(Message::Close));
 
     let layout = card(app, overlay);
-    let mut card = column![].spacing(CARD_GAP).push(
+    let motion = app.motion(Region::OverlayCard);
+    let mut card = column![].spacing(CARD_GAP).push(crate::elastic_scroll::row(
         container(
             text(heading(overlay))
                 .size(22)
@@ -482,25 +483,30 @@ pub fn view<'a>(app: &'a App, overlay: &'a Overlay) -> Element<'a, AppMessage> {
         )
         .width(Fill)
         .height(layout.title.height)
-        .clip(true),
-    );
+        .clip(true)
+        .into(),
+        &motion,
+    ));
     for entry in entries(app, overlay) {
-        card = card.push(entry_view(entry));
+        card = card.push(crate::elastic_scroll::row(entry_view(entry), &motion));
     }
     let padding = layout.viewport.x - layout.bounds.x;
+    let scroller = scrollable(crate::elastic_scroll::content(card.into(), &motion))
+        .id("overlay-card")
+        .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
+        .style(theme::scrollable)
+        .width(layout.viewport.width)
+        .height(layout.viewport.height)
+        .on_scroll(|viewport| {
+            AppMessage::Scrolled(Region::OverlayCard, viewport.absolute_offset().y)
+        });
     let card = opaque(
         mouse_area(
-            container(
-                scrollable(card)
-                    .id("overlay-card")
-                    .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
-                    .style(theme::scrollable)
-                    .width(layout.viewport.width)
-                    .height(layout.viewport.height)
-                    .on_scroll(|viewport| {
-                        AppMessage::Scrolled(Region::OverlayCard, viewport.absolute_offset().y)
-                    }),
-            )
+            container(crate::elastic_scroll::wrap(
+                scroller.into(),
+                motion,
+                crate::elastic_scroll::Policy::Normal,
+            ))
             .width(layout.bounds.width)
             .height(layout.bounds.height)
             .padding(padding)
@@ -526,15 +532,15 @@ fn entry_view<'a>(entry: Entry) -> Element<'a, AppMessage> {
             widget_id,
             on_input,
             on_submit,
-        } => container(
+        } => container(crate::field::input(
             text_input(&hint, &value)
                 .id(widget_id)
                 .on_input(on_input)
                 .on_submit(on_submit)
                 .size(16)
-                .padding(16)
+                .padding([16, 0])
                 .style(theme::input),
-        )
+        ))
         .width(Fill)
         .center_y(INPUT_HEIGHT)
         .into(),

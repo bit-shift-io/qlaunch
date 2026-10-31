@@ -52,6 +52,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         return column![].into();
     };
     let typography = theme::Text::new();
+    let motion = app.motion(crate::Region::Screen);
     let mut entries = Vec::new();
     for group in rows(snapshot) {
         let id = group.id.clone();
@@ -85,12 +86,15 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         );
         entries.push(Entry {
             id: group.id,
-            content: container(row![handle, tile].align_y(Alignment::Center))
-                .width(Fill)
-                .height(theme::metrics::GROUP_CARD_HEIGHT)
-                .style(theme::settings_card)
-                .clip(true)
-                .into(),
+            content: crate::elastic_scroll::row(
+                container(row![handle, tile].align_y(Alignment::Center))
+                    .width(Fill)
+                    .height(theme::metrics::GROUP_CARD_HEIGHT)
+                    .style(theme::settings_card)
+                    .clip(true)
+                    .into(),
+                &motion,
+            ),
         });
     }
     super::scaffold(

@@ -52,13 +52,17 @@ pub(crate) fn restore_message(result: &Result<ModelSnapshot, String>, name: &str
 
 pub(crate) fn view(app: &App) -> Element<'_, Message> {
     let typography = theme::Text::new();
+    let motion = app.motion(crate::Region::Screen);
     let mut content = column![];
     for row in rows() {
-        content = content.push(components::action_tile(
-            &typography,
-            row.label(),
-            row.subtitle(),
-            Message::Advanced(row),
+        content = content.push(crate::elastic_scroll::row(
+            components::action_tile(
+                &typography,
+                row.label(),
+                row.subtitle(),
+                Message::Advanced(row),
+            ),
+            &motion,
         ));
     }
     super::scaffold(app, "Advanced", vec![], content.into())

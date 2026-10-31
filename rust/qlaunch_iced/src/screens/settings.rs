@@ -393,17 +393,20 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     let right = side + theme::metrics::SETTINGS_SCROLLBAR_GUTTER;
     let available =
         components::chip_available(crate::grid::content_width(app.size, app.insets) - side - right);
+    let motion = app.motion(crate::Region::Screen);
     let mut content = column![];
     let mut group = Vec::new();
     for row in rows(&snapshot.settings, app.settings_drag) {
         // Headers stay on the page surface; only their controls share a card.
         if matches!(row, Row::Header(_) | Row::Action { .. }) && !group.is_empty() {
-            content = content.push(
+            content = content.push(crate::elastic_scroll::row(
                 container(column(std::mem::take(&mut group)))
                     .width(Fill)
                     .style(theme::settings_card)
-                    .clip(true),
-            );
+                    .clip(true)
+                    .into(),
+                &motion,
+            ));
         }
         let height = row_height(&row, &typography, available);
         let is_header = matches!(row, Row::Header(_));
@@ -470,7 +473,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
             ),
         };
         if is_action {
-            content = content.push(
+            content = content.push(crate::elastic_scroll::row(
                 container(
                     container(element)
                         .width(Fill)
@@ -482,10 +485,15 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 .padding(iced::Padding {
                     top: theme::metrics::ACTION_GAP,
                     ..Default::default()
-                }),
-            );
+                })
+                .into(),
+                &motion,
+            ));
         } else if is_header {
-            content = content.push(container(element).width(Fill).height(height));
+            content = content.push(crate::elastic_scroll::row(
+                container(element).width(Fill).height(height).into(),
+                &motion,
+            ));
         } else {
             group.push(container(element).width(Fill).height(height).into());
         }
