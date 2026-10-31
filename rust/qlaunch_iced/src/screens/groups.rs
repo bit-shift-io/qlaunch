@@ -141,9 +141,13 @@ mod tests {
         );
         let mut operation = iced::advanced::widget::operation::scrollable::scroll_to::<()>(
             iced::advanced::widget::Id::new("screen-scroll"),
-            iced::widget::scrollable::AbsoluteOffset { x: None, y: Some(offset) },
+            iced::widget::scrollable::AbsoluteOffset {
+                x: None,
+                y: Some(offset),
+            },
         );
-        page.as_widget_mut().operate(&mut tree, Layout::new(&node), &renderer, &mut operation);
+        page.as_widget_mut()
+            .operate(&mut tree, Layout::new(&node), &renderer, &mut operation);
         let mut messages = Vec::new();
         let mut cursor = mouse::Cursor::Unavailable;
         for event in events {
@@ -176,9 +180,17 @@ mod tests {
                 if let Message::GroupDragScroll(offset) = message {
                     let mut operation = iced::advanced::widget::operation::scrollable::scroll_to::<()>(
                         iced::advanced::widget::Id::new("screen-scroll"),
-                        iced::widget::scrollable::AbsoluteOffset { x: None, y: Some(*offset) },
+                        iced::widget::scrollable::AbsoluteOffset {
+                            x: None,
+                            y: Some(*offset),
+                        },
                     );
-                    page.as_widget_mut().operate(&mut tree, Layout::new(&node), &renderer, &mut operation);
+                    page.as_widget_mut().operate(
+                        &mut tree,
+                        Layout::new(&node),
+                        &renderer,
+                        &mut operation,
+                    );
                 }
             }
         }
@@ -222,16 +234,33 @@ mod tests {
         let mut app = crate::tests::app();
         app.size.height = 260.0;
         let group = rows(app.snapshot.as_ref().unwrap())[1].id.clone();
-        let messages = run_events_at_offset(&app,
-            &touch_drag(Point::new(40.0, 108.0), Point::new(40.0, 188.0)), 80.0);
-        assert!(matches!(messages.as_slice(), [Message::GroupMove(id, 2)] if *id == group), "{messages:?}");
-        let messages = run_events_at_offset(&app, &[
-            Event::Mouse(mouse::Event::CursorMoved { position: Point::new(40.0, 108.0) }),
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
-            Event::Mouse(mouse::Event::CursorMoved { position: Point::new(40.0, 188.0) }),
-            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
-        ], 80.0);
-        assert!(matches!(messages.as_slice(), [Message::GroupMove(id, 2)] if *id == group), "{messages:?}");
+        let messages = run_events_at_offset(
+            &app,
+            &touch_drag(Point::new(40.0, 108.0), Point::new(40.0, 188.0)),
+            80.0,
+        );
+        assert!(
+            matches!(messages.as_slice(), [Message::GroupMove(id, 2)] if *id == group),
+            "{messages:?}"
+        );
+        let messages = run_events_at_offset(
+            &app,
+            &[
+                Event::Mouse(mouse::Event::CursorMoved {
+                    position: Point::new(40.0, 108.0),
+                }),
+                Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+                Event::Mouse(mouse::Event::CursorMoved {
+                    position: Point::new(40.0, 188.0),
+                }),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            ],
+            80.0,
+        );
+        assert!(
+            matches!(messages.as_slice(), [Message::GroupMove(id, 2)] if *id == group),
+            "{messages:?}"
+        );
     }
 
     #[test]
@@ -241,7 +270,12 @@ mod tests {
         app.size.height = 260.0;
         let snapshot = app.snapshot.as_mut().unwrap();
         for index in 0..14 {
-            let mut group = snapshot.groups.iter().find(|g| g.role == Some(GroupRole::Home)).unwrap().clone();
+            let mut group = snapshot
+                .groups
+                .iter()
+                .find(|g| g.role == Some(GroupRole::Home))
+                .unwrap()
+                .clone();
             group.id = format!("extra-{index}");
             group.label = format!("Extra {index}");
             group.role = None;
@@ -259,18 +293,36 @@ mod tests {
             let release = events.pop().unwrap();
             let now = std::time::Instant::now();
             for frame in 0..400 {
-                events.push(Event::Window(iced::window::Event::RedrawRequested(now + std::time::Duration::from_millis(frame * 16))));
+                events.push(Event::Window(iced::window::Event::RedrawRequested(
+                    now + std::time::Duration::from_millis(frame * 16),
+                )));
             }
             events.push(release);
             let messages = run_events_at_offset(&app, &events, offset);
-            let moves: Vec<_> = messages.iter().filter(|message| matches!(message, Message::GroupMove(..))).collect();
-            assert!(matches!(moves.as_slice(), [Message::GroupMove(id, index)] if *id == groups[source].id && *index == target as i32), "{moves:?}");
-            let offsets: Vec<_> = messages.iter().filter_map(|message| match message {
-                Message::GroupDragScroll(offset) => Some(*offset), _ => None,
-            }).collect();
-            assert!(offsets.len() > 100, "the stationary grip must keep scrolling: {offsets:?}");
-            if target == 0 { assert_eq!(offsets.last(), Some(&0.0)); }
-            else { assert!(offsets.last().is_some_and(|offset| *offset > 1000.0)); }
+            let moves: Vec<_> = messages
+                .iter()
+                .filter(|message| matches!(message, Message::GroupMove(..)))
+                .collect();
+            assert!(
+                matches!(moves.as_slice(), [Message::GroupMove(id, index)] if *id == groups[source].id && *index == target as i32),
+                "{moves:?}"
+            );
+            let offsets: Vec<_> = messages
+                .iter()
+                .filter_map(|message| match message {
+                    Message::GroupDragScroll(offset) => Some(*offset),
+                    _ => None,
+                })
+                .collect();
+            assert!(
+                offsets.len() > 100,
+                "the stationary grip must keep scrolling: {offsets:?}"
+            );
+            if target == 0 {
+                assert_eq!(offsets.last(), Some(&0.0));
+            } else {
+                assert!(offsets.last().is_some_and(|offset| *offset > 1000.0));
+            }
         }
     }
 

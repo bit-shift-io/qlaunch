@@ -582,3 +582,144 @@ tests, `cargo fmt -p qlaunch_iced --check`, iced Clippy with `--no-deps -D
 warnings`, and the Android release build. Workspace-wide strict Clippy reports
 pre-existing core lints (`module_inception`, `collapsible_if`); the Android build
 retains existing AGP/Kotlin deprecation warnings.
+
+## Release comparison against main (2026-10-31)
+
+Rebuilt both UIs as release APKs on the same day and ran the same measurement on
+the tablet: iPlay60 mini Turbo, Android 14, 1200x1920 at density 320, 90 Hz. The
+iced APK is the `dev/iced` working tree; the Flutter APK is `main` at `d232c78`.
+Both were installed with `adb install -r` over the same saved layout (same debug
+key, so no data was cleared) and settled before each run.
+
+Frame pacing uses the same workload as the section above: five runs of one
+continuous 2 s horizontal drag plus settle, alternating direction, captured with
+`scripts/profile-iced.sh`. Keep in mind the two app-side rows are not
+interchangeable; iced's own `frame-work` log has no Flutter equivalent here.
+
+| Measurement | Flutter release (main) | Iced spike release |
+| --- | ---: | ---: |
+| SF interval p50 (median run) | 11.14 ms | 11.14 ms |
+| SF interval p95 | 11.17 ms | 11.17 ms |
+| SF interval p99 | 11.37 ms | 11.48 ms |
+| SF interval max | 22.29 ms | 11.54 ms |
+| Intervals over 1.5x | 0.8% | 0.0% |
+| App-side `update` p50 / p95 | not collected | 0.02 / 0.10 ms |
+| App-side `view` p50 / p95 | not collected | 0.65 / 0.92 ms |
+| Foreground total PSS | 107,647 KiB (~105 MiB) | 79,119 KiB (~77 MiB) |
+| APK bytes | 57,884,425 | 18,920,790 |
+
+Both hold the 90 Hz cadence through the drag and settle. The medians are within
+one histogram bucket of each other, so this is parity, not a win: the only clear
+difference is that the Flutter run set shows a larger first-run spike (78 ms cold,
+then 22 ms) while iced's median run peaked at 11.54 ms with one 22 ms run. Read
+that as "iced is no worse", not as "iced is faster".
+
+The memory and size gaps are the same shape as the earlier smoke rows but are
+still **not apples-to-apples**: the Flutter APK bundles three ABIs while the
+spike packages arm64 only, and the Flutter artifact carries more complete
+functionality. The PSS figures are single foreground snapshots with different
+working-set histories. `am start -W` was also recorded (iced WaitTime 3 ms,
+Flutter 12 ms) but measures Activity launch, not first usable frame, so it is not
+treated as a startup benchmark. The device was left running the iced release
+afterwards.
+
+Commands: `bash scripts/build-iced.sh release` (with `JAVA_HOME` pointing at a
+full JDK; the default `java-25-openjdk` on this host is a JRE and Gradle rejects
+it) and, from a `main` worktree,
+`JAVA_HOME=<jdk21> flutter build apk --release`.
+
+## Tile rendering: Flutter's raster cache vs iced (2026-10-31)
+
+Flutter (`main`) rendered each app cell — icon, label and shadow — into a raster
+tile and reused it (`TileRasterCache`; modes `combined`, `separate`, `none`, see
+`docs/scroll-performance.md`). That cache existed mainly because **live text was
+expensive, and a *blurred* label shadow cost ~100 ms raster p99** on paged
+transitions; caching the whole tile amortised it to roughly 10 ms.
+
+Iced has no per-widget render-to-texture cache, and the measurements say it does
+not need one:
+
+- Shaped text is cached by content value (`paragraph::Plain` only reshapes when
+  the string or its bounds change), so labels are not reshaped each frame.
+- Icons are one atlas quad each with a stable handle; there is no per-frame
+  decode or re-upload.
+- **There is no glyph blur at all.** `label_shadow_blur` is stored and exposed in
+  Settings but is never read by the iced UI: the shadow is a sharp 1 dp offset
+  copy behind the foreground (`view.rs`). Iced's only `blur_radius` is the quad
+  shadow used by surfaces such as the dialog card, which text cannot use.
+- App-side frame work on the tablet: `update` p50 0.02 ms, `view` p50 0.65 ms
+  against an 11.1 ms (90 Hz) budget.
+
+So the one Flutter feature not reproduced is the **blurred label shadow** — which
+is exactly the cost the tile cache existed to hide. In iced the shadow is free, so
+there is nothing to bake; the remaining work is reducing work per frame (build
+only on-screen rows, stop the scroll-fade rebuilding whole cells, and remove the
+O(results x items) search scan), not caching pixels. A true offscreen tile cache
+(a `Headless` render per tile uploaded as an image) would add a texture per tile
+and invalidation on every icon/label/theme/size change for a gain the numbers do
+not justify.
+
+### Icon size defect (fixed)
+
+Iced clamps a fixed-size image to the available cell (`limits.resolve`), and an
+image drawn with `ContentFit::Contain` then scales down to fit. So whenever a cell
+was narrower or shorter than `icon_size` the icon shrank instead of staying put.
+The probe logged the same app at `100x100` (normal), `95x100` (a brief 420 dp
+start-up size) and `100x52`. It showed on the phone and, per the report, on
+desktop when the window was small. Fixed by sizing every row to hold a full icon
+(`grid::row_height`, now including list layout, which always clipped by 2 dp) and
+by reducing the column count when it cannot fit (`grid::fit_columns`). Icons now
+render at exactly `icon_size`; verified on device in portrait and landscape,
+including at the 420 dp transient.
+
+A second, related defect sat behind the same symptom: iced's flex **compresses**
+fixed-height children that overflow their parent, and the two non-committed page
+slots wrapped their rows in `container(rows).height(Fill)` rather than a
+scrollable. A group taller than the page was therefore squashed to the page
+height, shrinking every icon in it (logged as a 66 dp cell / 52 dp icon). All
+three slots now use a scrollable, so rows are always laid out at their true
+height; only the committed slot takes scroll input or shows a scrollbar.
+
+## Per-frame work after the scrolling fixes (2026-10-31)
+
+Four changes came out of the "small icons" report and the request to stop
+rebuilding tiles:
+
+1. **Icons cannot shrink** — columns are reduced to fit `icon_size`
+   (`grid::fit_columns`) and every row, list included, leaves room for a full
+   icon (`grid::row_height`).
+2. **Off-screen rows are no longer built** — the grid emits a fixed-height spacer
+   above and below the rows its viewport can show (`grid::row_window`). Row
+   height is constant, so the spacers reproduce the scroll extent exactly: the
+   scrollbar, the scroll-fade origin and the accessibility bounds are unchanged.
+   Work per frame is now bounded to about one viewport of rows however long the
+   group is.
+3. **The scroll fade is banded at 8 levels per 32 dp ramp** instead of 1 dp.
+   Each band with a partial alpha costs one rebuilt cell, so the old step rebuilt
+   an edge cell up to ~64 times a frame; it is now bounded at ~16.
+4. **Search no longer scans every item per result.** Results are looked up in an
+   app index rebuilt with the snapshot (`index_items`), replacing the
+   O(results x items) scan.
+
+The `frame-work` log now reports iced's own `layout` and `draw` phases beside
+`update` and `view`, measured by a pass-through probe wrapping the launcher tree
+(`probe.rs`), so the phases the app never calls directly are visible.
+
+Tablet, 90 Hz, five runs of the same 2 s drag workload, release build:
+
+| Phase (app-side, per frame) | p50 | p95 | max |
+| --- | ---: | ---: | ---: |
+| `update` | 0.01-0.02 ms | 0.08-0.14 ms | 0.35 ms |
+| `view` | 0.60-0.64 ms | 0.80-0.94 ms | 1.84 ms |
+| `layout` | 0.32-0.34 ms | 0.46-0.54 ms | 1.48 ms |
+| `draw` | 0.06-0.11 ms | 0.15-0.21 ms | 0.53 ms |
+
+Frame pacing was unchanged at parity (SF interval p50 11.14 ms, median p99
+11.39 ms, no interval over 1.5x). Total app-side work is about 1.05 ms of an
+11.1 ms budget (~9%).
+
+The `draw` figure is the useful surprise: it is ~0.1 ms, so the scroll fade's
+per-band cell rebuilds were never a large cost, and the banding change bounds
+them rather than rescuing the frame budget. `view` and `layout` are the phases
+that carry the per-frame CPU work, which is why the row window (2) matters for
+large groups and the others do not.

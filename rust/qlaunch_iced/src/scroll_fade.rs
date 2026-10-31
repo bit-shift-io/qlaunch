@@ -10,6 +10,42 @@ use crate::Message;
 
 const EXTENT: f32 = 32.0;
 
+/// Alpha steps across each 32 dp ramp. Iced has no alpha-mask layer, so every
+/// distinct opacity is a separately built cell; 1 dp bands rebuilt an edge cell
+/// up to ~64 times a frame for a ramp no one can resolve. Eight levels keep the
+/// ramp smooth for a bounded number of rebuilds.
+const GRADIENT_LEVELS: f32 = 8.0;
+
+/// The `(top, height, alpha)` bands that approximate the gradient mask over the
+/// visible part of one cell. The opaque middle is a single band.
+fn gradient_bands(visible: Rectangle, origin: f32, edges: &Edges) -> Vec<(f32, f32, f32)> {
+    let mut bands = Vec::new();
+    if visible.height <= 0.0 {
+        return bands;
+    }
+    let band = (edges.extent / GRADIENT_LEVELS).max(1.0);
+    let limit = visible.y + visible.height;
+    let mut y = visible.y;
+    while y < limit {
+        let relative = y - origin;
+        let end = if relative < edges.top + edges.extent && edges.before > 0.0 {
+            (y + band).min(origin + edges.top + edges.extent)
+        } else if relative < edges.bottom - edges.extent {
+            origin + edges.bottom - edges.extent
+        } else if edges.after > 0.0 {
+            y + band
+        } else {
+            limit
+        }
+        .min(limit)
+        // Always make progress, even on a degenerate extent.
+        .max(y + 0.001);
+        bands.push((y, end - y, edges.alpha((y + end) / 2.0 - origin)));
+        y = end;
+    }
+    bands
+}
+
 fn tile_alpha(top: f32, height: f32, viewport_top: f32, viewport_height: f32) -> f32 {
     if height <= 0.0 {
         return 0.0;
@@ -152,29 +188,15 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Fade<'_> {
                     viewport.height,
                     self.rows as f32 * self.row_height,
                 );
-                // Iced has no alpha-mask layer. Approximate the shader with
-                // 1 dp bands only inside its two 32 dp ramps; the opaque middle
-                // is a single draw. No background quad obscures the wallpaper.
-                let mut y = visible.y;
-                while y < visible.y + visible.height {
-                    let relative = y - origin;
-                    let end = if relative < edges.top + edges.extent && edges.before > 0.0 {
-                        (y + 1.0).min(origin + edges.top + edges.extent)
-                    } else if relative < edges.bottom - edges.extent {
-                        origin + edges.bottom - edges.extent
-                    } else if edges.after > 0.0 {
-                        y + 1.0
-                    } else {
-                        visible.y + visible.height
-                    }
-                    .min(visible.y + visible.height);
+                // No background quad obscures the wallpaper: the mask is applied
+                // to the cell's own primitives, banded across its two ramps.
+                for (y, height, alpha) in gradient_bands(visible, origin, &edges) {
                     let clip = Rectangle {
                         y,
-                        height: end - y,
+                        height,
                         ..visible
                     };
-                    draw(renderer, edges.alpha((y + end) / 2.0 - origin), clip);
-                    y = end;
+                    draw(renderer, alpha, clip);
                 }
             }
         }
@@ -281,6 +303,50 @@ mod tests {
         assert_eq!(short.alpha(130.0), 0.5);
     }
 
+    #[test]
+    fn gradient_bands_tile_the_cell_with_a_bounded_number_of_opacities() {
+        use iced::Point;
+        // A viewport at offset 16 in a 600 dp list: both ramps live.
+        let edges = Edges::new(16.0, 300.0, 600.0);
+        let visible = Rectangle::new(Point::new(0.0, 0.0), Size::new(100.0, 300.0));
+        let bands = gradient_bands(visible, 0.0, &edges);
+
+        // Bands cover the visible cell exactly: no gap, no overlap.
+        let mut cursor = visible.y;
+        for (y, height, _) in &bands {
+            assert!((*y - cursor).abs() < 0.01);
+            assert!(*height > 0.0);
+            cursor = y + height;
+        }
+        assert!((cursor - (visible.y + visible.height)).abs() < 0.01);
+
+        // The point of the change: each band with a partial alpha costs one
+        // rebuilt cell, and that count is bounded by the level count instead of
+        // growing with a 1 dp step across the ramp.
+        let rebuilt = bands.iter().filter(|(_, _, alpha)| *alpha < 1.0).count();
+        assert!(
+            rebuilt <= 2 * GRADIENT_LEVELS as usize + 2,
+            "{rebuilt} cells would be rebuilt in {} bands",
+            bands.len()
+        );
+        assert!(
+            bands.len() <= 2 * GRADIENT_LEVELS as usize + 6,
+            "{} bands",
+            bands.len()
+        );
+    }
+
+    #[test]
+    fn gradient_bands_are_empty_or_opaque_without_a_ramp() {
+        use iced::Point;
+        let visible = Rectangle::new(Point::new(0.0, 0.0), Size::new(100.0, 50.0));
+        assert!(gradient_bands(visible, 0.0, &Edges::new(0.0, 300.0, 200.0)).is_empty() == false);
+        // Content shorter than the viewport has no ramp at all.
+        let fitting = Edges::new(0.0, 300.0, 200.0);
+        let bands = gradient_bands(visible, 0.0, &fitting);
+        assert!(bands.iter().all(|(_, _, alpha)| *alpha == 1.0));
+    }
+
     /// Exercise the real draw path on a transparent surface, not a black
     /// overlay that would hide (rather than reveal) the Android wallpaper.
     #[test]
@@ -297,9 +363,11 @@ mod tests {
         ))
         .expect("headless wgpu adapter");
         for (mode, first_alpha) in [
-            (ScrollFadeStyle::None, 255),
-            (ScrollFadeStyle::Tile, 127),
-            (ScrollFadeStyle::Gradient, 59),
+            (ScrollFadeStyle::None, 255..=255),
+            (ScrollFadeStyle::Tile, 120..=135),
+            // Partial, and not pinned to one band: the whole point is that the
+            // edge is translucent, so the wallpaper shows through.
+            (ScrollFadeStyle::Gradient, 1..=254),
         ] {
             // First row is 25% outside the viewport; bottom has more content.
             let make = |alpha| {
@@ -356,10 +424,8 @@ mod tests {
                 Headless::screenshot(&mut renderer, Size::new(100, 250), 1.0, Color::TRANSPARENT);
             let alpha_at =
                 |point: Point| pixels[((point.y as usize * 100 + point.x as usize) * 4) + 3] as i32;
-            assert!(
-                (alpha_at(Point::new(50.0, 0.0)) - first_alpha).abs() <= 2,
-                "{mode:?}"
-            );
+            let top = alpha_at(Point::new(50.0, 0.0));
+            assert!(first_alpha.contains(&top), "{mode:?} top={top}");
             assert_eq!(
                 alpha_at(Point::new(50.0, 120.0)),
                 255,

@@ -61,7 +61,13 @@ fn destination(drag: Drag, bounds: Rectangle, count: usize, offset: f32) -> usiz
         .min(count.saturating_sub(1))
 }
 
-fn translation(drag: Option<Drag>, bounds: Rectangle, count: usize, index: usize, offset: f32) -> Vector {
+fn translation(
+    drag: Option<Drag>,
+    bounds: Rectangle,
+    count: usize,
+    index: usize,
+    offset: f32,
+) -> Vector {
     let Some(drag) = drag else {
         return Vector::ZERO;
     };
@@ -177,7 +183,13 @@ impl Widget<Message, iced::Theme, iced::Renderer> for ReorderList<'_> {
             .chain(drag.map(|d| d.index));
         renderer.with_layer(clip, |renderer| {
             for index in indices {
-                let shift = translation(drag, layout.bounds(), self.entries.len(), index, scroll_offset(layout.bounds(), *viewport));
+                let shift = translation(
+                    drag,
+                    layout.bounds(),
+                    self.entries.len(),
+                    index,
+                    scroll_offset(layout.bounds(), *viewport),
+                );
                 let child_viewport = Rectangle::new(viewport.position() - shift, viewport.size());
                 renderer.with_translation(shift, |renderer| {
                     self.entries[index].content.as_widget().draw(
@@ -302,12 +314,14 @@ impl Widget<Message, iced::Theme, iced::Renderer> for ReorderList<'_> {
             Event::Touch(touch::Event::FingerPressed { id, position }) => {
                 Some((Pointer::Touch(*id), *position))
             }
-            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
-                cursor.position().map(|p| (Pointer::Mouse, p - Vector::new(0.0, offset)))
-            }
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => cursor
+                .position()
+                .map(|p| (Pointer::Mouse, p - Vector::new(0.0, offset))),
             _ => None,
         };
-        if let Some((pointer, position)) = press.filter(|(_, p)| viewport.contains(*p + Vector::new(0.0, offset))) {
+        if let Some((pointer, position)) =
+            press.filter(|(_, p)| viewport.contains(*p + Vector::new(0.0, offset)))
+        {
             let content_position = position + Vector::new(0.0, offset);
             for (index, child) in layout.children().enumerate() {
                 let handle = Rectangle {

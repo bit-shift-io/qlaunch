@@ -11,6 +11,7 @@ mod metrics;
 mod overlay;
 pub mod pager;
 mod placeholder;
+mod probe;
 mod reorder_list;
 mod screens;
 mod scroll_fade;
@@ -22,7 +23,7 @@ use accessibility::{ActionRequest, Target};
 use gesture::{Gesture, Outcome, Start};
 use pager::Pager;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use iced::futures::{SinkExt, executor::block_on};
@@ -299,6 +300,7 @@ pub(crate) mod tests {
             icon_revisions: vec![],
             folder_icons: vec![],
         });
+        app.reindex_items();
         let home = app.home_index();
         let count = app.snapshot.as_ref().unwrap().page_ids.len();
         app.pager = Pager::new(count, home);
@@ -358,6 +360,54 @@ pub(crate) mod tests {
             }],
         ));
         assert!(app.results.is_empty());
+    }
+
+    #[test]
+    fn search_items_follow_the_result_order_and_skip_unknown_apps() {
+        use qlaunch_core::model::{AppRef, Item};
+        let mut app = app();
+        let snapshot = app.snapshot.as_mut().unwrap();
+        let group = snapshot.page_ids[0].clone();
+        let item = |id: &str, package: &str| Item {
+            id: id.into(),
+            group_id: group.clone(),
+            label: id.into(),
+            label_overridden: false,
+            app: Some(AppRef {
+                package: package.into(),
+                activity: String::new(),
+            }),
+            shortcut: None,
+            uninstalled: false,
+            order: 0,
+            icon_override: None,
+            folder_group_id: None,
+        };
+        snapshot.items = vec![item("a", "one"), item("b", "two"), item("c", "three")];
+        app.reindex_items();
+        app.searching = true;
+        app.query = "t".into();
+        app.results = vec![
+            AppRef {
+                package: "three".into(),
+                activity: String::new(),
+            },
+            AppRef {
+                package: "missing".into(),
+                activity: String::new(),
+            },
+            AppRef {
+                package: "one".into(),
+                activity: String::new(),
+            },
+        ];
+        let ids: Vec<_> = app
+            .visible_items()
+            .into_iter()
+            .map(|item| item.id.clone())
+            .collect();
+        // Results order wins; a result with no item in the model is skipped.
+        assert_eq!(ids, ["c", "a"]);
     }
 
     #[test]
@@ -1375,6 +1425,9 @@ struct App {
     pub(crate) recent: Vec<AppRef>,
     pub(crate) show_recent: bool,
     pub(crate) icons: HashMap<AppRef, image::Handle>,
+    /// Item position per app, rebuilt with the snapshot. Search results are
+    /// looked up here instead of scanning every item per result.
+    item_by_app: HashMap<AppRef, usize>,
     pending: HashSet<AppRef>,
     pub(crate) error: Option<String>,
     pub(crate) size: iced::Size,
@@ -1384,7 +1437,7 @@ struct App {
     pub(crate) dialog: Option<dialog::Dialog>,
     pub(crate) select: Option<dialog::Select>,
     accessibility: accessibility::State,
-    metrics: Mutex<metrics::Samples>,
+    metrics: Arc<Mutex<metrics::Samples>>,
     gesture: Gesture,
     pending_target: Option<Start>,
     suppress_dismiss_pointer: bool,
@@ -1399,6 +1452,18 @@ fn window_settings() -> window::Settings {
         size: iced::Size::new(420.0, 800.0),
         ..Default::default()
     }
+}
+
+/// Item position per app, for `App::visible_items`. The first item for an app
+/// wins, matching the linear scan it replaces.
+fn index_items(snapshot: &core::ModelSnapshot) -> HashMap<AppRef, usize> {
+    let mut index = HashMap::with_capacity(snapshot.items.len());
+    for (position, item) in snapshot.items.iter().enumerate() {
+        if let Some(app) = &item.app {
+            index.entry(app.clone()).or_insert(position);
+        }
+    }
+    index
 }
 
 /// Core calls perform JNI and disk IO. Never execute them on iced's UI thread.
@@ -1442,6 +1507,7 @@ impl App {
             recent: vec![],
             show_recent: false,
             icons: HashMap::new(),
+            item_by_app: HashMap::new(),
             pending: HashSet::new(),
             error: None,
             size: iced::Size::new(420.0, 800.0),
@@ -1451,7 +1517,7 @@ impl App {
             dialog: None,
             select: None,
             accessibility: accessibility::State::default(),
-            metrics: Mutex::new(metrics::Samples::default()),
+            metrics: Arc::new(Mutex::new(metrics::Samples::default())),
             gesture: Gesture::new(),
             pending_target: None,
             suppress_dismiss_pointer: false,
@@ -1616,6 +1682,16 @@ impl App {
 
     /// Installs a new snapshot. Reloads keep the group on screen when it still
     /// exists; the first load starts on the core's home group.
+    /// Rebuilds the app-index used by `visible_items` from the current
+    /// snapshot. Call after replacing `snapshot`.
+    fn reindex_items(&mut self) {
+        let index = self
+            .snapshot
+            .as_ref()
+            .map_or_else(HashMap::new, index_items);
+        self.item_by_app = index;
+    }
+
     fn apply_snapshot(&mut self, snapshot: core::ModelSnapshot, first: bool) {
         let current = self.current_group_id().cloned();
         // A package update may change an icon without changing its AppRef.
@@ -1627,6 +1703,7 @@ impl App {
             self.icons.clear();
         }
         self.snapshot = Some(snapshot);
+        self.reindex_items();
         let Some(snapshot) = &self.snapshot else {
             return;
         };
@@ -3499,7 +3576,7 @@ impl App {
                 &self.frequent
             };
             refs.iter()
-                .filter_map(|app| s.items.iter().find(|i| i.app.as_ref() == Some(app)))
+                .filter_map(|app| self.item_by_app.get(app).map(|&index| &s.items[index]))
                 .take(if self.query.is_empty() {
                     self.columns() * 3
                 } else {
@@ -3518,20 +3595,30 @@ impl App {
         }
     }
 
+    /// Shared with the frame-phase probe in the view tree.
+    pub(crate) fn metrics_handle(&self) -> Arc<Mutex<metrics::Samples>> {
+        self.metrics.clone()
+    }
+
     pub(crate) fn columns(&self) -> usize {
-        self.snapshot
-            .as_ref()
-            .map(|s| {
-                if s.settings.layout == LayoutStyle::List {
-                    1
-                } else if self.size.width > self.size.height {
-                    s.settings.grid_columns_landscape as usize
-                } else {
-                    s.settings.grid_columns_portrait as usize
-                }
-            })
-            .unwrap_or(4)
-            .max(1)
+        let Some(s) = self.snapshot.as_ref() else {
+            return 4;
+        };
+        if s.settings.layout == LayoutStyle::List {
+            return 1;
+        }
+        let configured = if self.size.width > self.size.height {
+            s.settings.grid_columns_landscape
+        } else {
+            s.settings.grid_columns_portrait
+        };
+        // Reduce the column count when it cannot hold a full-size icon, so a
+        // narrow window or a brief stale size never shrinks the icons.
+        crate::grid::fit_columns(
+            configured.max(1) as usize,
+            crate::grid::content_width(self.size, self.insets),
+            &s.settings,
+        )
     }
 
     fn warm_icons(&mut self) -> Task<Message> {

@@ -94,16 +94,35 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         .into()
     } else {
         let group = app.folder.as_ref().unwrap().clone();
-        scrollable(view::grid_rows(app, items, layout.columns, colour, 1.0))
-            .id("folder-apps")
-            .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
-            .style(theme::scrollable)
-            .on_scroll(move |viewport| {
-                Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
-            })
-            .width(Fill)
-            .height(Fill)
-            .into()
+        let offset = app
+            .scroll
+            .get(&Region::Group(group.clone()))
+            .copied()
+            .unwrap_or(0.0);
+        let window = grid::RowWindow::new(
+            items.len(),
+            layout.columns,
+            grid::row_height(settings),
+            layout.viewport.height,
+            offset,
+        );
+        scrollable(view::grid_rows(
+            app,
+            items,
+            layout.columns,
+            colour,
+            1.0,
+            Some(&window),
+        ))
+        .id("folder-apps")
+        .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
+        .style(theme::scrollable)
+        .on_scroll(move |viewport| {
+            Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
+        })
+        .width(Fill)
+        .height(Fill)
+        .into()
     };
     let padding = layout.viewport.x - layout.bounds.x;
     let card = opaque(

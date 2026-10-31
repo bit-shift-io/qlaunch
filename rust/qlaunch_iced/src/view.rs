@@ -184,7 +184,14 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
     };
     // Keep the base and folder at stable child indices so modal transitions
     // never reconcile a scrollable against a different tree hierarchy.
-    iced::widget::stack![base, folder, overlay, screen, snackbar, dialog, select].into()
+    let tree: Element<'_, Message> =
+        iced::widget::stack![base, folder, overlay, screen, snackbar, dialog, select].into();
+    // Times the layout and draw of the whole tree for the `frame-work` log.
+    crate::probe::PhaseProbe {
+        samples: app.metrics_handle(),
+        content: tree,
+    }
+    .into()
 }
 
 /// What each of the three page slots shows, before it becomes a widget. The
@@ -275,22 +282,47 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
             .filter(|item| Some(&item.group_id) == planned.group.as_ref())
             .collect();
         let alpha = crate::slots::page_opacity(index as f32 - 1.0 - app.pager.offset());
-        let rows = grid_rows(app, items, columns, colour, alpha);
-        let content: Element<'a, Message> = if planned.scrollable {
-            let mut apps = scrollable(rows)
-                .id("apps")
-                .direction(crate::theme::vertical_scrollbar(app.scrollbars_visible()))
-                .style(crate::theme::scrollable)
-                .height(Fill);
+        // Only build the rows the page can actually show. A neighbour slot is a
+        // preview of the top of its group, so it always windows from zero.
+        let offset = if planned.scrollable {
+            planned
+                .group
+                .as_ref()
+                .and_then(|group| app.scroll.get(&Region::Group(group.clone())))
+                .copied()
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        let window = grid::RowWindow::new(
+            items.len(),
+            columns,
+            grid::row_height(&snapshot.settings),
+            app.size.height,
+            offset,
+        );
+        let rows = grid_rows(app, items, columns, colour, alpha, Some(&window));
+        // Every slot scrolls, so its rows are laid out at their true height. A
+        // plain container would let iced compress a long group down to the page
+        // height, shrinking every icon in it. Only the committed slot answers
+        // scroll input, and only it shows a scrollbar; the neighbours stay at
+        // the top of their group.
+        let mut apps = scrollable(rows)
+            .direction(crate::theme::vertical_scrollbar(
+                planned.scrollable && app.scrollbars_visible(),
+            ))
+            .style(crate::theme::scrollable)
+            .width(Fill)
+            .height(Fill);
+        if planned.scrollable {
+            apps = apps.id("apps");
             if let Some(group) = planned.group.clone() {
                 apps = apps.on_scroll(move |viewport| {
                     Message::Scrolled(Region::Group(group.clone()), viewport.absolute_offset().y)
                 });
             }
-            apps.into()
-        } else {
-            container(rows).width(Fill).height(Fill).clip(true).into()
-        };
+        }
+        let content: Element<'a, Message> = apps.into();
         Slot {
             key: planned.key.clone(),
             content: mouse_area(content).on_press(Message::BlankPressed).into(),
@@ -371,7 +403,23 @@ fn single_grid<'a>(
     searching: bool,
 ) -> Element<'a, Message> {
     let columns = app.columns();
-    let rows = grid_rows(app, items, columns, colour, 1.0);
+    let settings = &app.snapshot.as_ref().unwrap().settings;
+    let offset = if searching {
+        app.scroll.get(&Region::Search).copied().unwrap_or(0.0)
+    } else {
+        app.current_group_id()
+            .and_then(|group| app.scroll.get(&Region::Group(group.clone())))
+            .copied()
+            .unwrap_or(0.0)
+    };
+    let window = grid::RowWindow::new(
+        items.len(),
+        columns,
+        grid::row_height(settings),
+        app.size.height,
+        offset,
+    );
+    let rows = grid_rows(app, items, columns, colour, 1.0, Some(&window));
     let mut apps = scrollable(rows)
         .direction(crate::theme::vertical_scrollbar(app.scrollbars_visible()))
         .style(crate::theme::scrollable)
@@ -396,11 +444,23 @@ pub(crate) fn grid_rows<'a>(
     columns: usize,
     colour: Color,
     alpha: f32,
+    window: Option<&grid::RowWindow>,
 ) -> Element<'a, Message> {
     let mut rows = column![].spacing(0);
     let settings = &app.snapshot.as_ref().unwrap().settings;
     let row_count = items.len().div_ceil(columns);
-    for (index, chunk) in items.chunks(columns).enumerate() {
+    // Only the rows in the window are built; the spacers keep the full extent.
+    let (range, above, below) = match window {
+        Some(window) => (window.rows.clone(), window.above, window.below),
+        None => (0..row_count, 0.0, 0.0),
+    };
+    if above > 0.0 {
+        rows = rows.push(space().height(above));
+    }
+    for index in range {
+        let start = index * columns;
+        let end = (start + columns).min(items.len());
+        let chunk = &items[start..end];
         let mut line = row![].spacing(0);
         for &item in chunk {
             line = line.push(crate::scroll_fade::cell(
@@ -415,6 +475,9 @@ pub(crate) fn grid_rows<'a>(
             line = line.push(space().width(Fill));
         }
         rows = rows.push(line);
+    }
+    if below > 0.0 {
+        rows = rows.push(space().height(below));
     }
     rows.into()
 }
@@ -499,7 +562,7 @@ fn cell<'a>(app: &'a App, item: &'a Item, colour: Color, alpha: f32) -> Element<
         container(body)
             .width(Fill)
             .height(grid::row_height(settings))
-            .padding([6, 5])
+            .padding([grid::CELL_PADDING_Y, grid::CELL_PADDING_X])
             .style(move |_| container::Style {
                 background: if pressed {
                     Some(Color::from_rgba(1.0, 1.0, 1.0, 0.10 * alpha).into())

@@ -2072,6 +2072,7 @@ mod tests {
             icon_revisions: vec![],
             folder_icons: vec![],
         });
+        app.reindex_items();
         app.pager = Pager::new(3, 0);
         app.frequent = refs[..12].to_vec();
         app.recent = refs[12..16].to_vec();

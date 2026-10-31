@@ -1,12 +1,16 @@
 //! App-side frame-work timings. One window covers a drag or page settle;
 //! `App::update` starts it and `App::view` records samples.
 
-/// Update and view durations in milliseconds for one motion window.
+/// Per-frame phase durations in milliseconds for one motion window. `update`
+/// and `view` are measured in `App`; `layout` and `draw` are measured by the
+/// probe that wraps the launcher tree.
 #[derive(Default)]
 pub struct Samples {
     active: bool,
     update: Vec<f32>,
     view: Vec<f32>,
+    layout: Vec<f32>,
+    draw: Vec<f32>,
 }
 
 pub struct Summary {
@@ -17,6 +21,12 @@ pub struct Summary {
     pub view_p50: f32,
     pub view_p95: f32,
     pub view_max: f32,
+    pub layout_p50: f32,
+    pub layout_p95: f32,
+    pub layout_max: f32,
+    pub draw_p50: f32,
+    pub draw_p95: f32,
+    pub draw_max: f32,
 }
 
 impl Samples {
@@ -47,6 +57,18 @@ impl Samples {
         }
     }
 
+    pub fn record_layout(&mut self, ms: f32) {
+        if self.active {
+            self.layout.push(ms);
+        }
+    }
+
+    pub fn record_draw(&mut self, ms: f32) {
+        if self.active {
+            self.draw.push(ms);
+        }
+    }
+
     /// Closes the window and summarizes it. Returns `None` when no window is
     /// open; otherwise the sample vectors are emptied.
     pub fn finish(&mut self) -> Option<Summary> {
@@ -56,10 +78,20 @@ impl Samples {
         self.active = false;
         let update = std::mem::take(&mut self.update);
         let view = std::mem::take(&mut self.view);
+        let layout = std::mem::take(&mut self.layout);
+        let draw = std::mem::take(&mut self.draw);
         let mut sorted_update = update.clone();
         let mut sorted_view = view.clone();
-        sorted_update.sort_by(f32::total_cmp);
-        sorted_view.sort_by(f32::total_cmp);
+        let mut sorted_layout = layout.clone();
+        let mut sorted_draw = draw.clone();
+        for sorted in [
+            &mut sorted_update,
+            &mut sorted_view,
+            &mut sorted_layout,
+            &mut sorted_draw,
+        ] {
+            sorted.sort_by(f32::total_cmp);
+        }
         Some(Summary {
             frames: update.len().max(view.len()),
             update_p50: percentile(&sorted_update, 0.50),
@@ -68,6 +100,12 @@ impl Samples {
             view_p50: percentile(&sorted_view, 0.50),
             view_p95: percentile(&sorted_view, 0.95),
             view_max: sorted_view.last().copied().unwrap_or(0.0),
+            layout_p50: percentile(&sorted_layout, 0.50),
+            layout_p95: percentile(&sorted_layout, 0.95),
+            layout_max: sorted_layout.last().copied().unwrap_or(0.0),
+            draw_p50: percentile(&sorted_draw, 0.50),
+            draw_p95: percentile(&sorted_draw, 0.95),
+            draw_max: sorted_draw.last().copied().unwrap_or(0.0),
         })
     }
 }
@@ -86,7 +124,9 @@ impl Summary {
     pub fn log_line(&self) -> String {
         format!(
             "frame-work frames={} update p50={:.2}ms p95={:.2}ms max={:.2}ms \
-             view p50={:.2}ms p95={:.2}ms max={:.2}ms",
+             view p50={:.2}ms p95={:.2}ms max={:.2}ms \
+             layout p50={:.2}ms p95={:.2}ms max={:.2}ms \
+             draw p50={:.2}ms p95={:.2}ms max={:.2}ms",
             self.frames,
             self.update_p50,
             self.update_p95,
@@ -94,6 +134,12 @@ impl Summary {
             self.view_p50,
             self.view_p95,
             self.view_max,
+            self.layout_p50,
+            self.layout_p95,
+            self.layout_max,
+            self.draw_p50,
+            self.draw_p95,
+            self.draw_max,
         )
     }
 }
@@ -149,6 +195,26 @@ mod tests {
         assert!(samples.finish().is_some());
         assert!(!samples.is_active());
         assert!(samples.finish().is_none());
+    }
+
+    #[test]
+    fn layout_and_draw_are_recorded_beside_update_and_view() {
+        let mut samples = Samples::default();
+        samples.record_layout(9.0);
+        samples.record_draw(9.0);
+        assert!(samples.finish().is_none(), "inactive records nothing");
+        samples.start();
+        samples.record_update(1.0);
+        samples.record_view(2.0);
+        samples.record_layout(3.0);
+        samples.record_draw(4.0);
+        let summary = samples.finish().expect("window is open");
+        assert_eq!(summary.layout_p50, 3.0);
+        assert_eq!(summary.layout_max, 3.0);
+        assert_eq!(summary.draw_p50, 4.0);
+        assert_eq!(summary.draw_max, 4.0);
+        assert!(summary.log_line().contains("layout p50=3.00ms"));
+        assert!(summary.log_line().contains("draw p50=4.00ms"));
     }
 
     #[test]
