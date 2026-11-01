@@ -789,3 +789,52 @@ profiled over five sustained horizontal drags. Median-run SF p50/p95/p99 was
 11.14/11.16/11.38 ms; one run contained a 22.29 ms interval. Workspace
 verification passed all 717 tests, including 276 Iced tests and ignored GPU
 checks. Independent code review found no issues with the pager change.
+
+## Elastic scroll switched off (2026-11-01)
+
+The touch overscroll feedback added after the paging work — the resisted edge
+bounce, the row spread and the velocity-proportional stretch — is disabled by
+`elastic_scroll::ENABLED = false`. `wrap` is the single production entry point
+for that feedback, so it now returns the scroller unchanged; the wrapper, its
+spring, the stretch module and all their tests are retained and can be restored
+by flipping the constant. `content` and `row` remain in the tree but stay inert
+because only the wrapper ever writes the shared `Motion`.
+
+This is a scope decision while other work continues, not a fix for the
+intermittent blank screen recorded in `TODO.md`; no evidence yet links the
+feedback to that failure. The test suite keeps its coverage of the retained
+implementation through the unconditional wrapper constructor, and a separate
+test drags past the edge through the production entry point to prove the
+wrapper is bypassed while the switch is off.
+
+## Blank/frozen Home from the window close on background (2026-11-01)
+
+The daemon used to follow iced_android's optional "close the window while
+invisible" pattern: `Foreground(false)` returned `window::close(id)`, and the
+next `Foreground(true)` opened a new one. That is unsafe on Android because
+`onStart`/`onStop` are static JNI calls with no activity identity. When the
+system destroys and recreates the activity inside one process, the destroyed
+instance's `onStop` arrives after the replacement's `onStart`, so the stale
+`false` closed the window the new instance had just kept. The process stayed
+alive, `RESUMED` and focused, but with no window: no redraws and no input, so the
+last frame stayed frozen (and a dropped surface showed it as the black Home in
+`TODO.md`). Only a surface recreation, such as screen off/on, brought it back.
+
+winit's Android backend never destroys the window itself — `MainEvent::
+TerminateWindow` merely emits `Suspended` — so the only `Closed` came from the
+app asking for it. `Foreground(false)` now leaves the window open
+(`window_action`), a missing window is still opened on `Foreground(true)`, and
+`window::Event::Focused`, which always belongs to the live instance, clears a
+background flag left stale by the same race. The GPU memory the old pattern freed
+while invisible is now retained; correctness of the Home screen is worth more.
+
+Verified on the Pixel 5a by A/B testing one forced in-place activity restart
+(`am start -f 0x10008000`): the pre-fix APK logged `window closed
+background=true` and then took no input, the fixed APK logged `foreground false
+... action=Nothing`, kept rendering and stayed responsive. A 4 x 8 lifecycle
+stress loop (Home, page swipe, app switch, recents, notification shade, screen
+off/on, search with keyboard, in-place restart) stayed healthy. The installed
+Oct 28 APK cannot be updated in place — it was signed with a debug key that is
+not on this machine — so the fix was verified as the side-by-side
+`bitshift.qlaunch.blanktest` package; see `TODO.md` for how to install it as the
+real Home without losing the saved layout.

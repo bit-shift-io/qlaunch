@@ -14,6 +14,13 @@ use iced::{Element, Event, Length, Point, Rectangle, Size, Vector, touch, window
 
 use crate::Message;
 
+/// Feature switch for the elastic overscroll and velocity stretch.
+///
+/// The implementation is retained below; `wrap` is the only production entry
+/// point, so returning the scroller unchanged switches off the bounce, the row
+/// spread and the stretch together. Set this to `true` to restore them.
+pub(crate) const ENABLED: bool = false;
+
 /// Upper bound on the visual displacement, in logical pixels.
 const MAX_DISPLACEMENT: f32 = 48.0;
 /// The bounce is also bounded relative to a short viewport.
@@ -385,6 +392,19 @@ struct Wrapper<'a> {
 /// Wrap a fully configured vertical scroller. The wrapper forwards every
 /// operation and event; it only observes and decorates.
 pub(crate) fn wrap<'a>(
+    scroller: Element<'a, Message>,
+    motion: Motion,
+    policy: Policy,
+) -> Element<'a, Message> {
+    if !ENABLED {
+        return scroller;
+    }
+    wrap_unconditional(scroller, motion, policy)
+}
+
+/// The retained wrapper construction, shared by [`wrap`] and by the tests that
+/// keep the implementation covered while the feature is switched off.
+fn wrap_unconditional<'a>(
     scroller: Element<'a, Message>,
     motion: Motion,
     policy: Policy,
@@ -1338,13 +1358,27 @@ mod tests {
     }
 
     fn harness(policy: Policy) -> (Element<'static, Message>, Tree, layout::Node, Motion) {
+        harness_with(policy, true)
+    }
+
+    /// `retained` builds the wrapper even while the feature switch is off, so
+    /// the implementation keeps its coverage; `false` goes through the same
+    /// production entry point the launcher uses.
+    fn harness_with(
+        policy: Policy,
+        retained: bool,
+    ) -> (Element<'static, Message>, Tree, layout::Node, Motion) {
         let motion = Motion::new();
         let scroller: Element<'static, Message> = scrollable(content(list_content(), &motion))
             .id("test-scroll")
             .width(Fill)
             .height(Fill)
             .into();
-        let mut element = wrap(scroller, motion.clone(), policy);
+        let mut element = if retained {
+            wrap_unconditional(scroller, motion.clone(), policy)
+        } else {
+            wrap(scroller, motion.clone(), policy)
+        };
         let mut tree = Tree::new(&element);
         let node = with_renderer(|renderer| {
             element.as_widget_mut().layout(
@@ -1354,6 +1388,33 @@ mod tests {
             )
         });
         (element, tree, node, motion)
+    }
+
+    #[test]
+    #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
+    fn the_feature_switch_bypasses_the_elastic_wrapper() {
+        let (mut element, mut tree, node, motion) = harness_with(Policy::Normal, false);
+        let mut scroll = iced::advanced::widget::operation::scrollable::scroll_to::<()>(
+            iced::widget::Id::new("test-scroll"),
+            iced::widget::scrollable::AbsoluteOffset {
+                x: 0.0,
+                y: 100_000.0,
+            }
+            .into(),
+        );
+        with_renderer(|renderer| {
+            element
+                .as_widget_mut()
+                .operate(&mut tree, Layout::new(&node), renderer, &mut scroll);
+        });
+        drag(
+            &mut element,
+            &mut tree,
+            &node,
+            Point::new(150.0, 150.0),
+            Point::new(150.0, 70.0),
+        );
+        assert_eq!(motion.values(), Values::default());
     }
 
     fn event(

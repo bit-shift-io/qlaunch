@@ -63,6 +63,34 @@ pub(crate) mod tests {
     use qlaunch_core::{model::Model, settings::Settings};
 
     #[test]
+    fn backgrounding_keeps_the_window_open() {
+        let id = window::Id::unique();
+        // A background transition must not ask iced to close the window: the
+        // destroyed activity's late `onStop` would otherwise close the window
+        // the replacement activity just kept, leaving no window to draw into.
+        assert_eq!(window_action(false, Some(id)), WindowAction::Nothing);
+        assert_eq!(window_action(true, Some(id)), WindowAction::Nothing);
+        // A window that really went away is reopened on the next foreground.
+        assert_eq!(window_action(true, None), WindowAction::Open);
+        assert_eq!(window_action(false, None), WindowAction::Nothing);
+    }
+
+    #[test]
+    fn window_focus_clears_a_stale_background_flag() {
+        let (mut app, _) = App::new();
+        app.window = Some(window::Id::unique());
+        let _ = app.update(Message::Foreground(true));
+        assert!(!app.background);
+        // The destroyed activity's `onStop` arrives after the replacement's
+        // `onStart`, which marks the visible app as background.
+        let _ = app.update(Message::Foreground(false));
+        assert!(app.background);
+        // The live window's focus repairs it.
+        let _ = app.update(Message::WindowFocused);
+        assert!(!app.background);
+    }
+
+    #[test]
     fn back_order_closes_select_then_dialog_then_screen() {
         let mut app = app();
         app.screens.push(Screen::Settings);
@@ -1515,6 +1543,7 @@ enum Message {
     Opened(window::Id),
     Closed,
     Foreground(bool),
+    WindowFocused,
     Insets(Insets),
     Scale(f32),
     Loaded(Result<core::ModelSnapshot, String>),
@@ -1558,6 +1587,33 @@ pub(crate) enum Screen {
     Advanced,
     Groups,
     GroupApps(Id),
+}
+
+/// What a foreground change does to the iced window.
+#[derive(Debug, PartialEq)]
+enum WindowAction {
+    Nothing,
+    Open,
+}
+
+/// Decides the window effect of `foreground`.
+///
+/// Backgrounding never closes the window. winit's Android backend keeps the
+/// native window across `onStop` (`TerminateWindow` suspends it, it does not
+/// destroy it), so the only close is one this app asks for. That close races an
+/// activity restart: the destroyed instance's `onStop` arrives after the new
+/// instance's `onStart`, so its `Foreground(false)` closed the window the new
+/// instance had just kept. iced then had no window at all — no redraws and no
+/// input — until the surface happened to be recreated, which is the frozen
+/// stale frame (and the blank screen once the surface is dropped) reported on
+/// device. Reopening on `Foreground(true)` still covers a window that really
+/// went away.
+fn window_action(visible: bool, window: Option<window::Id>) -> WindowAction {
+    if visible && window.is_none() {
+        WindowAction::Open
+    } else {
+        WindowAction::Nothing
+    }
 }
 
 struct App {
@@ -1713,6 +1769,15 @@ impl App {
             platform::foreground().map(Message::Foreground),
             platform::system_scale().map(Message::Scale),
             window::close_events().map(|_| Message::Closed),
+            // `Foreground` comes from the activity's `onStart`/`onStop`. When an
+            // activity is restarted, the destroyed instance's late `onStop` can
+            // arrive after the replacement's `onStart` and leave `background`
+            // stuck true while the window is visible. The window's own focus
+            // always belongs to the live instance, so it repairs that.
+            window::events().filter_map(|(_, event)| match event {
+                window::Event::Focused => Some(Message::WindowFocused),
+                _ => None,
+            }),
             window::resize_events().map(|(_, size)| Message::Resized(size)),
             keyboard::listen().filter_map(|event| match event {
                 keyboard::Event::KeyPressed {
@@ -2969,23 +3034,44 @@ impl App {
                 }
             }
             Message::Opened(id) => {
+                log::info!("window opened {id:?}");
                 self.window = Some(id);
                 return window::scale_factor(id).map(Message::Density);
             }
             Message::Closed => {
+                log::info!(
+                    "window closed id={:?} background={}",
+                    self.window,
+                    self.background
+                );
                 self.window = None;
                 if !self.background {
                     return iced::exit();
                 }
             }
             Message::Foreground(visible) => {
+                let action = window_action(visible, self.window);
+                log::info!(
+                    "foreground {visible} window={:?} action={action:?}",
+                    self.window
+                );
                 self.set_foreground(visible);
-                if visible && self.window.is_none() {
-                    let (id, open) = window::open(window_settings());
-                    self.window = Some(id);
-                    return open.map(Message::Opened);
-                } else if !visible && let Some(id) = self.window {
-                    return window::close(id);
+                match action {
+                    WindowAction::Open => {
+                        let (id, open) = window::open(window_settings());
+                        self.window = Some(id);
+                        return open.map(Message::Opened);
+                    }
+                    WindowAction::Nothing => {}
+                }
+            }
+            // Only ever clears a stale background state: `Unfocused` still does
+            // not set it, so the activity lifecycle stays the authority for
+            // closing resources while the launcher is genuinely invisible.
+            Message::WindowFocused => {
+                if self.background {
+                    log::info!("window focused while marked background; resuming");
+                    self.set_foreground(true);
                 }
             }
             Message::Insets(insets) => {
@@ -2999,7 +3085,10 @@ impl App {
                     self.density = density;
                 }
             }
-            Message::Resized(size) => self.size = size,
+            Message::Resized(size) => {
+                log::info!("window resized {size:?}");
+                self.size = size;
+            }
             Message::Loaded(result) => match result {
                 Ok(snapshot) => self.apply_snapshot(snapshot, self.snapshot.is_none()),
                 Err(error) => self.error = Some(error),
@@ -3498,6 +3587,9 @@ impl App {
         }
         match event {
             iced::touch::Event::FingerPressed { id, position } => {
+                // Kept at info: the last input line is what tells a live event
+                // loop from a frozen one when the window has gone away.
+                log::info!("touch pressed {id:?} at {position:?}");
                 if self.overlay.is_some() {
                     self.pressed = None;
                     self.pending_target = None;
@@ -3518,6 +3610,7 @@ impl App {
                 self.apply_gesture(outcome)
             }
             iced::touch::Event::FingerLifted { id, position } => {
+                log::debug!("touch lifted {id:?} at {position:?}");
                 let outcome = self.gesture.released(id, position, Instant::now());
                 self.pressed = None;
                 self.pending_target = None;
@@ -3528,6 +3621,7 @@ impl App {
                 }
             }
             iced::touch::Event::FingerLost { id, .. } => {
+                log::debug!("touch lost {id:?}");
                 let outcome = self.gesture.lost(id);
                 self.pressed = None;
                 self.pending_target = None;
