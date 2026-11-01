@@ -18,7 +18,7 @@ android {
     compileSdk = 36
     ndkVersion = "28.2.13676358"
 
-    // Supplied by scripts/build-iced.sh from Cargo's resolved pinned dependency.
+    // Supplied by scripts/build.sh from Cargo's resolved pinned dependency.
     sourceSets.getByName("main").java.setSrcDirs(listOf(
         "src/main/kotlin", providers.gradleProperty("icedAndroidJava").get()
     ))
@@ -35,7 +35,7 @@ android {
         minSdk = 34
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0.0-iced-spike"
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }

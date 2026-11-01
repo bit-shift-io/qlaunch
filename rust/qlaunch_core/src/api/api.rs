@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-#[cfg(feature = "flutter")]
-use crate::frb_generated::StreamSink;
 use crate::model::{AppRef, Group, GroupRole, IconImage, Id, Item};
 use crate::platform::AppSource;
 #[cfg(target_os = "android")]
@@ -19,7 +17,7 @@ pub use crate::usage::UsageHit;
 use super::events::CoreEvent;
 use super::state;
 
-/// The platform's `AppSource`. Rust resolves this; Dart never chooses.
+/// The platform's `AppSource`. The core resolves this; the UI never chooses.
 fn platform_source() -> Box<dyn AppSource> {
     #[cfg(target_os = "android")]
     {
@@ -35,9 +33,9 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-/// Everything Dart needs to draw the launcher.
+/// Everything the UI needs to draw the launcher.
 ///
-/// `page_ids` is the page order, computed by Rust from `Model::pages()`; Dart
+/// `page_ids` is the page order, computed by Rust from `Model::pages()`; the UI
 /// must not recompute it. `items` is in display order within each group (see
 /// the field). `warnings` is what is wrong right now (for example
 /// that changes are not being saved), and does not grow from call to call.
@@ -48,7 +46,7 @@ pub struct IconRevision {
 }
 
 /// The member item whose icon a folder tile draws. `item_id` is `None` for an
-/// empty folder, which Dart renders with a generic folder glyph.
+/// empty folder, which the UI renders with a generic folder glyph.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FolderIcon {
     pub folder_group_id: Id,
@@ -58,7 +56,7 @@ pub struct FolderIcon {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelSnapshot {
     pub root_group_id: Id,
-    /// The group holding the Home role, or `None` if no group does. Dart must
+    /// The group holding the Home role, or `None` if no group does. The UI must
     /// use this and must not look for a group with the Home role itself: how
     /// the Home group is found is a model rule, and it lives in Rust.
     pub home_group_id: Option<Id>,
@@ -116,7 +114,7 @@ fn choose_root(
 }
 
 /// Android hands its private files directory (`Context.filesDir`) through the
-/// bridge; there is no usable XDG home there.
+/// JNI host; there is no usable XDG home there.
 #[cfg(target_os = "android")]
 fn platform_config_root() -> Result<PathBuf, String> {
     JniHost::files_dir().map_err(|e| e.to_string())
@@ -127,13 +125,12 @@ fn platform_config_root() -> Result<PathBuf, String> {
     store::config_root().map_err(|e| e.to_string())
 }
 
-/// The testable core of [`init`], not part of the bridge surface.
+/// The testable core of [`init`], not part of the public API surface.
 ///
 /// `config_root: None` means there is no usable configuration directory.
 /// `warnings` is whatever the caller already knows (a failed root resolution).
 /// Everything after that is what `init` does.
 #[doc(hidden)]
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn init_with_source(
     config_root: Option<PathBuf>,
     source: Box<dyn AppSource>,
@@ -144,7 +141,6 @@ pub fn init_with_source(
 
 /// Empties the state and the event subscribers. For tests only.
 #[doc(hidden)]
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn reset_for_test() {
     state::clear();
 }
@@ -152,7 +148,6 @@ pub fn reset_for_test() {
 /// Registers a plain Rust subscriber, which returns `false` once it is gone.
 /// For tests only.
 #[doc(hidden)]
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn subscribe_for_test(
     deliver: Box<dyn Fn(CoreEvent) -> bool + Send + Sync>,
 ) -> Result<(), String> {
@@ -163,7 +158,6 @@ pub fn subscribe_for_test(
 /// Emits a core event to subscribers. For tests only: the Android host emits
 /// the Home and Back events itself, from the JNI callbacks.
 #[doc(hidden)]
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn emit_for_test(event: CoreEvent) {
     state::emit(event);
 }
@@ -509,18 +503,8 @@ pub async fn choose_wallpaper() -> Result<(), String> {
     }
 }
 
-/// Streams the core's events to Dart. A subscriber that misses an event can
-/// always re-read `snapshot()`. The subscription ends when the stream is
-/// closed.
-#[cfg(feature = "flutter")]
-pub fn events(sink: StreamSink<CoreEvent>) -> Result<(), String> {
-    state::subscribe(Box::new(move |event| sink.add(event.clone()).is_ok()));
-    Ok(())
-}
-
 /// Native UI subscription. Delivery runs under the core lock; never call the
 /// API from this callback. Return false when the receiver has gone away.
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn subscribe_native(deliver: impl Fn(CoreEvent) -> bool + Send + Sync + 'static) {
     state::subscribe(Box::new(move |event| deliver(event.clone())));
 }

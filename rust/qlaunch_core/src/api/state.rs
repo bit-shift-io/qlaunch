@@ -18,7 +18,7 @@ use super::events::{CoreEvent, EventBus};
 /// How much the on-disk icon cache may hold before its oldest entries go.
 const DEFAULT_ICON_CACHE_BYTES: u64 = 32 * 1024 * 1024;
 
-/// Everything the bridge keeps between calls.
+/// Everything the core keeps between calls.
 ///
 /// The event bus lives beside the `App`, not in it, so subscribers survive a
 /// second `init`.
@@ -181,7 +181,7 @@ pub(crate) fn folder_icon_item(model: &Model, usage: &Usage, folder_group: &Id) 
     Some(best.map_or_else(|| first.id.clone(), |(item, _, _)| item.id.clone()))
 }
 
-/// Builds the snapshot Dart sees. The warnings are the startup ones plus
+/// Builds the snapshot the UI sees. The warnings are the startup ones plus
 /// whatever is wrong right now, worked out afresh from the flags on `app`, so
 /// the list does not grow with every call.
 pub(crate) fn snapshot_of(app: &App) -> ModelSnapshot {
@@ -692,7 +692,7 @@ pub(crate) fn refresh_apps_now() -> Result<ModelSnapshot, String> {
                     app.save_problem = problem;
                 }
                 // Disk keys already contain update times. Preserve unaffected
-                // icons; Dart compares snapshot revisions to invalidate selectively.
+                // icons; the UI compares snapshot revisions to invalidate selectively.
                 if set_changed || icons_changed {
                     bus.emit(&CoreEvent::AppsChanged);
                 }

@@ -287,3 +287,4 @@ Run from `rust/` unless stated:
   still relevant enough to restate in `docs/technical-notes.md`.
 - The device/toolchain verification the environment allows, stated honestly as
   run or not run.
+Status: approved (2026-11-01) — all tasks 1–6 completed, branch verified pure-iced.

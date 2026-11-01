@@ -137,7 +137,7 @@ pub fn parse_backup_names_json(json: &str) -> Result<Vec<String>, PlatformError>
 }
 
 /// Converts Android's packed `0xAARRGGBB` pixels, as `Bitmap.getPixels` returns
-/// them, into the tightly packed RGBA bytes the bridge sends to Dart.
+/// them, into the tightly packed RGBA bytes the UI consumes.
 pub fn argb_pixels_to_rgba(pixels: &[u32]) -> Vec<u8> {
     let mut out = Vec::with_capacity(pixels.len() * 4);
     for &argb in pixels {

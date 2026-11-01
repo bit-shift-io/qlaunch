@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 MODE="${1:-release}"
 
 export JAVA_HOME="${JAVA_HOME:-/opt/jbr-21}"
-bash "$ROOT/scripts/build-iced.sh" "$MODE"
+bash "$ROOT/scripts/build.sh" "$MODE"
 
 case "$MODE" in
   release) APK="$ROOT/build/app/outputs/apk/release/app-release.apk" ;;

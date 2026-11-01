@@ -17,7 +17,6 @@ struct ShortcutResult {
     icon_ref: Option<String>,
 }
 
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn check_group(group: &str) -> Result<(), String> {
     state::with_app(|app, _| {
         if app
@@ -33,7 +32,6 @@ pub fn check_group(group: &str) -> Result<(), String> {
     })
 }
 
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn add(
     group: &str,
     label: &str,
@@ -140,7 +138,6 @@ fn validate(payload: &ShortcutPayload) -> Result<(), String> {
     }
 }
 
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn accept_result(group: &str, json: &str) -> Result<ModelSnapshot, String> {
     let result: ShortcutResult =
         serde_json::from_str(json).map_err(|e| format!("Invalid shortcut result: {e}"))?;
@@ -153,7 +150,6 @@ pub fn accept_result(group: &str, json: &str) -> Result<ModelSnapshot, String> {
     )
 }
 
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn lock() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
@@ -173,7 +169,6 @@ pub fn lock() -> Result<(), String> {
     }
 }
 
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn notifications() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
@@ -185,7 +180,6 @@ pub fn notifications() -> Result<(), String> {
     }
 }
 
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub fn launch(payload: &ShortcutPayload) -> Result<(), String> {
     match payload {
         ShortcutPayload::LockScreen => lock(),

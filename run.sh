@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run the Iced port on the desktop for comparison with the Flutter build.
+# Run QLaunch on the desktop.
 # Extra args go to cargo (e.g. ./run.sh --release).
 set -euo pipefail
 cd "$(dirname "$0")/rust"
@@ -12,4 +12,4 @@ if [[ -z "${WAYLAND_DISPLAY:-}" && -S "$XDG_RUNTIME_DIR/wayland-1" ]]; then
   export WAYLAND_DISPLAY=wayland-1
 fi
 
-exec cargo run -p qlaunch_iced --no-default-features --bin qlaunch-iced "$@"
+exec cargo run -p qlaunch --bin qlaunch "$@"

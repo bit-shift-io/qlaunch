@@ -1,5 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=No Display One
-Exec=/bin/true
-NoDisplay=true

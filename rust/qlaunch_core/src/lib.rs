@@ -1,6 +1,4 @@
 pub mod api;
-#[cfg(feature = "flutter")]
-mod frb_generated;
 pub mod icons;
 pub mod model;
 pub mod platform;

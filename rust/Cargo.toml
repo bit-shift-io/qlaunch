@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["qlaunch_core", "qlaunch_iced"]
+members = ["qlaunch_core", "qlaunch"]
 
 [patch.crates-io]
 android-activity = { git = "https://github.com/Santuzius/android-activity", tag = "iced_android-v0.1.1" }

@@ -19,11 +19,11 @@ class MainActivity : IcedActivity() {
      * Lifecycle diagnostics. Each line names the activity instance window, so a
      * destroyed instance's late callbacks (which once left the launcher with no
      * iced window: a frozen or blank Home) are visible in logcat next to the
-     * replacement instance's. Filter with `adb logcat -s qlaunch-iced:*`.
+     * replacement instance's. Filter with `adb logcat -s qlaunch:*`.
      */
     private fun logLifecycle(event: String) {
         android.util.Log.i(
-            "qlaunch-iced",
+            "qlaunch",
             "lifecycle $event focus=${hasWindowFocus()} stopped=$wasStopped " +
                 "finishing=$isFinishing destroyed=$isDestroyed " +
                 "window=${System.identityHashCode(window)}",
@@ -84,7 +84,7 @@ class MainActivity : IcedActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install the OS adapter before NativeActivity starts android_main.
         // Loading on the Java thread lets core's JNI_OnLoad cache our class.
-        System.loadLibrary("qlaunch_iced")
+        System.loadLibrary("qlaunch")
         QLaunchBridge.install(applicationContext)
         LauncherActions.attach(this)
         super.onCreate(savedInstanceState)
@@ -179,7 +179,7 @@ class MainActivity : IcedActivity() {
     ///
     /// While the notification shade (or another system overlay) is open this
     /// window does not have focus, and the Home press is what dismisses the
-    /// overlay. Dart is told so separately: that press returns to the
+    /// overlay. The UI is told so separately: that press returns to the
     /// launcher but never advances to the search.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

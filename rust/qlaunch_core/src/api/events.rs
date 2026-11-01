@@ -1,6 +1,6 @@
 use crate::model::Id;
 
-/// What the core tells Dart happened. An event only says that something
+/// What the core tells the UI happened. An event only says that something
 /// changed: a subscriber that misses one re-reads `snapshot()`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CoreEvent {
@@ -28,11 +28,10 @@ type Deliver = Box<dyn Fn(&CoreEvent) -> bool + Send + Sync>;
 /// Delivers events to every registered subscriber, in the order they
 /// subscribed.
 ///
-/// A subscriber's closure returns `false` once it is gone (a closed Dart
-/// stream), and `emit` then drops it, so a subscriber that went away does not
+/// A subscriber's closure returns `false` once it is gone (the UI closed its
+/// subscription), and `emit` then drops it, so a subscriber that went away does not
 /// stay in the list for good. Delivery runs on the caller's thread while the
 /// global state lock is held, so a closure must not call back into the API.
-#[cfg_attr(feature = "flutter", flutter_rust_bridge::frb(ignore))]
 pub struct EventBus {
     next_token: u64,
     subscribers: Vec<(u64, Deliver)>,

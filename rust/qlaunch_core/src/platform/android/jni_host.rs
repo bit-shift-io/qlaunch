@@ -405,7 +405,7 @@ pub extern "system" fn JNI_OnLoad(vm: *mut jni::sys::JavaVM, _reserved: *mut c_v
 }
 
 /// The Home button, from `MainActivity.onNewIntent`. The event is emitted
-/// rather than acted on here, so Dart decides what Home means.
+/// rather than acted on here, so the UI decides what Home means.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onHomePressed(
     _env: JNIEnv,
@@ -415,7 +415,7 @@ pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onHomePressed(
 }
 
 /// Home while a system overlay was focused, also from
-/// `MainActivity.onNewIntent`. Kept separate from [`HomePressed`] so Dart can
+/// `MainActivity.onNewIntent`. Kept separate from [`HomePressed`] so the UI can
 /// dismiss the launcher's own surface without opening the search.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onHomePressedFromOverlay(
@@ -425,7 +425,7 @@ pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onHomePressedFromOverl
     crate::api::state::emit(CoreEvent::HomePressedFromOverlay);
 }
 
-/// The Back button, from `MainActivity.onBackPressed`. Dart ignores it for
+/// The Back button, from `MainActivity.onBackPressed`. The UI ignores it for
 /// now; emitting it keeps the host's whole surface in one place.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onBackPressedEvent(
@@ -459,7 +459,7 @@ pub extern "system" fn Java_bitshift_qlaunch_MainActivity_onShortcutResult(
 }
 
 /// The OS telling us an app was installed, removed or changed, from
-/// `PackageChangeReceiver`. Refresh now; the core emits `AppsChanged` and Dart
+/// `PackageChangeReceiver`. Refresh now; the core emits `AppsChanged` and the UI
 /// refetches its snapshot. A failure (the core not yet started, say) is ignored:
 /// the next `init` reconciles anyway.
 #[unsafe(no_mangle)]

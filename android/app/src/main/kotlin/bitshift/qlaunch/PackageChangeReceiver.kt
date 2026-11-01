@@ -58,7 +58,7 @@ class PackageChangeReceiver : BroadcastReceiver() {
                 cancel
             },
             {
-                System.loadLibrary("qlaunch_core")
+                System.loadLibrary("qlaunch")
                 PackageChangeReceiver().onPackagesChanged()
             },
             { error -> Log.w(TAG, "package change refresh failed", error) },

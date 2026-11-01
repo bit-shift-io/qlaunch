@@ -11,7 +11,7 @@ class MemoryTrimPolicyTest {
         assertFalse(shouldForwardMemoryTrim(ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN))
     }
 
-    @Test fun realPressureAndOtherTrimLevelsStillReachFlutter() {
+    @Test fun realPressureAndOtherTrimLevelsStillReachTheApp() {
         val levels = listOf(
             ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE,
             ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
@@ -23,7 +23,7 @@ class MemoryTrimPolicyTest {
             100,
         )
         for (level in levels) {
-            assertTrue("Trim level $level must still reach Flutter", shouldForwardMemoryTrim(level))
+            assertTrue("Trim level $level must still reach the app", shouldForwardMemoryTrim(level))
         }
     }
 }
