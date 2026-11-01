@@ -36,6 +36,29 @@ pub(crate) fn rows() -> Vec<Row> {
     vec![Row::Restart, Row::Backup, Row::Restore, Row::FactoryReset]
 }
 
+/// What Restore does once the All Files Access check answers: list the backups,
+/// or ask the system for the permission first. Android attributes a Downloads
+/// file to the install that wrote it, so after a reflash the scoped query
+/// cannot see an earlier install's backups without this permission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RestoreStep {
+    List,
+    RequestAccess,
+}
+
+/// The step for the permission state `granted`.
+pub(crate) fn restore_step(granted: bool) -> RestoreStep {
+    if granted {
+        RestoreStep::List
+    } else {
+        RestoreStep::RequestAccess
+    }
+}
+
+/// Shown after sending the user to the system "All files access" screen, so a
+/// second press of Restore lists the backups the previous install wrote.
+pub(crate) const NEEDS_ALL_FILES_ACCESS: &str = "QLaunch needs \"All files access\" to read backups from Downloads. Enable it for QLaunch, then press Restore again.";
+
 pub(crate) fn backup_message(result: &Result<String, String>) -> String {
     match result {
         Ok(name) => format!("Backup saved to Downloads/{name}."),
@@ -121,6 +144,25 @@ mod tests {
                 ..
             }))
         ));
+    }
+
+    #[test]
+    fn restore_lists_only_with_all_files_access() {
+        assert_eq!(restore_step(true), RestoreStep::List);
+        assert_eq!(restore_step(false), RestoreStep::RequestAccess);
+    }
+
+    #[test]
+    fn missing_restore_access_asks_for_it_without_a_dialog() {
+        let mut app = crate::tests::app();
+        let _ = app.update(Message::Push(crate::Screen::Advanced));
+        // The check answers "not granted"; the request task is not run here.
+        let _ = app.update(Message::RestoreAccessChecked(false));
+        let _ = app.update(Message::RestoreAccessRequested(Ok(())));
+        assert!(app.dialog.is_none());
+        let shown = &app.snackbar.as_ref().unwrap().1;
+        assert_eq!(shown, NEEDS_ALL_FILES_ACCESS);
+        assert!(shown.contains("All files access"));
     }
 
     #[test]

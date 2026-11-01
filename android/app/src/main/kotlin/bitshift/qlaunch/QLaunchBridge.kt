@@ -7,7 +7,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
+import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import android.util.Base64
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -43,6 +45,32 @@ object QLaunchBridge {
     /// The app's private files directory, where Rust keeps `qlaunch.json`.
     @JvmStatic
     fun filesDirPath(): String = getAppContext().filesDir.absolutePath
+
+    /// Whether this install holds "All files access"
+    /// (`MANAGE_EXTERNAL_STORAGE`). Android attributes a Downloads file to the
+    /// install that wrote it, so a reflash hides an earlier install's backups
+    /// from the scoped MediaStore query until this is granted.
+    @JvmStatic
+    fun hasAllFilesAccess(): Boolean = Environment.isExternalStorageManager()
+
+    /// Opens the system "All files access" screen for this app. There is no
+    /// result: when the user grants it and returns, Restore is checked again.
+    @JvmStatic
+    fun requestAllFilesAccess() {
+        val context = getAppContext()
+        val perApp = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+            .setData(Uri.parse("package:${context.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(perApp)
+        } catch (e: Exception) {
+            // Some builds only expose the global list, not the per-app page.
+            context.startActivity(
+                Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }
+    }
 
     private fun downloadsCollection(): Uri =
         MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)

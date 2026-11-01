@@ -20,6 +20,7 @@ mod reorder_list;
 mod screens;
 mod scroll_fade;
 mod slots;
+mod storage;
 mod theme;
 mod view;
 
@@ -1529,6 +1530,8 @@ enum Message {
     GroupDragScroll(f32),
     Advanced(screens::advanced::Row),
     BackupDone(Result<String, String>),
+    RestoreAccessChecked(bool),
+    RestoreAccessRequested(Result<(), String>),
     BackupsListed(Result<Vec<String>, String>),
     RestoreDone(String, Result<core::ModelSnapshot, String>),
     ResetDone(Result<core::ModelSnapshot, String>),
@@ -2915,7 +2918,10 @@ impl App {
                         return work(|| block_on(core::backup_config()), Message::BackupDone);
                     }
                     Row::Restore => {
-                        return work(|| block_on(core::list_backups()), Message::BackupsListed);
+                        // Backups written by a previous install are hidden from
+                        // the scoped query until "All files access" is granted,
+                        // so the permission is checked before listing.
+                        return work(storage::has_all_files_access, Message::RestoreAccessChecked);
                     }
                     Row::FactoryReset => {
                         self.dialog = Some(dialog::Dialog::Confirm(dialog::ConfirmState {
@@ -2934,6 +2940,32 @@ impl App {
                 return self.update(Message::Snackbar(screens::advanced::backup_message(
                     &result,
                 )));
+            }
+            Message::RestoreAccessChecked(granted) => {
+                if self.screens.last() != Some(&Screen::Advanced) {
+                    return Task::none();
+                }
+                match screens::advanced::restore_step(granted) {
+                    screens::advanced::RestoreStep::List => {
+                        return work(|| block_on(core::list_backups()), Message::BackupsListed);
+                    }
+                    screens::advanced::RestoreStep::RequestAccess => {
+                        return work(
+                            storage::request_all_files_access,
+                            Message::RestoreAccessRequested,
+                        );
+                    }
+                }
+            }
+            Message::RestoreAccessRequested(result) => {
+                if self.screens.last() != Some(&Screen::Advanced) {
+                    return Task::none();
+                }
+                let message = match result {
+                    Ok(()) => screens::advanced::NEEDS_ALL_FILES_ACCESS.to_string(),
+                    Err(error) => error,
+                };
+                return self.update(Message::Snackbar(message));
             }
             Message::BackupsListed(result) => {
                 if self.screens.last() != Some(&Screen::Advanced) {

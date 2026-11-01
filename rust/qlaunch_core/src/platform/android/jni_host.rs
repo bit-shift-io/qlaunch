@@ -131,6 +131,41 @@ impl JniHost {
         })?;
         Ok(PathBuf::from(path))
     }
+
+    /// Whether the app holds "All files access" (`MANAGE_EXTERNAL_STORAGE`).
+    /// Android attributes a Downloads file to the install that wrote it, so a
+    /// reflash hides an earlier install's backups from the scoped MediaStore
+    /// query until this permission is granted.
+    pub fn has_all_files_access() -> Result<bool, PlatformError> {
+        JniHost::with_env(|env| {
+            let class = JniHost::class()?;
+            match env.call_static_method(class, "hasAllFilesAccess", "()Z", &[]) {
+                Ok(value) => value.z().map_err(|e| {
+                    clear_pending(env);
+                    jni_error(e)
+                }),
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })
+    }
+
+    /// Opens the system "All files access" screen for this app. There is no
+    /// result; the user grants it in the system UI and returns.
+    pub fn request_all_files_access() -> Result<(), PlatformError> {
+        JniHost::with_env(|env| {
+            let class = JniHost::class()?;
+            match env.call_static_method(class, "requestAllFilesAccess", "()V", &[]) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    clear_pending(env);
+                    Err(jni_error(e))
+                }
+            }
+        })
+    }
 }
 
 impl Default for JniHost {
