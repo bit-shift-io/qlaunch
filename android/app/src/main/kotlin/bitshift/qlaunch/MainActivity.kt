@@ -15,6 +15,21 @@ class MainActivity : IcedActivity() {
     private var wasStopped = false
     private lateinit var accessibility: LauncherAccessibilityView
 
+    /**
+     * Lifecycle diagnostics. Each line names the activity instance window, so a
+     * destroyed instance's late callbacks (which once left the launcher with no
+     * iced window: a frozen or blank Home) are visible in logcat next to the
+     * replacement instance's. Filter with `adb logcat -s qlaunch-iced:*`.
+     */
+    private fun logLifecycle(event: String) {
+        android.util.Log.i(
+            "qlaunch-iced",
+            "lifecycle $event focus=${hasWindowFocus()} stopped=$wasStopped " +
+                "finishing=$isFinishing destroyed=$isDestroyed " +
+                "window=${System.identityHashCode(window)}",
+        )
+    }
+
     fun publishAccessibility(json: String) {
         if (!ACCESSIBILITY_EXPOSURE_ENABLED) return
         if (!::accessibility.isInitialized) return
@@ -76,6 +91,7 @@ class MainActivity : IcedActivity() {
         // NativeActivity.onCreate resets this to RGB_565. Set it afterwards,
         // before the surface is created, or Vulkan's inherited alpha is opaque.
         window.setFormat(PixelFormat.RGBA_8888)
+        logLifecycle("onCreate")
 
         // No host view is attached while exposure is off: with nothing to
         // publish into, the native side's publishes are dropped in
@@ -110,14 +126,29 @@ class MainActivity : IcedActivity() {
         )
     }
 
+    override fun onStart() {
+        logLifecycle("onStart enter")
+        super.onStart()
+        logLifecycle("onStart exit")
+    }
+
+    override fun onPause() {
+        logLifecycle("onPause enter")
+        super.onPause()
+        logLifecycle("onPause exit")
+    }
+
     override fun onDestroy() {
+        logLifecycle("onDestroy enter")
         LauncherActions.detach(this)
         unregisterReceiver(packageReceiver)
         super.onDestroy()
+        logLifecycle("onDestroy exit")
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        logLifecycle("onWindowFocusChanged $hasFocus")
         if (hasFocus) {
             // The native surface is created after onCreate and is added above
             // this view. TalkBack sends hover events to the topmost child, so
@@ -128,13 +159,17 @@ class MainActivity : IcedActivity() {
     }
 
     override fun onStop() {
+        logLifecycle("onStop enter")
         wasStopped = true
         super.onStop()
+        logLifecycle("onStop exit")
     }
 
     override fun onResume() {
+        logLifecycle("onResume enter")
         super.onResume()
         wasStopped = false
+        logLifecycle("onResume exit")
     }
 
     /// A Home intent that brings us back from another app only reveals the
@@ -148,10 +183,23 @@ class MainActivity : IcedActivity() {
     /// launcher but never advances to the search.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        logLifecycle("onNewIntent ${intent.action}")
         if (intent.action == Intent.ACTION_MAIN &&
             intent.hasCategory(Intent.CATEGORY_HOME) && !wasStopped) {
             if (hasWindowFocus()) onHomePressed() else onHomePressedFromOverlay()
         }
+    }
+
+    /// Memory pressure can take the surface away without a foreground change;
+    /// note it so a later blank screen can be told from a lifecycle race.
+    override fun onLowMemory() {
+        super.onLowMemory()
+        logLifecycle("onLowMemory")
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        logLifecycle("onTrimMemory $level")
     }
 
     /// Older back dispatch; IcedActivity handles predictive back through iced.

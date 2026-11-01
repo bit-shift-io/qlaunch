@@ -1283,7 +1283,7 @@ mod tests {
 
     #[test]
     #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
-    fn select_menu_bounces_only_when_dragged_outward_past_the_bottom() {
+    fn select_menu_bounces_only_while_the_feature_is_enabled() {
         use iced::Point;
         use iced::advanced::Layout;
         use iced::advanced::widget::operation::scrollable::scroll_to;
@@ -1338,8 +1338,12 @@ mod tests {
             moved(1, Point::new(100.0, 100.0)),
             &mut messages,
         );
-        assert!(outward.values().total < 0.0, "{:?}", outward.values());
-        assert_eq!(outward.values().edge, crate::elastic_scroll::Edge::Bottom);
+        if crate::elastic_scroll::ENABLED {
+            assert!(outward.values().total < 0.0, "{:?}", outward.values());
+            assert_eq!(outward.values().edge, crate::elastic_scroll::Edge::Bottom);
+        } else {
+            assert_eq!(outward.values(), crate::elastic_scroll::Values::default());
+        }
 
         let inward = crate::elastic_scroll::Motion::new();
         let (mut menu, mut tree, node, renderer) = bottom(&inward);

@@ -19,7 +19,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "bitshift.qlaunch"
+        // `-PqlaunchAppId=...` installs a side-by-side build for device
+        // diagnostics without touching the installed app or its data.
+        applicationId = providers.gradleProperty("qlaunchAppId").getOrElse("bitshift.qlaunch")
         minSdk = 34
         targetSdk = 36
         versionCode = 1
