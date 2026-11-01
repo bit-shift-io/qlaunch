@@ -262,6 +262,16 @@ pub async fn add_notifications_shortcut(target_group_id: String) -> Result<Model
     )
 }
 
+pub async fn add_search_shortcut(target_group_id: String) -> Result<ModelSnapshot, String> {
+    super::shortcuts::add(
+        &target_group_id,
+        "Search",
+        crate::model::ShortcutPayload::Search,
+        None,
+        None,
+    )
+}
+
 pub async fn add_command_shortcut(
     target_group_id: String,
     label: String,

@@ -190,6 +190,9 @@ pub fn launch(payload: &ShortcutPayload) -> Result<(), String> {
     match payload {
         ShortcutPayload::LockScreen => lock(),
         ShortcutPayload::Notifications => notifications(),
+        ShortcutPayload::Search => {
+            Err("The search screen is opened by the launcher, not as a system action".into())
+        }
         ShortcutPayload::Command { command } => {
             #[cfg(target_os = "linux")]
             {

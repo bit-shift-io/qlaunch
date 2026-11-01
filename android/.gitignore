@@ -12,3 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+# The shared test-phone release key is committed on purpose so every PC signs
+# identically (see android/keystore.properties).
+!keystore/qlaunch-release.jks
+!keystore.properties

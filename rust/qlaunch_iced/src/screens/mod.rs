@@ -19,6 +19,7 @@ pub(crate) fn scaffold<'a>(
         .id("screen-scroll")
         .width(Fill)
         .height(Fill)
+        .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
         .style(theme::scrollable)
         .on_scroll(|viewport| Message::Scrolled(Region::Screen, viewport.absolute_offset().y));
     iced::widget::opaque(

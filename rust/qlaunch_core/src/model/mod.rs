@@ -80,6 +80,8 @@ pub enum ShortcutPayload {
     Command {
         command: String,
     },
+    /// Opens the launcher's own search screen. Handled by the UI, not the OS.
+    Search,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

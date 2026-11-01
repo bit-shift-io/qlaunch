@@ -4,8 +4,8 @@ use crate::{App, Message, Screen, components, icons, theme};
 use iced::widget::{column, container};
 use iced::{Element, Fill};
 use qlaunch_core::settings::{
-    LabelColour, LayoutStyle, Orientation, ScrollFadeStyle, Settings, SettingsPatch, TabVisibility,
-    Typeface,
+    GestureAction, LabelColour, LayoutStyle, Orientation, ScrollFadeStyle, Settings, SettingsPatch,
+    TabVisibility, Typeface,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,11 +29,14 @@ pub(crate) enum SettingField {
     LabelColour,
     LabelShadow,
     LabelShadowBlur,
+    HomeAction,
+    SwipeUpAction,
+    DoubleTapAction,
 }
 
 impl SettingField {
     #[allow(dead_code)] // used by the coverage test
-    pub(crate) fn all() -> [Self; 19] {
+    pub(crate) fn all() -> [Self; 22] {
         use SettingField::*;
         [
             ContinuousScroll,
@@ -55,6 +58,9 @@ impl SettingField {
             LabelColour,
             LabelShadow,
             LabelShadowBlur,
+            HomeAction,
+            SwipeUpAction,
+            DoubleTapAction,
         ]
     }
 }
@@ -223,6 +229,25 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             10,
             "",
         ),
+        Row::Header("Actions"),
+        choices(
+            HomeAction,
+            "Home button",
+            &["None", "Lock", "Search", "Notifications"],
+            settings.home_action as usize,
+        ),
+        choices(
+            SwipeUpAction,
+            "Swipe up",
+            &["None", "Lock", "Search", "Notifications"],
+            settings.swipe_up_action as usize,
+        ),
+        choices(
+            DoubleTapAction,
+            "Double tap",
+            &["None", "Lock", "Search", "Notifications"],
+            settings.double_tap_action as usize,
+        ),
         Row::Action {
             label: "Choose wallpaper",
             subtitle: "Pick one with the system wallpaper chooser.",
@@ -260,6 +285,18 @@ pub(crate) fn message(field: SettingField, value: i64) -> SettingsPatch {
         _ => return choice_patch(field, value as usize),
     }
     patch
+}
+
+/// The action choices every gesture row offers, in display order.
+fn gesture_choices(index: usize) -> Option<GestureAction> {
+    [
+        GestureAction::None,
+        GestureAction::Lock,
+        GestureAction::Search,
+        GestureAction::Notifications,
+    ]
+    .get(index)
+    .copied()
 }
 
 pub(crate) fn choice_patch(field: SettingField, index: usize) -> SettingsPatch {
@@ -313,6 +350,9 @@ pub(crate) fn choice_patch(field: SettingField, index: usize) -> SettingsPatch {
                 .get(index)
                 .copied()
         }
+        SettingField::HomeAction => patch.home_action = gesture_choices(index),
+        SettingField::SwipeUpAction => patch.swipe_up_action = gesture_choices(index),
+        SettingField::DoubleTapAction => patch.double_tap_action = gesture_choices(index),
         _ => {}
     }
     patch
@@ -533,7 +573,7 @@ mod tests {
     }
 
     #[test]
-    fn headings_label_the_four_settings_groups_not_individual_actions() {
+    fn headings_label_the_settings_groups_not_individual_actions() {
         let rows = rows(&Settings::default(), None);
         let headers: Vec<_> = rows
             .iter()
@@ -542,7 +582,76 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(headers, ["Display", "Window", "Icon", "Text"]);
+        assert_eq!(headers, ["Display", "Window", "Icon", "Text", "Actions"]);
+    }
+
+    #[test]
+    fn action_rows_offer_none_lock_search_and_notifications() {
+        use qlaunch_core::settings::GestureAction;
+        let rows = rows(&Settings::default(), None);
+        let actions = [
+            SettingField::HomeAction,
+            SettingField::SwipeUpAction,
+            SettingField::DoubleTapAction,
+        ];
+        for field in actions {
+            let options = rows.iter().find_map(|row| match row {
+                Row::Choice {
+                    field: f, options, ..
+                } if *f == field => Some(options.clone()),
+                _ => None,
+            });
+            let Some(options) = options else {
+                panic!("{field:?} has no choice row");
+            };
+            let labels: Vec<&str> = options.iter().map(|(label, _)| label.as_str()).collect();
+            assert_eq!(labels, ["None", "Lock", "Search", "Notifications"]);
+        }
+        assert_eq!(
+            choice_patch(SettingField::HomeAction, 3),
+            SettingsPatch {
+                home_action: Some(GestureAction::Notifications),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            choice_patch(SettingField::SwipeUpAction, 0),
+            SettingsPatch {
+                swipe_up_action: Some(GestureAction::None),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            choice_patch(SettingField::DoubleTapAction, 1),
+            SettingsPatch {
+                double_tap_action: Some(GestureAction::Lock),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn action_rows_mark_the_saved_action_as_selected() {
+        let settings = Settings {
+            home_action: qlaunch_core::settings::GestureAction::Lock,
+            swipe_up_action: qlaunch_core::settings::GestureAction::Search,
+            double_tap_action: qlaunch_core::settings::GestureAction::None,
+            ..Settings::default()
+        };
+        let selected = |field| {
+            rows(&settings, None)
+                .into_iter()
+                .find_map(|row| match row {
+                    Row::Choice {
+                        field: f, options, ..
+                    } if f == field => options.iter().position(|(_, selected)| *selected),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert_eq!(selected(SettingField::HomeAction), 1);
+        assert_eq!(selected(SettingField::SwipeUpAction), 2);
+        assert_eq!(selected(SettingField::DoubleTapAction), 0);
     }
 
     #[test]

@@ -50,6 +50,17 @@ pub enum Orientation {
     Portrait,
 }
 
+/// What a blank-space gesture or the Home button does. The same set is offered
+/// for every gesture; `None` turns one off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GestureAction {
+    None,
+    Lock,
+    Search,
+    Notifications,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -72,6 +83,9 @@ pub struct Settings {
     pub label_shadow: bool,
     pub label_shadow_blur: i64,
     pub orientation: Orientation,
+    pub home_action: GestureAction,
+    pub swipe_up_action: GestureAction,
+    pub double_tap_action: GestureAction,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -95,6 +109,9 @@ pub struct SettingsPatch {
     pub label_shadow: Option<bool>,
     pub label_shadow_blur: Option<i64>,
     pub orientation: Option<Orientation>,
+    pub home_action: Option<GestureAction>,
+    pub swipe_up_action: Option<GestureAction>,
+    pub double_tap_action: Option<GestureAction>,
 }
 
 impl Default for Settings {
@@ -119,6 +136,9 @@ impl Default for Settings {
             label_shadow: true,
             label_shadow_blur: 0,
             orientation: Orientation::Auto,
+            home_action: GestureAction::Notifications,
+            swipe_up_action: GestureAction::None,
+            double_tap_action: GestureAction::Lock,
         }
     }
 }
@@ -165,6 +185,9 @@ impl Settings {
             label_shadow,
             label_shadow_blur,
             orientation,
+            home_action,
+            swipe_up_action,
+            double_tap_action,
         );
     }
 }

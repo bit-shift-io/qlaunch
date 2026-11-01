@@ -32,9 +32,11 @@ pub(crate) enum Message {
     LauncherCreateFolder,
     LauncherEditGroups,
     LauncherWallpaper,
+    LauncherSearch,
     Providers(Result<Vec<ShortcutProvider>, String>),
     ShortcutLock,
     ShortcutNotifications,
+    ShortcutSearch,
     ShortcutProvider(String),
     ShortcutCommand,
     CommandName(String),
@@ -509,6 +511,7 @@ pub(crate) fn rows(app: &App, dialog: &Dialog) -> Vec<Row> {
         }
         Dialog::Launcher => {
             for label in [
+                "Search",
                 "Launcher Settings",
                 "Add Shortcut",
                 "Create Folder",
@@ -530,6 +533,10 @@ pub(crate) fn rows(app: &App, dialog: &Dialog) -> Vec<Row> {
                 error: true,
             }),
             Some(Ok(providers)) => {
+                rows.push(Row::Tile {
+                    label: "Search".into(),
+                    subtitle: None,
+                });
                 rows.push(Row::Tile {
                     label: "Lock Screen".into(),
                     subtitle: None,
@@ -1076,6 +1083,7 @@ fn body<'a>(app: &'a App, dialog: &'a Dialog, text_settings: &Text) -> Element<'
         }
         Dialog::Launcher => {
             for (label, glyph, message) in [
+                ("Search", crate::icons::SEARCH, Message::LauncherSearch),
                 (
                     "Launcher Settings",
                     crate::icons::SETTINGS,
@@ -1109,6 +1117,13 @@ fn body<'a>(app: &'a App, dialog: &'a Dialog, text_settings: &Text) -> Element<'
             None => rows = rows.push(plain_line(text_settings, "Loading…", false, false)),
             Some(Err(error)) => rows = rows.push(plain_line(text_settings, error, false, true)),
             Some(Ok(providers)) => {
+                rows = rows.push(tile_with_enabled(
+                    text_settings,
+                    "Search",
+                    Some(crate::icons::SEARCH),
+                    Message::ShortcutSearch,
+                    !state.busy,
+                ));
                 rows = rows.push(tile_with_enabled(
                     text_settings,
                     "Lock Screen",
@@ -1419,6 +1434,7 @@ pub(crate) fn view<'a>(app: &'a App, dialog: &'a Dialog) -> Element<'a, AppMessa
     .on_scroll(|viewport| AppMessage::Scrolled(crate::Region::Dialog, viewport.absolute_offset().y))
     .height(layout.content.height)
     .width(layout.content.width)
+    .direction(theme::vertical_scrollbar(app.scrollbars_visible()))
     .style(theme::scrollable);
     content = content.push(
         iced::widget::pin(crate::elastic_scroll::wrap(
@@ -1652,7 +1668,7 @@ mod tests {
             layout.card.y + layout.card.height - layout.content.y - layout.content.height,
             8.0
         );
-        assert_eq!(layout.rows.len(), 5);
+        assert_eq!(layout.rows.len(), 6);
         for (row, _) in &layout.rows {
             assert_eq!(row.height, 56.0, "keep full-height menu touch targets");
         }
@@ -1799,14 +1815,45 @@ mod tests {
     }
 
     #[test]
-    fn launcher_menu_has_five_tile_rows() {
+    fn launcher_menu_lists_search_first_among_six_tiles() {
         let (app, _) = dialog_app();
         let rows = rows(&app, &Dialog::Launcher);
+        let labels: Vec<&str> = rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Tile { label, .. } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
         assert_eq!(
-            rows.iter()
-                .filter(|row| matches!(row, Row::Tile { .. }))
-                .count(),
-            5
+            labels,
+            [
+                "Search",
+                "Launcher Settings",
+                "Add Shortcut",
+                "Create Folder",
+                "Edit Groups",
+                "Choose Wallpaper",
+            ]
         );
+    }
+
+    #[test]
+    fn add_shortcut_menu_offers_search_first() {
+        let (app, _) = dialog_app();
+        let mut state = AddShortcutState::new("apps".into());
+        state.providers = Some(Ok(vec![]));
+        let rows = rows(&app, &Dialog::AddShortcut(state));
+        let labels: Vec<&str> = rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Tile { label, .. } => Some(label.as_str()),
+                _ => None,
+            })
+            .collect();
+        #[cfg(target_os = "android")]
+        assert_eq!(labels, ["Search", "Lock Screen", "Notifications"]);
+        #[cfg(not(target_os = "android"))]
+        assert_eq!(labels, ["Search", "Lock Screen"]);
     }
 }

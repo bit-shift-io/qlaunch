@@ -2109,6 +2109,31 @@ impl SseDecode for crate::settings::Orientation {
     }
 }
 
+impl SseDecode for Option<crate::settings::GestureAction> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(<crate::settings::GestureAction>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for crate::settings::GestureAction {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::settings::GestureAction::None,
+            1 => crate::settings::GestureAction::Lock,
+            2 => crate::settings::GestureAction::Search,
+            3 => crate::settings::GestureAction::Notifications,
+            _ => unreachable!("Invalid variant for GestureAction: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for crate::settings::ScrollFadeStyle {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -2158,6 +2183,9 @@ impl SseDecode for crate::settings::Settings {
         let mut var_labelShadow = <bool>::sse_decode(deserializer);
         let mut var_labelShadowBlur = <i64>::sse_decode(deserializer);
         let mut var_orientation = <crate::settings::Orientation>::sse_decode(deserializer);
+        let mut var_homeAction = <crate::settings::GestureAction>::sse_decode(deserializer);
+        let mut var_swipeUpAction = <crate::settings::GestureAction>::sse_decode(deserializer);
+        let mut var_doubleTapAction = <crate::settings::GestureAction>::sse_decode(deserializer);
         return crate::settings::Settings {
             grid_columns_portrait: var_gridColumnsPortrait,
             grid_columns_landscape: var_gridColumnsLandscape,
@@ -2178,6 +2206,9 @@ impl SseDecode for crate::settings::Settings {
             label_shadow: var_labelShadow,
             label_shadow_blur: var_labelShadowBlur,
             orientation: var_orientation,
+            home_action: var_homeAction,
+            swipe_up_action: var_swipeUpAction,
+            double_tap_action: var_doubleTapAction,
         };
     }
 }
@@ -2206,6 +2237,11 @@ impl SseDecode for crate::settings::SettingsPatch {
         let mut var_labelShadow = <Option<bool>>::sse_decode(deserializer);
         let mut var_labelShadowBlur = <Option<i64>>::sse_decode(deserializer);
         let mut var_orientation = <Option<crate::settings::Orientation>>::sse_decode(deserializer);
+        let mut var_homeAction = <Option<crate::settings::GestureAction>>::sse_decode(deserializer);
+        let mut var_swipeUpAction =
+            <Option<crate::settings::GestureAction>>::sse_decode(deserializer);
+        let mut var_doubleTapAction =
+            <Option<crate::settings::GestureAction>>::sse_decode(deserializer);
         return crate::settings::SettingsPatch {
             grid_columns_portrait: var_gridColumnsPortrait,
             grid_columns_landscape: var_gridColumnsLandscape,
@@ -2226,6 +2262,9 @@ impl SseDecode for crate::settings::SettingsPatch {
             label_shadow: var_labelShadow,
             label_shadow_blur: var_labelShadowBlur,
             orientation: var_orientation,
+            home_action: var_homeAction,
+            swipe_up_action: var_swipeUpAction,
+            double_tap_action: var_doubleTapAction,
         };
     }
 }
@@ -2266,6 +2305,9 @@ impl SseDecode for crate::model::ShortcutPayload {
                 return crate::model::ShortcutPayload::Command {
                     command: var_command,
                 };
+            }
+            4 => {
+                return crate::model::ShortcutPayload::Search;
             }
             _ => {
                 unimplemented!("");
@@ -2747,6 +2789,29 @@ impl flutter_rust_bridge::IntoIntoDart<crate::settings::Orientation>
     }
 }
 // Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::settings::GestureAction {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::None => 0.into_dart(),
+            Self::Lock => 1.into_dart(),
+            Self::Search => 2.into_dart(),
+            Self::Notifications => 3.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::settings::GestureAction
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::settings::GestureAction>
+    for crate::settings::GestureAction
+{
+    fn into_into_dart(self) -> crate::settings::GestureAction {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
 impl flutter_rust_bridge::IntoDart for crate::settings::ScrollFadeStyle {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         match self {
@@ -2808,6 +2873,9 @@ impl flutter_rust_bridge::IntoDart for crate::settings::Settings {
             self.label_shadow.into_into_dart().into_dart(),
             self.label_shadow_blur.into_into_dart().into_dart(),
             self.orientation.into_into_dart().into_dart(),
+            self.home_action.into_into_dart().into_dart(),
+            self.swipe_up_action.into_into_dart().into_dart(),
+            self.double_tap_action.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -2841,6 +2909,9 @@ impl flutter_rust_bridge::IntoDart for crate::settings::SettingsPatch {
             self.label_shadow.into_into_dart().into_dart(),
             self.label_shadow_blur.into_into_dart().into_dart(),
             self.orientation.into_into_dart().into_dart(),
+            self.home_action.into_into_dart().into_dart(),
+            self.swipe_up_action.into_into_dart().into_dart(),
+            self.double_tap_action.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -2886,6 +2957,7 @@ impl flutter_rust_bridge::IntoDart for crate::model::ShortcutPayload {
             crate::model::ShortcutPayload::Command { command } => {
                 [3.into_dart(), command.into_into_dart().into_dart()].into_dart()
             }
+            crate::model::ShortcutPayload::Search => [4.into_dart()].into_dart(),
             _ => {
                 unimplemented!("");
             }
@@ -3493,6 +3565,16 @@ impl SseEncode for Option<Vec<u8>> {
     }
 }
 
+impl SseEncode for Option<crate::settings::GestureAction> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::settings::GestureAction>::sse_encode(value, serializer);
+        }
+    }
+}
+
 impl SseEncode for crate::settings::Orientation {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -3501,6 +3583,24 @@ impl SseEncode for crate::settings::Orientation {
                 crate::settings::Orientation::Auto => 0,
                 crate::settings::Orientation::Landscape => 1,
                 crate::settings::Orientation::Portrait => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
+impl SseEncode for crate::settings::GestureAction {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::settings::GestureAction::None => 0,
+                crate::settings::GestureAction::Lock => 1,
+                crate::settings::GestureAction::Search => 2,
+                crate::settings::GestureAction::Notifications => 3,
                 _ => {
                     unimplemented!("");
                 }
@@ -3558,6 +3658,9 @@ impl SseEncode for crate::settings::Settings {
         <bool>::sse_encode(self.label_shadow, serializer);
         <i64>::sse_encode(self.label_shadow_blur, serializer);
         <crate::settings::Orientation>::sse_encode(self.orientation, serializer);
+        <crate::settings::GestureAction>::sse_encode(self.home_action, serializer);
+        <crate::settings::GestureAction>::sse_encode(self.swipe_up_action, serializer);
+        <crate::settings::GestureAction>::sse_encode(self.double_tap_action, serializer);
     }
 }
 
@@ -3583,6 +3686,9 @@ impl SseEncode for crate::settings::SettingsPatch {
         <Option<bool>>::sse_encode(self.label_shadow, serializer);
         <Option<i64>>::sse_encode(self.label_shadow_blur, serializer);
         <Option<crate::settings::Orientation>>::sse_encode(self.orientation, serializer);
+        <Option<crate::settings::GestureAction>>::sse_encode(self.home_action, serializer);
+        <Option<crate::settings::GestureAction>>::sse_encode(self.swipe_up_action, serializer);
+        <Option<crate::settings::GestureAction>>::sse_encode(self.double_tap_action, serializer);
     }
 }
 
@@ -3619,6 +3725,9 @@ impl SseEncode for crate::model::ShortcutPayload {
             crate::model::ShortcutPayload::Command { command } => {
                 <i32>::sse_encode(3, serializer);
                 <String>::sse_encode(command, serializer);
+            }
+            crate::model::ShortcutPayload::Search => {
+                <i32>::sse_encode(4, serializer);
             }
             _ => {
                 unimplemented!("");

@@ -966,21 +966,24 @@ fn dialog_frame(app: &App, dialog: &crate::dialog::Dialog) -> Frame {
             Row::Tile { label, .. } => {
                 let message = match dialog {
                     Dialog::Launcher => match index {
-                        0 => dialog::Message::LauncherSettings,
-                        1 => dialog::Message::LauncherAddShortcut,
-                        2 => dialog::Message::LauncherCreateFolder,
-                        3 => dialog::Message::LauncherEditGroups,
+                        0 => dialog::Message::LauncherSearch,
+                        1 => dialog::Message::LauncherSettings,
+                        2 => dialog::Message::LauncherAddShortcut,
+                        3 => dialog::Message::LauncherCreateFolder,
+                        4 => dialog::Message::LauncherEditGroups,
                         _ => dialog::Message::LauncherWallpaper,
                     },
                     Dialog::GroupEditor(_) => dialog::Message::GroupChooseApps,
                     Dialog::RestorePicker(_) => dialog::Message::RestoreChosen(label.clone()),
                     Dialog::AddShortcut(state) => {
                         if index == 0 {
+                            dialog::Message::ShortcutSearch
+                        } else if index == 1 {
                             dialog::Message::ShortcutLock
-                        } else if cfg!(target_os = "android") && index == 1 {
+                        } else if cfg!(target_os = "android") && index == 2 {
                             dialog::Message::ShortcutNotifications
                         } else if let Some(Ok(providers)) = &state.providers {
-                            let index = index - if cfg!(target_os = "android") { 2 } else { 1 };
+                            let index = index - if cfg!(target_os = "android") { 3 } else { 2 };
                             match providers.get(index) {
                                 Some(provider) if provider.id == "command" => {
                                     dialog::Message::ShortcutCommand

@@ -11,6 +11,7 @@ pub const TOUCH_SLOP: f32 = 18.0;
 pub const DOUBLE_TAP: Duration = Duration::from_millis(300);
 pub const DOUBLE_TAP_SLOP: f32 = 100.0;
 pub const PULL_DOWN: f32 = 48.0;
+pub const SWIPE_UP: f32 = 48.0;
 pub const FLING: f32 = 300.0;
 
 /// Where the finger went down. Known only after the widget under it reports
@@ -27,6 +28,7 @@ pub enum Phase {
     Pressed,
     Dragging,
     Pulled,
+    SwipedUp,
     LongPressed,
 }
 
@@ -37,6 +39,7 @@ pub enum Outcome {
     Drag,
     DragEnd { velocity: f32 },
     PullDown,
+    SwipeUp,
     LongPress(Start),
     Tap(Start),
     DoubleTap,
@@ -149,7 +152,10 @@ impl Gesture {
         if self.finger != Some(finger) {
             return Outcome::None;
         }
-        if matches!(self.phase, Phase::Pulled | Phase::LongPressed) {
+        if matches!(
+            self.phase,
+            Phase::Pulled | Phase::SwipedUp | Phase::LongPressed
+        ) {
             return Outcome::None;
         }
 
@@ -172,6 +178,13 @@ impl Gesture {
             self.phase = Phase::Pulled;
             self.last_blank_tap = None;
             return Outcome::PullDown;
+        }
+        // An upward swipe is a launcher action only on blank space, so a
+        // vertical scroll over the grid is never stolen.
+        if matches!(self.target, Some(Start::Blank)) && -dy > SWIPE_UP && -dy > 1.5 * dx.abs() {
+            self.phase = Phase::SwipedUp;
+            self.last_blank_tap = None;
+            return Outcome::SwipeUp;
         }
         if self.phase == Phase::Pressed && dx.abs() > TOUCH_SLOP && dx.abs() > 1.5 * dy.abs() {
             self.phase = Phase::Dragging;
@@ -505,6 +518,56 @@ mod tests {
         assert_eq!(
             g.released(touch::Finger(0), Point::new(10.0, 140.0), t + 60 * MS),
             Outcome::None
+        );
+    }
+
+    #[test]
+    fn swipe_up_on_blank_fires_once_after_48px() {
+        let mut g = Gesture::new();
+        let t = at(0);
+        press_blank(&mut g, t);
+        assert_eq!(
+            g.moved(touch::Finger(0), Point::new(10.0, 0.0), t + 20 * MS, true),
+            Outcome::None
+        );
+        assert_eq!(
+            g.moved(touch::Finger(0), Point::new(10.0, -40.0), t + 30 * MS, true),
+            Outcome::SwipeUp
+        );
+        assert_eq!(
+            g.moved(touch::Finger(0), Point::new(10.0, -80.0), t + 40 * MS, true),
+            Outcome::None
+        );
+        assert_eq!(
+            g.released(touch::Finger(0), Point::new(10.0, -80.0), t + 50 * MS),
+            Outcome::None
+        );
+    }
+
+    #[test]
+    fn swipe_up_is_ignored_on_an_item() {
+        let mut g = Gesture::new();
+        let t = at(0);
+        press(&mut g, item(), t);
+        assert_eq!(
+            g.moved(touch::Finger(0), Point::new(10.0, -40.0), t + 30 * MS, true),
+            Outcome::None
+        );
+    }
+
+    #[test]
+    fn a_horizontal_drag_is_not_a_swipe_up() {
+        let mut g = Gesture::new();
+        let t = at(0);
+        press_blank(&mut g, t);
+        assert_eq!(
+            g.moved(
+                touch::Finger(0),
+                Point::new(100.0, -40.0),
+                t + 30 * MS,
+                true
+            ),
+            Outcome::DragStart
         );
     }
 

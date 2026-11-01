@@ -1,6 +1,6 @@
 use qlaunch_core::settings::{
-    LabelColour, LayoutStyle, Orientation, ScrollFadeStyle, Settings, SettingsPatch, TabVisibility,
-    Typeface,
+    GestureAction, LabelColour, LayoutStyle, Orientation, ScrollFadeStyle, Settings, SettingsPatch,
+    TabVisibility, Typeface,
 };
 
 #[test]
@@ -23,6 +23,9 @@ fn defaults_match_the_spec() {
     assert!(s.label_shadow);
     assert_eq!(s.label_shadow_blur, 0);
     assert_eq!(s.orientation, Orientation::Auto);
+    assert_eq!(s.home_action, GestureAction::Notifications);
+    assert_eq!(s.swipe_up_action, GestureAction::None);
+    assert_eq!(s.double_tap_action, GestureAction::Lock);
 }
 
 #[test]
@@ -175,9 +178,53 @@ fn serde_uses_the_documented_lowercase_strings() {
             serde_json::to_value(Orientation::Portrait).unwrap(),
             "portrait",
         ),
+        (serde_json::to_value(GestureAction::None).unwrap(), "none"),
+        (serde_json::to_value(GestureAction::Lock).unwrap(), "lock"),
+        (
+            serde_json::to_value(GestureAction::Search).unwrap(),
+            "search",
+        ),
+        (
+            serde_json::to_value(GestureAction::Notifications).unwrap(),
+            "notifications",
+        ),
     ] {
         assert_eq!(value, text);
     }
+}
+
+#[test]
+fn gesture_actions_round_trip_through_a_patch_and_serde() {
+    let mut s = Settings::default();
+    s.apply(&SettingsPatch {
+        home_action: Some(GestureAction::Search),
+        swipe_up_action: Some(GestureAction::Lock),
+        double_tap_action: Some(GestureAction::None),
+        ..Default::default()
+    });
+    assert_eq!(s.home_action, GestureAction::Search);
+    assert_eq!(s.swipe_up_action, GestureAction::Lock);
+    assert_eq!(s.double_tap_action, GestureAction::None);
+
+    let restored: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+    assert_eq!(restored, s);
+    assert_eq!(
+        Settings {
+            home_action: GestureAction::Notifications,
+            swipe_up_action: GestureAction::None,
+            double_tap_action: GestureAction::Lock,
+            ..restored
+        },
+        Settings::default()
+    );
+}
+
+#[test]
+fn gesture_actions_default_for_old_configs() {
+    let s: Settings = serde_json::from_str(r#"{"icon_size": 55}"#).unwrap();
+    assert_eq!(s.home_action, GestureAction::Notifications);
+    assert_eq!(s.swipe_up_action, GestureAction::None);
+    assert_eq!(s.double_tap_action, GestureAction::Lock);
 }
 
 #[test]
@@ -189,8 +236,10 @@ fn field_names_serialise_verbatim() {
         keys,
         [
             "continuous_scroll",
+            "double_tap_action",
             "grid_columns_landscape",
             "grid_columns_portrait",
+            "home_action",
             "icon_alpha",
             "icon_size",
             "icons_visible",
@@ -205,6 +254,7 @@ fn field_names_serialise_verbatim() {
             "page_transition_ms",
             "scroll_fade",
             "status_bar_visible",
+            "swipe_up_action",
             "tab_visibility",
             "wallpaper_alpha",
         ]

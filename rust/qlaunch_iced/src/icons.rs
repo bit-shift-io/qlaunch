@@ -9,6 +9,7 @@ use iced::Font;
 /// The bundled icon font's family name, as stored in the OTF.
 pub(crate) const FONT: Font = Font::with_name("Material Icons");
 
+pub(crate) const SEARCH: char = '\u{e8b6}';
 pub(crate) const SETTINGS: char = '\u{e57f}';
 pub(crate) const ADD_LINK: char = '\u{e053}';
 pub(crate) const CREATE_NEW_FOLDER: char = '\u{ef8c}';
@@ -37,6 +38,7 @@ mod tests {
 
     #[test]
     fn glyph_codepoints_match_flutter() {
+        assert_eq!(SEARCH, '\u{e8b6}');
         assert_eq!(SETTINGS, '\u{e57f}');
         assert_eq!(ADD_LINK, '\u{e053}');
         assert_eq!(CREATE_NEW_FOLDER, '\u{ef8c}');

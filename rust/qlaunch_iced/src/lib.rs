@@ -36,8 +36,8 @@ use iced::widget::image;
 use iced::{Color, Element, Point, Subscription, Task, Theme, window};
 use iced_android::{self as platform, Insets};
 use qlaunch_core::api::{api as core, events::CoreEvent};
-use qlaunch_core::model::{AppRef, IconFormat, Id, Item};
-use qlaunch_core::settings::LayoutStyle;
+use qlaunch_core::model::{AppRef, IconFormat, Id, Item, ShortcutPayload};
+use qlaunch_core::settings::{GestureAction, LayoutStyle};
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
@@ -332,14 +332,64 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn home_opens_then_closes_search_and_back_is_not_exit() {
+    fn home_on_home_does_not_open_search_by_default() {
+        // The default Home action is the notification shade, not search.
         let mut app = app();
+        let _ = app.update(Message::Event(CoreEvent::HomePressed));
+        assert!(!app.searching);
+    }
+
+    #[test]
+    fn home_action_search_opens_then_closes_search_and_back_is_not_exit() {
+        let mut app = app();
+        app.snapshot.as_mut().unwrap().settings.home_action = GestureAction::Search;
         let _ = app.update(Message::Event(CoreEvent::HomePressed));
         assert!(app.searching);
         let _ = app.update(Message::Event(CoreEvent::HomePressed));
         assert!(!app.searching);
         let _ = app.update(Message::Back);
         assert!(app.window.is_some());
+    }
+
+    #[test]
+    fn double_tap_runs_the_configured_action() {
+        let mut app = app();
+        // The default is lock, which is not search.
+        let _ = app.apply_gesture(Outcome::DoubleTap);
+        assert!(!app.searching);
+        app.snapshot.as_mut().unwrap().settings.double_tap_action = GestureAction::Search;
+        let _ = app.apply_gesture(Outcome::DoubleTap);
+        assert!(app.searching);
+    }
+
+    #[test]
+    fn swipe_up_runs_the_configured_action() {
+        let mut app = app();
+        // The default is off.
+        let _ = app.apply_gesture(Outcome::SwipeUp);
+        assert!(!app.searching);
+        app.snapshot.as_mut().unwrap().settings.swipe_up_action = GestureAction::Search;
+        let _ = app.apply_gesture(Outcome::SwipeUp);
+        assert!(app.searching);
+    }
+
+    #[test]
+    fn tapping_a_search_shortcut_opens_search() {
+        let mut app = app();
+        let mut search = item(&app, "search");
+        search.app = None;
+        search.shortcut = Some(ShortcutPayload::Search);
+        let _ = app.activate(search);
+        assert!(app.searching);
+    }
+
+    #[test]
+    fn the_launcher_menu_search_row_opens_search() {
+        let mut app = app();
+        app.dialog = Some(dialog::Dialog::Launcher);
+        let _ = app.update(Message::Dialog(dialog::Message::LauncherSearch));
+        assert!(app.dialog.is_none());
+        assert!(app.searching);
     }
 
     #[test]
@@ -2035,6 +2085,10 @@ impl App {
                 self.dialog = None;
                 return self.update(Message::Push(Screen::Settings));
             }
+            D::LauncherSearch => {
+                self.dialog = None;
+                return self.open_search();
+            }
             D::LauncherEditGroups => {
                 self.dialog = None;
                 return self.update(Message::Push(Screen::Groups));
@@ -2093,6 +2147,25 @@ impl App {
                     move || {
                         block_on(async move {
                             core::add_notifications_shortcut(group).await?;
+                            core::snapshot().await
+                        })
+                    },
+                    |result| Message::ModelDone {
+                        result,
+                        close: true,
+                    },
+                );
+            }
+            D::ShortcutSearch => {
+                let Some(Dialog::AddShortcut(state)) = &self.dialog else {
+                    return Task::none();
+                };
+                let group = state.target_group.clone();
+                self.mark_shortcut_busy();
+                return work(
+                    move || {
+                        block_on(async move {
+                            core::add_search_shortcut(group).await?;
                             core::snapshot().await
                         })
                     },
@@ -2523,6 +2596,30 @@ impl App {
             }
         }
         Task::none()
+    }
+
+    /// Reads a gesture's saved action, falling back to off with no snapshot.
+    fn action_setting(
+        &self,
+        select: impl Fn(&qlaunch_core::settings::Settings) -> GestureAction,
+    ) -> GestureAction {
+        self.snapshot
+            .as_ref()
+            .map(|snapshot| select(&snapshot.settings))
+            .unwrap_or(GestureAction::None)
+    }
+
+    /// Runs one configured gesture action. `Search` is launcher UI; the others
+    /// are core system actions.
+    fn perform_action(&mut self, action: GestureAction) -> Task<Message> {
+        match action {
+            GestureAction::None => Task::none(),
+            GestureAction::Search => self.open_search(),
+            GestureAction::Lock => work(|| block_on(core::lock_screen()), Message::ActionDone),
+            GestureAction::Notifications => {
+                work(|| block_on(core::open_notifications()), Message::ActionDone)
+            }
+        }
     }
 
     fn open_search(&mut self) -> Task<Message> {
@@ -2963,7 +3060,7 @@ impl App {
                 } else if self.pager.committed() != self.home_index() {
                     return self.go_home();
                 } else {
-                    return self.open_search();
+                    return self.perform_action(self.action_setting(|s| s.home_action));
                 }
             }
             Message::Event(CoreEvent::HomePressedFromOverlay) => {
@@ -3551,9 +3648,13 @@ impl App {
                     return self.activate(item);
                 }
             }
+            Outcome::SwipeUp => {
+                self.pressed = None;
+                return self.perform_action(self.action_setting(|s| s.swipe_up_action));
+            }
             Outcome::DoubleTap => {
                 self.pressed = None;
-                return work(|| block_on(core::lock_screen()), Message::ActionDone);
+                return self.perform_action(self.action_setting(|s| s.double_tap_action));
             }
         }
         Task::none()
@@ -3565,6 +3666,11 @@ impl App {
             self.folder = Some(folder);
             let reset = self.reset_scroll();
             return Task::batch([reset, self.warm_icons()]);
+        }
+        // A search shortcut is launcher UI, not an OS launch.
+        if matches!(item.shortcut, Some(ShortcutPayload::Search)) {
+            self.folder = None;
+            return self.open_search();
         }
         work(
             move || {

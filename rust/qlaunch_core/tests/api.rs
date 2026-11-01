@@ -147,6 +147,30 @@ fn shortcuts_persist_and_reject_invalid_destinations_or_blank_commands() {
     assert_eq!(snap.items, restored.items);
 }
 
+#[test]
+fn a_search_shortcut_is_added_with_the_search_payload() {
+    let _guard = serial();
+    let dir = tempdir().unwrap();
+    let snap = init_fake(dir.path());
+    let home = group_id(&snap, GroupRole::Home);
+    let snap = block_on(api::add_search_shortcut(home.clone())).unwrap();
+    let item = snap.items.iter().find(|i| i.label == "Search").unwrap();
+    assert_eq!(item.group_id, home);
+    assert!(item.app.is_none());
+    assert!(matches!(
+        item.shortcut,
+        Some(qlaunch_core::model::ShortcutPayload::Search)
+    ));
+    assert!(
+        serde_json::to_string(&item.shortcut)
+            .unwrap()
+            .contains("\"search\"")
+    );
+    assert!(block_on(api::add_search_shortcut("gone".into())).is_err());
+    let restored = init_fake(dir.path());
+    assert_eq!(snap.items, restored.items);
+}
+
 #[cfg(not(target_os = "android"))]
 #[test]
 fn opening_notifications_is_android_only() {
