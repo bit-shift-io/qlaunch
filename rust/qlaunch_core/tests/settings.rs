@@ -25,6 +25,7 @@ fn defaults_match_the_spec() {
     assert_eq!(s.orientation, Orientation::Auto);
     assert_eq!(s.home_action, GestureAction::Notifications);
     assert_eq!(s.swipe_up_action, GestureAction::None);
+    assert_eq!(s.pull_down_action, GestureAction::None);
     assert_eq!(s.double_tap_action, GestureAction::Lock);
 }
 
@@ -199,11 +200,13 @@ fn gesture_actions_round_trip_through_a_patch_and_serde() {
     s.apply(&SettingsPatch {
         home_action: Some(GestureAction::Search),
         swipe_up_action: Some(GestureAction::Lock),
+        pull_down_action: Some(GestureAction::Notifications),
         double_tap_action: Some(GestureAction::None),
         ..Default::default()
     });
     assert_eq!(s.home_action, GestureAction::Search);
     assert_eq!(s.swipe_up_action, GestureAction::Lock);
+    assert_eq!(s.pull_down_action, GestureAction::Notifications);
     assert_eq!(s.double_tap_action, GestureAction::None);
 
     let restored: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
@@ -212,6 +215,7 @@ fn gesture_actions_round_trip_through_a_patch_and_serde() {
         Settings {
             home_action: GestureAction::Notifications,
             swipe_up_action: GestureAction::None,
+            pull_down_action: GestureAction::None,
             double_tap_action: GestureAction::Lock,
             ..restored
         },
@@ -224,6 +228,7 @@ fn gesture_actions_default_for_old_configs() {
     let s: Settings = serde_json::from_str(r#"{"icon_size": 55}"#).unwrap();
     assert_eq!(s.home_action, GestureAction::Notifications);
     assert_eq!(s.swipe_up_action, GestureAction::None);
+    assert_eq!(s.pull_down_action, GestureAction::None);
     assert_eq!(s.double_tap_action, GestureAction::Lock);
 }
 
@@ -252,6 +257,7 @@ fn field_names_serialise_verbatim() {
             "layout",
             "orientation",
             "page_transition_ms",
+            "pull_down_action",
             "scroll_fade",
             "status_bar_visible",
             "swipe_up_action",

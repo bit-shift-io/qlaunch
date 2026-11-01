@@ -2185,6 +2185,7 @@ impl SseDecode for crate::settings::Settings {
         let mut var_orientation = <crate::settings::Orientation>::sse_decode(deserializer);
         let mut var_homeAction = <crate::settings::GestureAction>::sse_decode(deserializer);
         let mut var_swipeUpAction = <crate::settings::GestureAction>::sse_decode(deserializer);
+        let mut var_pullDownAction = <crate::settings::GestureAction>::sse_decode(deserializer);
         let mut var_doubleTapAction = <crate::settings::GestureAction>::sse_decode(deserializer);
         return crate::settings::Settings {
             grid_columns_portrait: var_gridColumnsPortrait,
@@ -2208,6 +2209,7 @@ impl SseDecode for crate::settings::Settings {
             orientation: var_orientation,
             home_action: var_homeAction,
             swipe_up_action: var_swipeUpAction,
+            pull_down_action: var_pullDownAction,
             double_tap_action: var_doubleTapAction,
         };
     }
@@ -2240,6 +2242,8 @@ impl SseDecode for crate::settings::SettingsPatch {
         let mut var_homeAction = <Option<crate::settings::GestureAction>>::sse_decode(deserializer);
         let mut var_swipeUpAction =
             <Option<crate::settings::GestureAction>>::sse_decode(deserializer);
+        let mut var_pullDownAction =
+            <Option<crate::settings::GestureAction>>::sse_decode(deserializer);
         let mut var_doubleTapAction =
             <Option<crate::settings::GestureAction>>::sse_decode(deserializer);
         return crate::settings::SettingsPatch {
@@ -2264,6 +2268,7 @@ impl SseDecode for crate::settings::SettingsPatch {
             orientation: var_orientation,
             home_action: var_homeAction,
             swipe_up_action: var_swipeUpAction,
+            pull_down_action: var_pullDownAction,
             double_tap_action: var_doubleTapAction,
         };
     }
@@ -2875,6 +2880,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::Settings {
             self.orientation.into_into_dart().into_dart(),
             self.home_action.into_into_dart().into_dart(),
             self.swipe_up_action.into_into_dart().into_dart(),
+            self.pull_down_action.into_into_dart().into_dart(),
             self.double_tap_action.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -2911,6 +2917,7 @@ impl flutter_rust_bridge::IntoDart for crate::settings::SettingsPatch {
             self.orientation.into_into_dart().into_dart(),
             self.home_action.into_into_dart().into_dart(),
             self.swipe_up_action.into_into_dart().into_dart(),
+            self.pull_down_action.into_into_dart().into_dart(),
             self.double_tap_action.into_into_dart().into_dart(),
         ]
         .into_dart()
@@ -3660,6 +3667,7 @@ impl SseEncode for crate::settings::Settings {
         <crate::settings::Orientation>::sse_encode(self.orientation, serializer);
         <crate::settings::GestureAction>::sse_encode(self.home_action, serializer);
         <crate::settings::GestureAction>::sse_encode(self.swipe_up_action, serializer);
+        <crate::settings::GestureAction>::sse_encode(self.pull_down_action, serializer);
         <crate::settings::GestureAction>::sse_encode(self.double_tap_action, serializer);
     }
 }
@@ -3688,6 +3696,7 @@ impl SseEncode for crate::settings::SettingsPatch {
         <Option<crate::settings::Orientation>>::sse_encode(self.orientation, serializer);
         <Option<crate::settings::GestureAction>>::sse_encode(self.home_action, serializer);
         <Option<crate::settings::GestureAction>>::sse_encode(self.swipe_up_action, serializer);
+        <Option<crate::settings::GestureAction>>::sse_encode(self.pull_down_action, serializer);
         <Option<crate::settings::GestureAction>>::sse_encode(self.double_tap_action, serializer);
     }
 }

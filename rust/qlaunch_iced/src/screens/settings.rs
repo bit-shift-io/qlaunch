@@ -31,12 +31,13 @@ pub(crate) enum SettingField {
     LabelShadowBlur,
     HomeAction,
     SwipeUpAction,
+    PullDownAction,
     DoubleTapAction,
 }
 
 impl SettingField {
     #[allow(dead_code)] // used by the coverage test
-    pub(crate) fn all() -> [Self; 22] {
+    pub(crate) fn all() -> [Self; 23] {
         use SettingField::*;
         [
             ContinuousScroll,
@@ -60,6 +61,7 @@ impl SettingField {
             LabelShadowBlur,
             HomeAction,
             SwipeUpAction,
+            PullDownAction,
             DoubleTapAction,
         ]
     }
@@ -243,6 +245,12 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             settings.swipe_up_action as usize,
         ),
         choices(
+            PullDownAction,
+            "Swipe down",
+            &["None", "Lock", "Search", "Notifications"],
+            settings.pull_down_action as usize,
+        ),
+        choices(
             DoubleTapAction,
             "Double tap",
             &["None", "Lock", "Search", "Notifications"],
@@ -352,6 +360,7 @@ pub(crate) fn choice_patch(field: SettingField, index: usize) -> SettingsPatch {
         }
         SettingField::HomeAction => patch.home_action = gesture_choices(index),
         SettingField::SwipeUpAction => patch.swipe_up_action = gesture_choices(index),
+        SettingField::PullDownAction => patch.pull_down_action = gesture_choices(index),
         SettingField::DoubleTapAction => patch.double_tap_action = gesture_choices(index),
         _ => {}
     }
@@ -592,6 +601,7 @@ mod tests {
         let actions = [
             SettingField::HomeAction,
             SettingField::SwipeUpAction,
+            SettingField::PullDownAction,
             SettingField::DoubleTapAction,
         ];
         for field in actions {
@@ -622,6 +632,13 @@ mod tests {
             }
         );
         assert_eq!(
+            choice_patch(SettingField::PullDownAction, 3),
+            SettingsPatch {
+                pull_down_action: Some(GestureAction::Notifications),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
             choice_patch(SettingField::DoubleTapAction, 1),
             SettingsPatch {
                 double_tap_action: Some(GestureAction::Lock),
@@ -635,6 +652,7 @@ mod tests {
         let settings = Settings {
             home_action: qlaunch_core::settings::GestureAction::Lock,
             swipe_up_action: qlaunch_core::settings::GestureAction::Search,
+            pull_down_action: qlaunch_core::settings::GestureAction::Notifications,
             double_tap_action: qlaunch_core::settings::GestureAction::None,
             ..Settings::default()
         };
@@ -651,6 +669,7 @@ mod tests {
         };
         assert_eq!(selected(SettingField::HomeAction), 1);
         assert_eq!(selected(SettingField::SwipeUpAction), 2);
+        assert_eq!(selected(SettingField::PullDownAction), 3);
         assert_eq!(selected(SettingField::DoubleTapAction), 0);
     }
 

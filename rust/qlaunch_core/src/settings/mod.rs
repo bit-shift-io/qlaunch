@@ -85,6 +85,7 @@ pub struct Settings {
     pub orientation: Orientation,
     pub home_action: GestureAction,
     pub swipe_up_action: GestureAction,
+    pub pull_down_action: GestureAction,
     pub double_tap_action: GestureAction,
 }
 
@@ -111,6 +112,7 @@ pub struct SettingsPatch {
     pub orientation: Option<Orientation>,
     pub home_action: Option<GestureAction>,
     pub swipe_up_action: Option<GestureAction>,
+    pub pull_down_action: Option<GestureAction>,
     pub double_tap_action: Option<GestureAction>,
 }
 
@@ -138,6 +140,7 @@ impl Default for Settings {
             orientation: Orientation::Auto,
             home_action: GestureAction::Notifications,
             swipe_up_action: GestureAction::None,
+            pull_down_action: GestureAction::None,
             double_tap_action: GestureAction::Lock,
         }
     }
@@ -187,6 +190,7 @@ impl Settings {
             orientation,
             home_action,
             swipe_up_action,
+            pull_down_action,
             double_tap_action,
         );
     }

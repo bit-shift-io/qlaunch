@@ -1,15 +1,17 @@
 //! The bundled Material Icons font and the glyphs the UI draws.
 //!
-//! The font is Flutter's `MaterialIcons-Regular.otf`; its codepoints are
-//! copied from `lib/src/material/icons.dart` so an icon matches the Flutter
-//! build exactly.
+//! The font's cmap names each glyph `<icon>_baseline`; each constant below is
+//! that glyph's codepoint (verify with `fontTools` against the bundled
+//! `assets/MaterialIcons-Regular.otf`, not from memory — e.g. `0xe8b6` is
+//! `delete_forever_sharp`, while the magnifying glass `search_baseline` is
+//! `0xe567`).
 
 use iced::Font;
 
 /// The bundled icon font's family name, as stored in the OTF.
 pub(crate) const FONT: Font = Font::with_name("Material Icons");
 
-pub(crate) const SEARCH: char = '\u{e8b6}';
+pub(crate) const SEARCH: char = '\u{e567}';
 pub(crate) const SETTINGS: char = '\u{e57f}';
 pub(crate) const ADD_LINK: char = '\u{e053}';
 pub(crate) const CREATE_NEW_FOLDER: char = '\u{ef8c}';
@@ -38,7 +40,7 @@ mod tests {
 
     #[test]
     fn glyph_codepoints_match_flutter() {
-        assert_eq!(SEARCH, '\u{e8b6}');
+        assert_eq!(SEARCH, '\u{e567}');
         assert_eq!(SETTINGS, '\u{e57f}');
         assert_eq!(ADD_LINK, '\u{e053}');
         assert_eq!(CREATE_NEW_FOLDER, '\u{ef8c}');

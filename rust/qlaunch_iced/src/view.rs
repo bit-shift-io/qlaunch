@@ -4,7 +4,7 @@ use iced::widget::{
     button, column, container, image, mouse_area, row, scrollable, space, text, text_input,
 };
 use iced::{Color, Element, Fill};
-use qlaunch_core::model::{Id, Item};
+use qlaunch_core::model::{Id, Item, ShortcutPayload};
 use qlaunch_core::settings::{LabelColour, LayoutStyle};
 
 use crate::slots::{Interaction, Slot, Slots};
@@ -555,8 +555,20 @@ fn title_button<'a>(
     .into()
 }
 
+/// The Material glyph for one of the launcher's own shortcuts. Provider and
+/// command shortcuts have none here (they carry their own icon instead).
+fn shortcut_glyph(shortcut: Option<&ShortcutPayload>) -> Option<char> {
+    match shortcut? {
+        ShortcutPayload::LockScreen => Some(crate::icons::LOCK_OUTLINE),
+        ShortcutPayload::Notifications => Some(crate::icons::NOTIFICATIONS_NONE),
+        ShortcutPayload::Search => Some(crate::icons::SEARCH),
+        ShortcutPayload::Android { .. } | ShortcutPayload::Command { .. } => None,
+    }
+}
+
 fn cell<'a>(app: &'a App, item: &'a Item, colour: Color, alpha: f32) -> Element<'a, Message> {
     let settings = &app.snapshot.as_ref().unwrap().settings;
+    let icon_alpha = settings.icon_alpha as f32 / 100.0 * alpha;
     let icon: Element<'a, Message> = if let Some(handle) = item
         .app
         .as_ref()
@@ -565,13 +577,24 @@ fn cell<'a>(app: &'a App, item: &'a Item, colour: Color, alpha: f32) -> Element<
         image(handle.clone())
             .width(settings.icon_size as f32)
             .height(settings.icon_size as f32)
-            .opacity(settings.icon_alpha as f32 / 100.0 * alpha)
+            .opacity(icon_alpha)
+            .into()
+    } else if let Some(glyph) = shortcut_glyph(item.shortcut.as_ref()) {
+        // The launcher's own shortcuts (lock, notifications, search) draw a
+        // Material glyph instead of the generic "no icon" grid placeholder.
+        text(crate::icons::glyph(glyph))
+            .font(crate::icons::FONT)
+            .size(settings.icon_size as f32)
+            .color(Color {
+                a: icon_alpha,
+                ..crate::theme::color::ON_SURFACE_VARIANT
+            })
             .into()
     } else {
         image(placeholder::handle(item.folder_group_id.is_some()))
             .width(settings.icon_size as f32)
             .height(settings.icon_size as f32)
-            .opacity(settings.icon_alpha as f32 / 100.0 * alpha)
+            .opacity(icon_alpha)
             .into()
     };
     let label = self::label(
@@ -667,5 +690,36 @@ pub(crate) fn label<'a>(
         .into()
     } else {
         foreground.into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shortcut_glyph;
+    use qlaunch_core::model::ShortcutPayload;
+
+    #[test]
+    fn the_launcher_shortcuts_draw_their_material_glyph() {
+        use crate::icons::{LOCK_OUTLINE, NOTIFICATIONS_NONE, SEARCH};
+        assert_eq!(
+            shortcut_glyph(Some(&ShortcutPayload::LockScreen)),
+            Some(LOCK_OUTLINE)
+        );
+        assert_eq!(
+            shortcut_glyph(Some(&ShortcutPayload::Notifications)),
+            Some(NOTIFICATIONS_NONE)
+        );
+        assert_eq!(shortcut_glyph(Some(&ShortcutPayload::Search)), Some(SEARCH));
+    }
+
+    #[test]
+    fn app_backed_and_provider_shortcuts_have_no_built_in_glyph() {
+        assert_eq!(shortcut_glyph(None), None);
+        assert_eq!(
+            shortcut_glyph(Some(&ShortcutPayload::Command {
+                command: "true".into()
+            })),
+            None
+        );
     }
 }

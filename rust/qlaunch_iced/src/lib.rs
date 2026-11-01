@@ -374,6 +374,17 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn pull_down_runs_the_configured_action() {
+        let mut app = app();
+        // The default is off (it no longer opens the shade).
+        let _ = app.apply_gesture(Outcome::PullDown);
+        assert!(!app.searching);
+        app.snapshot.as_mut().unwrap().settings.pull_down_action = GestureAction::Search;
+        let _ = app.apply_gesture(Outcome::PullDown);
+        assert!(app.searching);
+    }
+
+    #[test]
     fn tapping_a_search_shortcut_opens_search() {
         let mut app = app();
         let mut search = item(&app, "search");
@@ -3616,7 +3627,7 @@ impl App {
             }
             Outcome::PullDown => {
                 self.pressed = None;
-                return work(|| block_on(core::open_notifications()), Message::ActionDone);
+                return self.perform_action(self.action_setting(|s| s.pull_down_action));
             }
             Outcome::LongPress(Start::Item(id)) => {
                 let item = self

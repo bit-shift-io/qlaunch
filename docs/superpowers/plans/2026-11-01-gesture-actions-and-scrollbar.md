@@ -6,14 +6,19 @@ Working plan (2026-11-01). Target: `dev/iced` (Rust/Iced + Kotlin adapter).
 
 - [x] Core `GestureAction { None, Lock, Search, Notifications }`; Settings fields
       `home_action = Notifications`, `swipe_up_action = None`,
-      `double_tap_action = Lock`; SettingsPatch + apply + serde.
-- [x] Iced Settings: new "Actions" card with three choice rows
-      (Home button, Swipe up, Double tap).
+      `pull_down_action = None`, `double_tap_action = Lock`; SettingsPatch +
+      apply + serde.
+- [x] Iced Settings: new "Actions" card with four choice rows
+      (Home button, Swipe up, Swipe down, Double tap).
 - [x] Iced wiring:
   - Home-when-home performs `home_action` (was always search).
   - Double-tap performs `double_tap_action` (was always lock).
   - New swipe-up gesture performs `swipe_up_action` (default off).
+  - Pull-down performs `pull_down_action` (was hard-coded notifications; still
+    gated to the top of the page).
 - [x] "Search" means the in-app search screen (`open_search`).
+- [x] Search icon: `SEARCH` was `0xe8b6` = `delete_forever_sharp` in the bundled
+      font (a trash can); corrected to `0xe567` = `search_baseline`.
 
 ## 2. New ways to reach search
 
