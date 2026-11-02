@@ -9,7 +9,7 @@ use qlaunch_core::api::shortcuts::ShortcutProvider;
 use qlaunch_core::model::{Group, GroupRole, Id, Item};
 
 use crate::theme::{self, Text, TextRole};
-use crate::{App, Message as AppMessage, components};
+use crate::{App, Message as AppMessage, components, label};
 
 /// Every action a dialog can take. Rendering maps these to the same core calls
 /// the old overlay used; no model rule lives here.
@@ -20,12 +20,10 @@ pub(crate) enum Message {
     OpenGroupSelect,
     GroupChosen(Id),
     CloseSelect,
-    AppName(String),
-    AppSave,
+    EditorName(String),
+    EditorSave,
     AppUninstall,
     AppRemove,
-    FolderName(String),
-    FolderSave,
     FolderDelete,
     LauncherSettings,
     LauncherAddShortcut,
@@ -62,8 +60,7 @@ pub(crate) enum Message {
 /// actions differ.
 #[allow(clippy::large_enum_variant)] // App holds an owned Item while forms are small.
 pub(crate) enum Dialog {
-    App(AppEditor),
-    Folder(FolderEditor),
+    Editor(Editor),
     Launcher,
     AddShortcut(AddShortcutState),
     CommandShortcut(CommandShortcutState),
@@ -74,58 +71,38 @@ pub(crate) enum Dialog {
     AppPicker(AppPickerState),
 }
 
-pub(crate) struct AppEditor {
-    pub item: Item,
+pub(crate) struct Editor {
+    pub kind: EditorKind,
     pub name: String,
     pub group_id: Id,
     pub busy: bool,
     pub error: Option<String>,
 }
 
-impl AppEditor {
-    pub(crate) fn new(item: Item) -> Self {
-        AppEditor {
-            name: item.label.clone(),
-            group_id: item.group_id.clone(),
-            item,
+pub(crate) enum EditorKind {
+    App { item: Item },
+    Folder { folder: Option<Id>, label: String },
+}
+
+impl Editor {
+    pub(crate) fn app(item: Item) -> Self {
+        let name = item.label.clone();
+        let group_id = item.group_id.clone();
+        Editor {
+            kind: EditorKind::App { item },
+            name,
+            group_id,
             busy: false,
             error: None,
         }
     }
 
-    pub(crate) fn can_uninstall(&self) -> bool {
-        self.item.app.is_some() && !self.item.uninstalled
-    }
-
-    pub(crate) fn is_shortcut(&self) -> bool {
-        self.item.shortcut.is_some()
-    }
-
-    pub(crate) fn can_save(&self) -> bool {
-        !self.busy && !self.name.trim().is_empty()
-    }
-}
-
-pub(crate) enum FolderEditor {
-    Create {
-        name: String,
-        group_id: Id,
-        busy: bool,
-        error: Option<String>,
-    },
-    Edit {
-        folder: Id,
-        label: String,
-        name: String,
-        group_id: Id,
-        busy: bool,
-        error: Option<String>,
-    },
-}
-
-impl FolderEditor {
-    pub(crate) fn create(group_id: Id) -> Self {
-        FolderEditor::Create {
+    pub(crate) fn folder_create(group_id: Id) -> Self {
+        Editor {
+            kind: EditorKind::Folder {
+                folder: None,
+                label: "Folder".into(),
+            },
             name: "Folder".into(),
             group_id,
             busy: false,
@@ -133,72 +110,69 @@ impl FolderEditor {
         }
     }
 
-    pub(crate) fn edit(folder: Id, label: String, group_id: Id) -> Self {
-        FolderEditor::Edit {
-            folder,
-            name: label.clone(),
-            label,
+    pub(crate) fn folder_edit(folder: Id, label: String, group_id: Id) -> Self {
+        Editor {
+            kind: EditorKind::Folder {
+                folder: Some(folder),
+                label: label.clone(),
+            },
+            name: label,
             group_id,
             busy: false,
             error: None,
         }
     }
 
-    pub(crate) fn name(&self) -> &str {
-        match self {
-            FolderEditor::Create { name, .. } | FolderEditor::Edit { name, .. } => name,
+    pub(crate) fn item(&self) -> Option<&Item> {
+        match &self.kind {
+            EditorKind::App { item } => Some(item),
+            EditorKind::Folder { .. } => None,
         }
     }
 
-    pub(crate) fn set_name(&mut self, value: String) {
-        match self {
-            FolderEditor::Create { name, .. } | FolderEditor::Edit { name, .. } => *name = value,
-        }
+    pub(crate) fn can_uninstall(&self) -> bool {
+        self.item()
+            .is_some_and(|item| item.app.is_some() && !item.uninstalled)
     }
 
-    pub(crate) fn group_id(&self) -> &Id {
-        match self {
-            FolderEditor::Create { group_id, .. } | FolderEditor::Edit { group_id, .. } => group_id,
-        }
+    pub(crate) fn is_shortcut(&self) -> bool {
+        self.item().is_some_and(|item| item.shortcut.is_some())
     }
 
-    pub(crate) fn set_group(&mut self, id: Id) {
-        match self {
-            FolderEditor::Create { group_id, .. } | FolderEditor::Edit { group_id, .. } => {
-                *group_id = id
+    pub(crate) fn is_folder_edit(&self) -> bool {
+        matches!(
+            &self.kind,
+            EditorKind::Folder {
+                folder: Some(_),
+                ..
             }
-        }
+        )
     }
 
-    pub(crate) fn is_edit(&self) -> bool {
-        matches!(self, FolderEditor::Edit { .. })
+    pub(crate) fn folder_id(&self) -> Option<&Id> {
+        match &self.kind {
+            EditorKind::Folder { folder, .. } => folder.as_ref(),
+            EditorKind::App { .. } => None,
+        }
     }
 
     pub(crate) fn can_save(&self) -> bool {
-        !self.busy() && !self.name().trim().is_empty() && !self.group_id().is_empty()
+        !self.busy && !self.name.trim().is_empty() && !self.group_id.is_empty()
     }
 
-    pub(crate) fn busy(&self) -> bool {
-        match self {
-            FolderEditor::Create { busy, .. } | FolderEditor::Edit { busy, .. } => *busy,
+    pub(crate) fn select_field(&self) -> SelectField {
+        match &self.kind {
+            EditorKind::App { .. } => SelectField::AppGroup,
+            EditorKind::Folder { .. } => SelectField::FolderGroup,
         }
     }
 
-    pub(crate) fn set_busy(&mut self, value: bool) {
-        match self {
-            FolderEditor::Create { busy, .. } | FolderEditor::Edit { busy, .. } => *busy = value,
-        }
-    }
-
-    pub(crate) fn error(&self) -> Option<&String> {
-        match self {
-            FolderEditor::Create { error, .. } | FolderEditor::Edit { error, .. } => error.as_ref(),
-        }
-    }
-
-    pub(crate) fn set_error(&mut self, value: Option<String>) {
-        match self {
-            FolderEditor::Create { error, .. } | FolderEditor::Edit { error, .. } => *error = value,
+    fn accessible_title(&self) -> String {
+        match &self.kind {
+            EditorKind::App { item } if item.shortcut.is_some() => "Edit shortcut".into(),
+            EditorKind::App { .. } => "Edit app".into(),
+            EditorKind::Folder { folder: None, .. } => "New folder".into(),
+            EditorKind::Folder { .. } => "Edit folder".into(),
         }
     }
 }
@@ -328,6 +302,7 @@ pub(crate) struct Select {
     pub selected: Id,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SelectField {
     AppGroup,
     FolderGroup,
@@ -395,9 +370,7 @@ fn wrapped_lines(label: &str, size: f32, width: f32) -> usize {
 
 pub(crate) fn heading(dialog: &Dialog) -> Option<String> {
     match dialog {
-        Dialog::App(_) => None,
-        Dialog::Folder(FolderEditor::Create { .. }) => Some("New Folder".into()),
-        Dialog::Folder(FolderEditor::Edit { label, .. }) => Some(label.clone()),
+        Dialog::Editor(_) => None,
         Dialog::Launcher => None,
         Dialog::AddShortcut(_) => Some("Add Shortcut".into()),
         Dialog::CommandShortcut(_) => Some("Command Shortcut".into()),
@@ -412,6 +385,14 @@ pub(crate) fn heading(dialog: &Dialog) -> Option<String> {
             _ => "Choose App".into(),
         }),
     }
+}
+
+/// The name read by a screen reader when a dialog has no visible heading.
+pub(crate) fn accessible_title(dialog: &Dialog) -> String {
+    heading(dialog).unwrap_or_else(|| match dialog {
+        Dialog::Editor(editor) => editor.accessible_title(),
+        _ => "App settings".into(),
+    })
 }
 
 fn group_label(app: &App, id: &Id) -> String {
@@ -481,46 +462,17 @@ pub(crate) fn append_order(snapshot: &ModelSnapshot, group: &Id) -> i32 {
 pub(crate) fn rows(app: &App, dialog: &Dialog) -> Vec<Row> {
     let mut rows = Vec::new();
     match dialog {
-        Dialog::App(editor) => {
+        Dialog::Editor(editor) => {
             rows.push(Row::Field {
                 label: "Name".into(),
                 value: editor.name.clone(),
-                widget_id: APP_NAME_FIELD_ID,
+                widget_id: EDITOR_NAME_FIELD_ID,
             });
-            if let Some(app_ref) = &editor.item.app {
-                rows.push(Row::Text {
-                    label: app_ref.package.clone(),
-                    error: false,
-                });
-                if editor.item.uninstalled {
-                    rows.push(Row::Text {
-                        label: "Uninstalled".into(),
-                        error: false,
-                    });
-                }
-            }
             rows.push(Row::Select {
                 label: "Group".into(),
                 value: group_label(app, &editor.group_id),
             });
             if let Some(error) = &editor.error {
-                rows.push(Row::Text {
-                    label: error.clone(),
-                    error: true,
-                });
-            }
-        }
-        Dialog::Folder(editor) => {
-            rows.push(Row::Field {
-                label: "Name".into(),
-                value: editor.name().to_string(),
-                widget_id: FOLDER_NAME_FIELD_ID,
-            });
-            rows.push(Row::Select {
-                label: "Group".into(),
-                value: group_label(app, editor.group_id()),
-            });
-            if let Some(error) = editor.error() {
                 rows.push(Row::Text {
                     label: error.clone(),
                     error: true,
@@ -676,10 +628,33 @@ pub(crate) fn rows(app: &App, dialog: &Dialog) -> Vec<Row> {
     rows
 }
 
+/// Destructive actions are drawn as compact trash icons, so their slots are
+/// icon-sized instead of being measured from the accessible label.
+fn is_icon_action(dialog: &Dialog, label: &str) -> bool {
+    match dialog {
+        Dialog::Editor(editor) => {
+            (label == "Uninstall" && editor.can_uninstall())
+                || (label == "Remove" && editor.is_shortcut())
+                || (label == "Delete" && editor.is_folder_edit())
+        }
+        _ => false,
+    }
+}
+
+fn action_width(dialog: &Dialog, label: &str, style: theme::Typography, inner_width: f32) -> f32 {
+    if is_icon_action(dialog, label) {
+        theme::metrics::TOUCH_TARGET.min(inner_width)
+    } else {
+        (label::measured_width(label, style) + 24.0)
+            .max(64.0)
+            .min(inner_width)
+    }
+}
+
 /// The action row's labels, left to right.
 pub(crate) fn action_labels(dialog: &Dialog) -> Vec<String> {
     match dialog {
-        Dialog::App(editor) => {
+        Dialog::Editor(editor) => {
             let mut labels = Vec::new();
             if editor.can_uninstall() {
                 labels.push("Uninstall".into());
@@ -687,13 +662,7 @@ pub(crate) fn action_labels(dialog: &Dialog) -> Vec<String> {
             if editor.is_shortcut() {
                 labels.push("Remove".into());
             }
-            labels.push("Cancel".into());
-            labels.push("Save".into());
-            labels
-        }
-        Dialog::Folder(editor) => {
-            let mut labels = Vec::new();
-            if editor.is_edit() {
+            if editor.is_folder_edit() {
                 labels.push("Delete".into());
             }
             labels.push("Cancel".into());
@@ -719,8 +688,7 @@ pub(crate) struct DialogLayout {
     pub rows: Vec<(Rectangle, usize)>,
 }
 
-pub(crate) const APP_NAME_FIELD_ID: &str = "dialog-app-name";
-pub(crate) const FOLDER_NAME_FIELD_ID: &str = "dialog-folder-name";
+pub(crate) const EDITOR_NAME_FIELD_ID: &str = "dialog-editor-name";
 pub(crate) const COMMAND_NAME_FIELD_ID: &str = "dialog-command-name";
 pub(crate) const COMMAND_TEXT_FIELD_ID: &str = "dialog-command-text";
 pub(crate) const ADD_GROUP_FIELD_ID: &str = "dialog-add-group";
@@ -756,13 +724,10 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
         )
         .min(window.width.max(0.0));
     let inner_width = (card_width - 2.0 * padding).max(0.0);
+    let label_style = typography.role(TextRole::LabelLarge);
     let widths: Vec<f32> = labels
         .iter()
-        .map(|s| {
-            (s.chars().count() as f32 * 8.0 + 24.0)
-                .max(64.0)
-                .min(inner_width)
-        })
+        .map(|label| action_width(dialog, label, label_style, inner_width))
         .collect();
     let total = widths.iter().sum::<f32>()
         + theme::metrics::ACTION_GAP * widths.len().saturating_sub(1) as f32;
@@ -898,12 +863,35 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
 
     let mut actions = Vec::new();
     if !labels.is_empty() {
+        let icon_indices: Vec<usize> = labels
+            .iter()
+            .enumerate()
+            .filter(|(_, label)| is_icon_action(dialog, label))
+            .map(|(index, _)| index)
+            .collect();
+        let text_actions = labels.len() - icon_indices.len();
+        let text_total = widths
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| !icon_indices.contains(index))
+            .map(|(_, width)| *width)
+            .sum::<f32>()
+            + theme::metrics::ACTION_GAP * text_actions.saturating_sub(1) as f32;
         let mut y = card.y + card_height - padding - action_height * action_rows as f32;
-        let mut x = card.x + card.width - padding - total;
-        for (label, width) in labels.iter().zip(widths) {
-            if overflow {
-                x = card.x + card.width - padding - width;
-            }
+        let mut icon_x = card.x + padding;
+        let mut text_x = card.x + card.width - padding - text_total;
+        for (index, (label, width)) in labels.iter().zip(widths).enumerate() {
+            let x = if icon_indices.contains(&index) && !overflow {
+                let x = icon_x;
+                icon_x += width + theme::metrics::ACTION_GAP;
+                x
+            } else if overflow {
+                card.x + card.width - padding - width
+            } else {
+                let x = text_x;
+                text_x += width + theme::metrics::ACTION_GAP;
+                x
+            };
             actions.push((
                 Rectangle {
                     x,
@@ -913,7 +901,6 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
                 },
                 label.clone(),
             ));
-            x += width + theme::metrics::ACTION_GAP;
             if overflow {
                 y += action_height;
             }
@@ -959,6 +946,20 @@ pub(crate) fn app_save_plan(
         ));
     }
     plan
+}
+
+/// The core changes a shared editor's Save will perform.
+pub(crate) fn editor_save_plan(editor: &Editor, snapshot: &ModelSnapshot) -> Vec<Change> {
+    match &editor.kind {
+        EditorKind::App { item } => app_save_plan(item, &editor.name, &editor.group_id, snapshot),
+        EditorKind::Folder { folder, label } => folder_save_plan(
+            folder.as_ref(),
+            label,
+            &editor.name,
+            &editor.group_id,
+            snapshot,
+        ),
+    }
 }
 
 fn dialog_text() -> Text {
@@ -1079,21 +1080,15 @@ fn body<'a>(app: &'a App, dialog: &'a Dialog, text_settings: &Text) -> Element<'
         motion: app.motion(crate::Region::Dialog),
     };
     match dialog {
-        Dialog::App(editor) => {
+        Dialog::Editor(editor) => {
             rows = rows.push(field(
                 text_settings,
                 "Name",
                 &editor.name,
-                APP_NAME_FIELD_ID,
-                Message::AppName,
-                Message::AppSave,
+                EDITOR_NAME_FIELD_ID,
+                Message::EditorName,
+                Message::EditorSave,
             ));
-            if let Some(app_ref) = &editor.item.app {
-                rows = rows.push(plain_line(text_settings, &app_ref.package, true, false));
-                if editor.item.uninstalled {
-                    rows = rows.push(plain_line(text_settings, "Uninstalled", true, false));
-                }
-            }
             rows = rows.push(components::select_field(
                 text_settings,
                 "Group",
@@ -1101,25 +1096,6 @@ fn body<'a>(app: &'a App, dialog: &'a Dialog, text_settings: &Text) -> Element<'
                 AppMessage::Dialog(Message::OpenGroupSelect),
             ));
             if let Some(error) = &editor.error {
-                rows = rows.push(plain_line(text_settings, error, false, true));
-            }
-        }
-        Dialog::Folder(editor) => {
-            rows = rows.push(field(
-                text_settings,
-                "Name",
-                editor.name(),
-                FOLDER_NAME_FIELD_ID,
-                Message::FolderName,
-                Message::FolderSave,
-            ));
-            rows = rows.push(components::select_field(
-                text_settings,
-                "Group",
-                &group_label(app, editor.group_id()),
-                AppMessage::Dialog(Message::OpenGroupSelect),
-            ));
-            if let Some(error) = editor.error() {
                 rows = rows.push(plain_line(text_settings, error, false, true));
             }
         }
@@ -1328,20 +1304,28 @@ fn body<'a>(app: &'a App, dialog: &'a Dialog, text_settings: &Text) -> Element<'
 fn actions<'a>(app: &App, dialog: &Dialog, text_settings: &Text) -> Vec<Element<'a, AppMessage>> {
     let mut actions: Vec<Element<'a, AppMessage>> = Vec::new();
     match dialog {
-        Dialog::App(editor) => {
+        Dialog::Editor(editor) => {
             if editor.can_uninstall() {
-                actions.push(components::text_button(
-                    text_settings,
+                actions.push(components::icon_button(
+                    crate::icons::DELETE,
                     "Uninstall",
                     AppMessage::Dialog(Message::AppUninstall),
                     !editor.busy,
                 ));
             }
             if editor.is_shortcut() {
-                actions.push(components::text_button(
-                    text_settings,
+                actions.push(components::icon_button(
+                    crate::icons::DELETE,
                     "Remove",
                     AppMessage::Dialog(Message::AppRemove),
+                    !editor.busy,
+                ));
+            }
+            if editor.is_folder_edit() {
+                actions.push(components::icon_button(
+                    crate::icons::DELETE,
+                    "Delete",
+                    AppMessage::Dialog(Message::FolderDelete),
                     !editor.busy,
                 ));
             }
@@ -1354,29 +1338,7 @@ fn actions<'a>(app: &App, dialog: &Dialog, text_settings: &Text) -> Vec<Element<
             actions.push(components::filled_button(
                 text_settings,
                 "Save",
-                AppMessage::Dialog(Message::AppSave),
-                editor.can_save(),
-            ));
-        }
-        Dialog::Folder(editor) => {
-            if editor.is_edit() {
-                actions.push(components::destructive_button(
-                    text_settings,
-                    "Delete",
-                    AppMessage::Dialog(Message::FolderDelete),
-                    !editor.busy(),
-                ));
-            }
-            actions.push(components::text_button(
-                text_settings,
-                "Cancel",
-                AppMessage::Dialog(Message::Close),
-                !editor.busy(),
-            ));
-            actions.push(components::filled_button(
-                text_settings,
-                "Save",
-                AppMessage::Dialog(Message::FolderSave),
+                AppMessage::Dialog(Message::EditorSave),
                 editor.can_save(),
             ));
         }
@@ -1599,6 +1561,7 @@ pub(crate) fn select_view<'a>(app: &'a App, select: &'a Select) -> Element<'a, A
         Some(select.selected.as_str()),
         move |index| AppMessage::Dialog(Message::GroupChosen(ids[index].clone())),
         &app.motion(crate::Region::Select),
+        app.scrollbars_visible(),
     ))
     .width(bounds.width)
     .max_height(bounds.height);
@@ -1610,23 +1573,22 @@ pub(crate) fn select_view<'a>(app: &'a App, select: &'a Select) -> Element<'a, A
 }
 
 /// Create a folder, or rename and move an existing one.
-pub(crate) fn folder_save_plan(editor: &FolderEditor, snapshot: &ModelSnapshot) -> Vec<Change> {
+pub(crate) fn folder_save_plan(
+    folder: Option<&Id>,
+    label: &str,
+    name: &str,
+    group_id: &Id,
+    snapshot: &ModelSnapshot,
+) -> Vec<Change> {
     let mut plan = Vec::new();
-    match editor {
-        FolderEditor::Create { group_id, name, .. } => {
-            let name = name.trim();
+    let name = name.trim();
+    match folder {
+        None => {
             if !name.is_empty() {
                 plan.push(Change::AddFolder(group_id.clone(), name.to_string()));
             }
         }
-        FolderEditor::Edit {
-            folder,
-            label,
-            name,
-            group_id,
-            ..
-        } => {
-            let name = name.trim();
+        Some(folder) => {
             if name != label {
                 plan.push(Change::RenameGroup(folder.clone(), name.to_string()));
             }
@@ -1660,6 +1622,79 @@ mod tests {
     }
 
     #[test]
+    fn editor_select_field_follows_the_kind() {
+        let (app, item) = dialog_app();
+        let app_editor = Editor::app(item);
+        assert!(matches!(app_editor.select_field(), SelectField::AppGroup));
+        let group = app.snapshot.as_ref().unwrap().page_ids[0].clone();
+        let folder_editor = Editor::folder_create(group);
+        assert!(matches!(
+            folder_editor.select_field(),
+            SelectField::FolderGroup
+        ));
+    }
+
+    #[test]
+    fn editor_rows_show_name_group_and_error_but_no_package() {
+        let (app, item) = dialog_app();
+        let package = item.app.as_ref().unwrap().package.clone();
+        let dialog = Dialog::Editor(Editor::app(item));
+        let rows = rows(&app, &dialog);
+        assert!(rows.iter().any(|row| matches!(row, Row::Field { .. })));
+        assert!(rows.iter().any(|row| matches!(row, Row::Select { .. })));
+        assert!(
+            !rows
+                .iter()
+                .any(|row| matches!(row, Row::Text { label, .. } if *label == package))
+        );
+        assert!(
+            !rows
+                .iter()
+                .any(|row| matches!(row, Row::Text { label, .. } if label == "Uninstalled"))
+        );
+    }
+
+    #[test]
+    fn editor_dialogs_have_no_visible_title() {
+        let (app, item) = dialog_app();
+        let group = app.snapshot.as_ref().unwrap().page_ids[0].clone();
+        for dialog in [
+            Dialog::Editor(Editor::app(item.clone())),
+            Dialog::Editor(Editor::folder_create(group.clone())),
+            Dialog::Editor(Editor::folder_edit("folder".into(), "Media".into(), group)),
+        ] {
+            assert!(heading(&dialog).is_none());
+            assert!(
+                layout(&app, &dialog, Size::new(357.76398, 795.03107))
+                    .title
+                    .is_none()
+            );
+        }
+    }
+
+    #[test]
+    fn editor_accessibility_title_names_the_kind() {
+        let (app, item) = dialog_app();
+        let group = app.snapshot.as_ref().unwrap().page_ids[0].clone();
+        assert_eq!(
+            accessible_title(&Dialog::Editor(Editor::app(item))),
+            "Edit app"
+        );
+        assert_eq!(
+            accessible_title(&Dialog::Editor(Editor::folder_create(group))),
+            "New folder"
+        );
+    }
+
+    #[test]
+    fn folder_create_has_no_delete_action() {
+        let (app, _) = dialog_app();
+        let group = app.snapshot.as_ref().unwrap().page_ids[0].clone();
+        let dialog = Dialog::Editor(Editor::folder_create(group));
+        assert_eq!(action_labels(&dialog), vec!["Cancel", "Save"]);
+    }
+
+    #[test]
     fn card_is_centered_and_width_capped() {
         let (app, _) = dialog_app();
         let layout = layout(&app, &Dialog::Launcher, Size::new(1280.0, 800.0));
@@ -1682,7 +1717,7 @@ mod tests {
         let (app, item) = dialog_app();
         let layout = layout(
             &app,
-            &Dialog::App(AppEditor::new(item)),
+            &Dialog::Editor(Editor::app(item)),
             Size::new(240.0, 640.0),
         );
         assert!(layout.card.x >= 0.0);
@@ -1691,6 +1726,110 @@ mod tests {
             assert!(bounds.x >= layout.card.x);
             assert!(bounds.x + bounds.width <= layout.card.x + layout.card.width);
         }
+    }
+
+    #[test]
+    fn app_actions_share_a_row_at_a_large_system_font_scale() {
+        let (app, item) = dialog_app();
+        // A 1080 px wide Pixel 8 at font scale 1.15 reports 357.76 logical
+        // units to the app. The guessed action widths used to overflow there
+        // and stack the buttons although the real labels fit side by side.
+        let layout = layout(
+            &app,
+            &Dialog::Editor(Editor::app(item)),
+            Size::new(357.76398, 795.03107),
+        );
+        let ys: Vec<f32> = layout.actions.iter().map(|(bounds, _)| bounds.y).collect();
+        assert!(
+            ys.windows(2).all(|pair| (pair[0] - pair[1]).abs() < 0.5),
+            "actions should share one row, got y positions {ys:?}"
+        );
+    }
+
+    #[test]
+    fn uninstall_icon_is_left_aligned_while_text_actions_stay_right() {
+        let (app, item) = dialog_app();
+        let layout = layout(
+            &app,
+            &Dialog::Editor(Editor::app(item)),
+            Size::new(357.76398, 795.03107),
+        );
+        let action = |name: &str| {
+            layout
+                .actions
+                .iter()
+                .find(|(_, label)| label == name)
+                .map(|(bounds, _)| *bounds)
+                .unwrap()
+        };
+        let uninstall = action("Uninstall");
+        let cancel = action("Cancel");
+        let save = action("Save");
+        assert!((uninstall.x - (layout.card.x + theme::metrics::DIALOG_PADDING)).abs() < 0.5);
+        assert!(
+            uninstall.x + uninstall.width + theme::metrics::ACTION_GAP <= cancel.x,
+            "the icon must not collide with the right-aligned actions"
+        );
+        assert!(
+            (save.x + save.width
+                - (layout.card.x + layout.card.width - theme::metrics::DIALOG_PADDING))
+                .abs()
+                < 0.5
+        );
+    }
+
+    #[test]
+    fn shortcut_remove_and_folder_delete_share_the_left_icon_slot() {
+        let (app, mut item) = dialog_app();
+        item.app = None;
+        item.shortcut = Some(qlaunch_core::model::ShortcutPayload::Command {
+            command: "true".into(),
+        });
+        let shortcut = layout(
+            &app,
+            &Dialog::Editor(Editor::app(item)),
+            Size::new(357.76398, 795.03107),
+        );
+        let remove = shortcut
+            .actions
+            .iter()
+            .find(|(_, label)| label == "Remove")
+            .map(|(bounds, _)| *bounds)
+            .unwrap();
+        assert!((remove.x - (shortcut.card.x + theme::metrics::DIALOG_PADDING)).abs() < 0.5);
+
+        let snapshot = app.snapshot.as_ref().unwrap();
+        let folder = layout(
+            &app,
+            &Dialog::Editor(Editor::folder_edit(
+                "folder".into(),
+                "Folder".into(),
+                snapshot.page_ids[0].clone(),
+            )),
+            Size::new(357.76398, 795.03107),
+        );
+        let delete = folder
+            .actions
+            .iter()
+            .find(|(_, label)| label == "Delete")
+            .map(|(bounds, _)| *bounds)
+            .unwrap();
+        assert!((delete.x - (folder.card.x + theme::metrics::DIALOG_PADDING)).abs() < 0.5);
+    }
+
+    #[test]
+    fn app_actions_still_stack_when_the_window_really_is_too_narrow() {
+        let (app, item) = dialog_app();
+        let layout = layout(
+            &app,
+            &Dialog::Editor(Editor::app(item)),
+            Size::new(240.0, 640.0),
+        );
+        let ys: Vec<f32> = layout.actions.iter().map(|(bounds, _)| bounds.y).collect();
+        assert!(
+            ys.windows(2).any(|pair| (pair[0] - pair[1]).abs() > 0.5),
+            "actions should stack when they cannot fit, got y positions {ys:?}"
+        );
     }
 
     #[test]
@@ -1755,7 +1894,7 @@ mod tests {
     #[test]
     fn select_anchor_follows_the_dialog_scroll_offset() {
         let (mut app, item) = dialog_app();
-        app.dialog = Some(Dialog::App(AppEditor::new(item)));
+        app.dialog = Some(Dialog::Editor(Editor::app(item)));
         let unscrolled = select_anchor(
             &app,
             &Select {
@@ -1822,10 +1961,8 @@ mod tests {
     fn new_folder_is_created_in_the_selected_group() {
         let (app, _) = dialog_app();
         let snapshot = app.snapshot.as_ref().unwrap();
-        let mut editor = FolderEditor::create(snapshot.page_ids[0].clone());
-        editor.set_group(snapshot.page_ids[1].clone());
         assert_eq!(
-            folder_save_plan(&editor, snapshot),
+            folder_save_plan(None, "Folder", "Folder", &snapshot.page_ids[1], snapshot,),
             vec![Change::AddFolder(
                 snapshot.page_ids[1].clone(),
                 "Folder".into()
@@ -1842,12 +1979,10 @@ mod tests {
 
     #[test]
     fn app_editor_actions_hide_remove_for_plain_apps() {
-        let (app, item) = dialog_app();
-        let editor = AppEditor::new(item);
-        let labels = action_labels(&Dialog::App(editor));
+        let (_app, item) = dialog_app();
+        let labels = action_labels(&Dialog::Editor(Editor::app(item)));
         assert_eq!(labels, vec!["Uninstall", "Cancel", "Save"]);
         assert!(!labels.contains(&"Remove".to_string()));
-        let _ = app;
     }
 
     #[test]

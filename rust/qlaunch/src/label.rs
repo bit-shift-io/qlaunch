@@ -18,6 +18,19 @@ pub(crate) fn ellipsized<'a>(value: &str, typography: Typography) -> Element<'a,
     })
 }
 
+/// The width `value` needs in the given style, in the same logical units the
+/// layout uses, so dialogs can size labels without guessing per character.
+pub(crate) fn measured_width(value: &str, typography: Typography) -> f32 {
+    Paragraph::with_text(
+        Label {
+            value: value.to_owned(),
+            typography,
+        }
+        .text(value),
+    )
+    .min_width()
+}
+
 struct Label {
     value: String,
     typography: Typography,

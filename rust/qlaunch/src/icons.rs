@@ -29,6 +29,7 @@ pub(crate) const KEYBOARD_ARROW_DOWN: char = '\u{e353}';
 pub(crate) const ADD: char = '\u{e047}';
 pub(crate) const DRAG_INDICATOR: char = '\u{e207}';
 pub(crate) const CLOSE: char = '\u{e16a}';
+pub(crate) const DELETE: char = '\u{e1b9}';
 
 /// The glyph as owned text, for `text(...).font(FONT)`.
 pub(crate) fn glyph(character: char) -> String {
@@ -51,6 +52,7 @@ mod tests {
         assert_eq!(CHECK, '\u{e156}');
         assert_eq!(ARROW_BACK, '\u{e092}');
         assert_eq!(KEYBOARD_ARROW_DOWN, '\u{e353}');
+        assert_eq!(DELETE, '\u{e1b9}');
     }
 
     #[test]

@@ -368,7 +368,7 @@ pub(crate) fn announcement(app: &App) -> String {
         return "Choose group".into();
     }
     if let Some(dialog) = &app.dialog {
-        return crate::dialog::heading(dialog).unwrap_or("App settings".into());
+        return crate::dialog::accessible_title(dialog);
     }
     if let Some(screen) = app.screens.last() {
         return match screen {
@@ -891,7 +891,7 @@ fn screen_frame(app: &App) -> Frame {
 
 fn dialog_frame(app: &App, dialog: &crate::dialog::Dialog) -> Frame {
     use crate::dialog::{self, Dialog, Row};
-    let title = dialog::heading(dialog).unwrap_or("App settings".into());
+    let title = dialog::accessible_title(dialog);
     let mut frame = screen_with_key(app, format!("dialog:{title}"));
     let layout = dialog::layout(app, dialog, app.size);
     push(
@@ -925,11 +925,8 @@ fn dialog_frame(app: &App, dialog: &crate::dialog::Dialog) -> Frame {
                 widget_id,
             } => {
                 let input: fn(String) -> crate::Message = match widget_id {
-                    dialog::APP_NAME_FIELD_ID => {
-                        |v| crate::Message::Dialog(dialog::Message::AppName(v))
-                    }
-                    dialog::FOLDER_NAME_FIELD_ID => {
-                        |v| crate::Message::Dialog(dialog::Message::FolderName(v))
+                    dialog::EDITOR_NAME_FIELD_ID => {
+                        |v| crate::Message::Dialog(dialog::Message::EditorName(v))
                     }
                     dialog::COMMAND_NAME_FIELD_ID => {
                         |v| crate::Message::Dialog(dialog::Message::CommandName(v))
@@ -1084,11 +1081,10 @@ fn dialog_frame(app: &App, dialog: &crate::dialog::Dialog) -> Frame {
         };
         let (message, enabled) = match (dialog, label.as_str()) {
             (_, "Cancel") => (dialog::Message::Close, !busy),
-            (Dialog::App(e), "Save") => (dialog::Message::AppSave, e.can_save()),
-            (Dialog::App(e), "Uninstall") => (dialog::Message::AppUninstall, !e.busy),
-            (Dialog::App(e), _) => (dialog::Message::AppRemove, !e.busy),
-            (Dialog::Folder(e), "Save") => (dialog::Message::FolderSave, e.can_save()),
-            (Dialog::Folder(e), _) => (dialog::Message::FolderDelete, !e.busy()),
+            (Dialog::Editor(e), "Save") => (dialog::Message::EditorSave, e.can_save()),
+            (Dialog::Editor(e), "Uninstall") => (dialog::Message::AppUninstall, !e.busy),
+            (Dialog::Editor(e), "Remove") => (dialog::Message::AppRemove, !e.busy),
+            (Dialog::Editor(e), _) => (dialog::Message::FolderDelete, !e.busy),
             (Dialog::AddGroup(e), _) => (dialog::Message::AddGroupConfirm, e.can_confirm()),
             (Dialog::CommandShortcut(e), _) => (dialog::Message::CommandAdd, e.ready()),
             (Dialog::GroupEditor(e), "Save") => (dialog::Message::GroupSave, e.can_save()),

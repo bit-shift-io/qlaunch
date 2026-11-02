@@ -277,20 +277,6 @@ pub(crate) fn filled_button<'a>(
     )
 }
 
-pub(crate) fn destructive_button<'a>(
-    text_settings: &Text,
-    label: &str,
-    message: Message,
-    enabled: bool,
-) -> Element<'a, Message> {
-    text_button_with(
-        text_settings,
-        label,
-        enabled.then_some(message),
-        theme::destructive_button,
-    )
-}
-
 pub(crate) fn filled_destructive_button<'a>(
     text_settings: &Text,
     label: &str,
@@ -763,6 +749,7 @@ pub(crate) fn select_menu<'a>(
     selected: Option<&str>,
     choose: impl Fn(usize) -> Message + 'a,
     motion: &crate::elastic_scroll::Motion,
+    scrollbar_visible: bool,
 ) -> Element<'a, Message> {
     let option_style_text = text_settings.role(TextRole::BodyLarge);
     let mut menu = column![]
@@ -809,6 +796,7 @@ pub(crate) fn select_menu<'a>(
             .on_scroll(|viewport| {
                 Message::Scrolled(crate::Region::Select, viewport.absolute_offset().y)
             })
+            .direction(theme::vertical_scrollbar(scrollbar_visible))
             .style(theme::scrollable)
             .into(),
         motion.clone(),
@@ -1106,6 +1094,7 @@ mod tests {
             None,
             |_| Message::Back,
             &crate::elastic_scroll::Motion::new(),
+            true,
         ));
         // Surface -> wrapper -> scrollable/content -> padded column -> rows.
         let list = node.children()[0].children()[0].children();
@@ -1138,7 +1127,7 @@ mod tests {
         let options: Vec<(String, String, bool)> = (0..30)
             .map(|index| (format!("id-{index}"), format!("Option {index}"), false))
             .collect();
-        let mut menu = select_menu(&Text::new(), options, None, |_| Message::Back, motion);
+        let mut menu = select_menu(&Text::new(), options, None, |_| Message::Back, motion, true);
         let mut tree = Tree::new(&menu);
         let node = menu.as_widget_mut().layout(
             &mut tree,

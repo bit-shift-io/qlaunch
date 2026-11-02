@@ -262,9 +262,9 @@ pub(crate) mod tests {
     #[test]
     fn busy_app_remove_and_shortcut_actions_ignore_repeat_activation() {
         let mut app = app();
-        let mut editor = dialog::AppEditor::new(item(&app, "busy"));
+        let mut editor = dialog::Editor::app(item(&app, "busy"));
         editor.busy = true;
-        app.dialog = Some(dialog::Dialog::App(editor));
+        app.dialog = Some(dialog::Dialog::Editor(editor));
         assert_eq!(app.dialog_message(dialog::Message::AppRemove).units(), 0);
         assert_eq!(app.dialog_message(dialog::Message::AppUninstall).units(), 0);
         let mut shortcuts = dialog::AddShortcutState::new("apps".into());
@@ -1123,7 +1123,7 @@ pub(crate) mod tests {
         let item = item(&app, "calculator");
         app.snapshot.as_mut().unwrap().items.push(item.clone());
         let _ = app.apply_gesture(Outcome::LongPress(Start::Item(item.id.clone())));
-        assert!(matches!(app.dialog, Some(dialog::Dialog::App(_))));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::Editor(_))));
     }
 
     #[test]
@@ -1132,10 +1132,10 @@ pub(crate) mod tests {
         let folder = folder_item(&app);
         app.snapshot.as_mut().unwrap().items.push(folder.clone());
         let _ = app.apply_gesture(Outcome::LongPress(Start::Item(folder.id.clone())));
-        assert!(matches!(
-            app.dialog,
-            Some(dialog::Dialog::Folder(dialog::FolderEditor::Edit { .. }))
-        ));
+        let Some(dialog::Dialog::Editor(editor)) = &app.dialog else {
+            panic!("folder long press should open the shared editor");
+        };
+        assert!(editor.is_folder_edit());
     }
 
     #[test]
@@ -1174,7 +1174,7 @@ pub(crate) mod tests {
         app.snapshot.as_mut().unwrap().items.push(app_item.clone());
         app.pressed = Some(app_item.id.clone());
         let _ = app.apply_gesture(Outcome::LongPress(Start::Item(app_item.id.clone())));
-        assert!(matches!(app.dialog, Some(dialog::Dialog::App(_))));
+        assert!(matches!(app.dialog, Some(dialog::Dialog::Editor(_))));
         assert!(app.pressed.is_none());
     }
 
@@ -2188,14 +2188,9 @@ impl App {
     /// carry it, so the caller can fall back to the launcher error line.
     fn dialog_error(&mut self, error: String) -> bool {
         match &mut self.dialog {
-            Some(dialog::Dialog::App(editor)) => {
+            Some(dialog::Dialog::Editor(editor)) => {
                 editor.busy = false;
                 editor.error = Some(error);
-                true
-            }
-            Some(dialog::Dialog::Folder(editor)) => {
-                editor.set_busy(false);
-                editor.set_error(Some(error));
                 true
             }
             Some(dialog::Dialog::GroupEditor(state)) => {
@@ -2211,8 +2206,7 @@ impl App {
         use dialog::Dialog;
         use dialog::Message as D;
         let busy = match &self.dialog {
-            Some(Dialog::App(e)) => e.busy,
-            Some(Dialog::Folder(e)) => e.busy(),
+            Some(Dialog::Editor(e)) => e.busy,
             Some(Dialog::AddShortcut(e)) => e.busy,
             Some(Dialog::CommandShortcut(e)) => e.busy,
             Some(Dialog::AddGroup(e)) => e.busy,
@@ -2235,29 +2229,26 @@ impl App {
             }
             D::OpenGroupSelect => {
                 let field = match &self.dialog {
-                    Some(Dialog::App(_)) => dialog::SelectField::AppGroup,
-                    Some(Dialog::Folder(_)) => dialog::SelectField::FolderGroup,
+                    Some(Dialog::Editor(editor)) => editor.select_field(),
                     _ => return Task::none(),
                 };
                 self.open_select(field);
             }
             D::GroupChosen(id) => {
-                match &mut self.dialog {
-                    Some(Dialog::App(editor)) => editor.group_id = id,
-                    Some(Dialog::Folder(editor)) => editor.set_group(id),
-                    _ => {}
+                if let Some(Dialog::Editor(editor)) = &mut self.dialog {
+                    editor.group_id = id;
                 }
                 self.select = None;
             }
             D::CloseSelect => self.select = None,
-            D::AppName(value) => {
-                if let Some(Dialog::App(editor)) = &mut self.dialog {
+            D::EditorName(value) => {
+                if let Some(Dialog::Editor(editor)) = &mut self.dialog {
                     editor.name = value;
                     editor.error = None;
                 }
             }
-            D::AppSave => {
-                let Some(Dialog::App(editor)) = &mut self.dialog else {
+            D::EditorSave => {
+                let Some(Dialog::Editor(editor)) = &mut self.dialog else {
                     return Task::none();
                 };
                 if !editor.can_save() {
@@ -2266,16 +2257,15 @@ impl App {
                 let Some(snapshot) = self.snapshot.as_ref() else {
                     return Task::none();
                 };
-                let plan =
-                    dialog::app_save_plan(&editor.item, &editor.name, &editor.group_id, snapshot);
+                let plan = dialog::editor_save_plan(editor, snapshot);
                 editor.busy = true;
                 return Self::run_changes(plan);
             }
             D::AppUninstall => {
-                let Some(Dialog::App(editor)) = &mut self.dialog else {
+                let Some(Dialog::Editor(editor)) = &mut self.dialog else {
                     return Task::none();
                 };
-                let Some(app) = editor.item.app.clone() else {
+                let Some(app) = editor.item().and_then(|item| item.app.clone()) else {
                     return Task::none();
                 };
                 editor.busy = true;
@@ -2293,10 +2283,12 @@ impl App {
                 );
             }
             D::AppRemove => {
-                let Some(Dialog::App(editor)) = &mut self.dialog else {
+                let Some(Dialog::Editor(editor)) = &mut self.dialog else {
                     return Task::none();
                 };
-                let id = editor.item.id.clone();
+                let Some(id) = editor.item().map(|item| item.id.clone()) else {
+                    return Task::none();
+                };
                 editor.busy = true;
                 return work(
                     move || block_on(core::remove_item(id)),
@@ -2306,37 +2298,14 @@ impl App {
                     },
                 );
             }
-            D::FolderName(value) => {
-                if let Some(Dialog::Folder(editor)) = &mut self.dialog {
-                    editor.set_name(value);
-                    editor.set_error(None);
-                }
-            }
-            D::FolderSave => {
-                let Some(snapshot) = self.snapshot.as_ref() else {
-                    return Task::none();
-                };
-                let Some(Dialog::Folder(editor)) = &mut self.dialog else {
-                    return Task::none();
-                };
-                if !editor.can_save() {
-                    return Task::none();
-                }
-                let plan = dialog::folder_save_plan(editor, snapshot);
-                editor.set_busy(true);
-                return Self::run_changes(plan);
-            }
             D::FolderDelete => {
-                let Some(Dialog::Folder(editor)) = &mut self.dialog else {
+                let Some(Dialog::Editor(editor)) = &mut self.dialog else {
                     return Task::none();
                 };
-                let Some(folder) = (match editor {
-                    dialog::FolderEditor::Edit { folder, .. } => Some(folder.clone()),
-                    dialog::FolderEditor::Create { .. } => None,
-                }) else {
+                let Some(folder) = editor.folder_id().cloned() else {
                     return Task::none();
                 };
-                editor.set_busy(true);
+                editor.busy = true;
                 return work(
                     move || block_on(core::delete_folder(folder)),
                     |result| Message::ModelDone {
@@ -2371,7 +2340,7 @@ impl App {
                 let Some(group) = self.page_group_id() else {
                     return Task::none();
                 };
-                self.dialog = Some(Dialog::Folder(dialog::FolderEditor::create(group)));
+                self.dialog = Some(Dialog::Editor(dialog::Editor::folder_create(group)));
             }
             D::LauncherWallpaper => {
                 self.dialog = None;
@@ -4165,7 +4134,7 @@ impl App {
 
     fn open_app_dialog(&mut self, item: Item) {
         self.dialog_generation += 1;
-        self.dialog = Some(dialog::Dialog::App(dialog::AppEditor::new(item)));
+        self.dialog = Some(dialog::Dialog::Editor(dialog::Editor::app(item)));
         self.select = None;
         self.pressed = None;
         self.pending_target = None;
@@ -4176,7 +4145,7 @@ impl App {
         let Some(folder_id) = item.folder_group_id.clone() else {
             return;
         };
-        self.dialog = Some(dialog::Dialog::Folder(dialog::FolderEditor::edit(
+        self.dialog = Some(dialog::Dialog::Editor(dialog::Editor::folder_edit(
             folder_id,
             item.label.clone(),
             item.group_id.clone(),
@@ -4217,12 +4186,9 @@ impl App {
     }
 
     fn open_select(&mut self, field: dialog::SelectField) {
-        let selected = match (&field, &self.dialog) {
-            (dialog::SelectField::AppGroup, Some(dialog::Dialog::App(editor))) => {
+        let selected = match &self.dialog {
+            Some(dialog::Dialog::Editor(editor)) if editor.select_field() == field => {
                 editor.group_id.clone()
-            }
-            (dialog::SelectField::FolderGroup, Some(dialog::Dialog::Folder(editor))) => {
-                editor.group_id().clone()
             }
             _ => return,
         };
