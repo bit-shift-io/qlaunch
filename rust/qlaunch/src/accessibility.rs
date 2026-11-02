@@ -690,16 +690,15 @@ fn screen_frame(app: &App) -> Frame {
                             ActionTarget::Wallpaper => {
                                 Message::Dialog(crate::dialog::Message::LauncherWallpaper)
                             }
-                            ActionTarget::ClockApp => {
-                                Message::PickDashboardApp("clock".to_string())
-                            }
-                            ActionTarget::WeatherApp => {
-                                Message::PickDashboardApp("weather".to_string())
-                            }
-                            ActionTarget::CalendarApp => {
-                                Message::PickDashboardApp("calendar".to_string())
-                            }
                             ActionTarget::CalendarPermission => Message::RequestCalendarPermission,
+                            ActionTarget::ResetDashboardApps => {
+                                Message::SettingPatch(qlaunch_core::settings::SettingsPatch {
+                                    preferred_clock_app: Some(None),
+                                    preferred_weather_app: Some(None),
+                                    preferred_calendar_app: Some(None),
+                                    ..Default::default()
+                                })
+                            }
                         },
                         false,
                         true,

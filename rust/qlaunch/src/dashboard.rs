@@ -100,6 +100,7 @@ pub(crate) fn calendar_events() -> Result<CalendarEventsPayload, String> {
                 all_day: false,
                 time_str: "11:30".to_string(),
                 color: 0xFF4285F4u32 as i32,
+                tomorrow: false,
             },
             CalendarEventItem {
                 event_id: 2,
@@ -109,6 +110,7 @@ pub(crate) fn calendar_events() -> Result<CalendarEventsPayload, String> {
                 all_day: false,
                 time_str: "14:00".to_string(),
                 color: 0xFF0B8043u32 as i32,
+                tomorrow: false,
             },
         ],
     })
@@ -214,19 +216,12 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         .map(|alarm| alarm.time_str.clone())
         .unwrap_or_else(|| "None".to_string());
 
-    let (clock_main, clock_suffix) = split_time(time_str);
+    let (clock_main, _) = split_time(time_str);
     // Tight line height lifts the large digits so their top lines up with the
-    // first calendar row instead of sitting below its baseline box.
-    let clock_main_text = text(clock_main)
-        .size(42.0)
-        .color(text_color)
-        .line_height(1.0);
-    let mut time_row = row![Element::from(clock_main_text)]
-        .spacing(4)
-        .align_y(Vertical::Bottom);
-    if let Some(suffix) = clock_suffix {
-        time_row = time_row.push(shadowed_text(suffix, 20.0, muted_color, false));
-    }
+    // first calendar row. The am/pm suffix is intentionally not drawn.
+    let time_row = row![Element::from(
+        text(clock_main).size(28.0).color(text_color).line_height(1.0)
+    )];
 
     let alarm_line = row![
         text(icons::ALARM.to_string())
@@ -248,13 +243,13 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     // 2. Weather
     let weather_element: Element<'_, Message> = if let Some(weather) = &app.dashboard_weather {
         let symbol = condition_symbol(weather.condition_code);
-        let temp_line = format!("{} {:.0}°C", symbol, weather.current_temp);
+        let temp_line = format!("{} {:.0}°", symbol, weather.current_temp);
         let detail_line = format!("{:.0}° / {:.0}°", weather.temp_min, weather.temp_max);
 
         mouse_area(
             column![
-                shadowed_text(temp_line, 24.0, text_color, true),
-                shadowed_text(detail_line, 13.0, muted_color, false),
+                shadowed_text(temp_line, 24.0, text_color, false),
+                shadowed_text(detail_line, 15.0, muted_color, false),
             ]
             .spacing(3)
             .align_x(iced::alignment::Horizontal::Left),
@@ -305,7 +300,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         mouse_area(clock_column).on_release(Message::LaunchDashboardCategory("clock".to_string())),
         weather_element,
     ]
-    .spacing(14)
+    .spacing(2)
     .width(Fill);
 
     // Right column: today/tomorrow calendar list.
@@ -342,8 +337,21 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
             space().into()
         } else {
             let mut event_rows = column![].spacing(6);
+            let mut saw_tomorrow = false;
 
             for event in &cal.events {
+                if event.tomorrow && !saw_tomorrow {
+                    saw_tomorrow = true;
+                    event_rows = event_rows.push(
+                        container(space())
+                            .width(Fill)
+                            .height(Length::Fixed(1.0))
+                            .style(|_| container::Style {
+                                background: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.25).into()),
+                                ..Default::default()
+                            }),
+                    );
+                }
                 let color_argb = event.color as i32;
                 let a = ((color_argb >> 24) & 0xFF) as f32 / 255.0;
                 let r = ((color_argb >> 16) & 0xFF) as f32 / 255.0;
@@ -351,46 +359,59 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 let b = (color_argb & 0xFF) as f32 / 255.0;
                 let event_color = Color::from_rgba(r, g, b, a);
 
-                let color_pill = container(
-                    space()
-                        .width(Length::Fixed(4.0))
-                        .height(Length::Fixed(16.0)),
+                // The line is an overlay in a stack whose base is the title, so
+                // it stretches to the full text height, including wrapped lines.
+                let color_line = container(
+                    container(space())
+                        .width(Length::Fixed(3.0))
+                        .height(Fill)
+                        .style(move |_| container::Style {
+                            background: Some(event_color.into()),
+                            border: iced::Border {
+                                radius: 1.5.into(),
+                                ..Default::default()
+                            },
+                            ..Default::default()
+                        }),
                 )
-                .style(move |_| container::Style {
-                    background: Some(event_color.into()),
-                    border: iced::Border {
-                        radius: 2.0.into(),
-                        ..Default::default()
-                    },
-                    ..Default::default()
+                .height(Fill)
+                .padding(iced::Padding {
+                    top: 2.0,
+                    bottom: 2.0,
+                    left: 0.0,
+                    right: 0.0,
                 });
 
                 let time_text = container(shadowed_text(&event.time_str, 13.0, muted_color, false))
-                    .width(Length::Fixed(70.0))
+                    .width(Length::Fixed(38.0))
                     .align_x(iced::alignment::Horizontal::Right);
-                // One line per event, clipped at the column edge, so four rows
-                // fit before the list scrolls.
+                // Long titles wrap onto extra lines; the row and the scrollable
+                // grow with them.
                 let title_text = container(
                     text(event.title.clone())
                         .size(15.0)
-                        .color(text_color)
-                        .wrapping(iced::widget::text::Wrapping::None),
+                        .color(text_color),
                 )
-                .width(Fill)
-                .clip(true);
+                .width(Fill);
+
+                let title_with_line = iced::widget::stack![
+                    // Base layer reserves the gutter and determines the height.
+                    row![space().width(Length::Fixed(11.0)), title_text].width(Fill),
+                    iced::widget::pin(color_line).x(0.0).y(0.0),
+                ]
+                .width(Fill);
 
                 let event_id = event.event_id;
                 let row_item = mouse_area(
                     row![
-                        color_pill,
-                        title_text,
+                        title_with_line,
                         time_text,
                         // Clearance for the scrollbar that appears while scrolling.
                         space().width(Length::Fixed(12.0)),
                     ]
                     .spacing(8)
                     .width(Fill)
-                    .align_y(Vertical::Center),
+                    .align_y(Vertical::Top),
                 )
                 .on_release(Message::LaunchCalendarEvent(event_id));
 
@@ -419,12 +440,12 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     // Clock/alarm/weather left, calendar list right. The calendar stretches to
     // the full widget height (the taller left column), then scrolls internally.
     let content = row![
-        container(left_column).width(Length::FillPortion(2)),
+        container(left_column).width(Length::FillPortion(1)),
         container(calendar_panel)
-            .width(Length::FillPortion(3))
+            .width(Length::FillPortion(2))
             .height(Fill),
     ]
-    .spacing(20)
+    .spacing(12)
     .width(Fill)
     .align_y(Vertical::Top);
 
@@ -461,6 +482,7 @@ mod tests {
             all_day,
             time_str: "10:00".to_string(),
             color: 0,
+            tomorrow: false,
         }
     }
 

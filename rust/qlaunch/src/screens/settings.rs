@@ -109,10 +109,8 @@ pub(crate) enum ActionTarget {
     Groups,
     Advanced,
     Wallpaper,
-    ClockApp,
-    WeatherApp,
-    CalendarApp,
     CalendarPermission,
+    ResetDashboardApps,
 }
 
 fn choices(field: SettingField, label: &'static str, labels: &[&str], selected: usize) -> Row {
@@ -147,10 +145,6 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             max,
             unit,
         }
-    };
-    let preferred = |label: &str, app: &Option<String>| match app {
-        Some(package) => format!("{label}: {package}"),
-        None => format!("{label}: not set"),
     };
     vec![
         Row::Header("Display"),
@@ -287,24 +281,14 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             placeholder: "City or suburb, e.g. Adelaide",
         },
         Row::Action {
-            label: "Clock app",
-            subtitle: preferred("Opens", &settings.preferred_clock_app),
-            target: ActionTarget::ClockApp,
-        },
-        Row::Action {
-            label: "Weather app",
-            subtitle: preferred("Opens", &settings.preferred_weather_app),
-            target: ActionTarget::WeatherApp,
-        },
-        Row::Action {
-            label: "Calendar app",
-            subtitle: preferred("Opens", &settings.preferred_calendar_app),
-            target: ActionTarget::CalendarApp,
-        },
-        Row::Action {
             label: "Calendar access",
             subtitle: "Grant permission to show upcoming events.".into(),
             target: ActionTarget::CalendarPermission,
+        },
+        Row::Action {
+            label: "Reset app shortcuts",
+            subtitle: "Tap the widget to choose its clock, weather and calendar apps again.".into(),
+            target: ActionTarget::ResetDashboardApps,
         },
         Row::Action {
             label: "Choose wallpaper",
@@ -596,10 +580,8 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                     ActionTarget::Groups => icons::DASHBOARD_CUSTOMIZE,
                     ActionTarget::Advanced => icons::SETTINGS,
                     ActionTarget::Wallpaper => icons::WALLPAPER,
-                    ActionTarget::ClockApp
-                    | ActionTarget::WeatherApp
-                    | ActionTarget::CalendarApp
-                    | ActionTarget::CalendarPermission => icons::DASHBOARD_CUSTOMIZE,
+                    ActionTarget::CalendarPermission => icons::DASHBOARD_CUSTOMIZE,
+                    ActionTarget::ResetDashboardApps => icons::RESET,
                 }),
                 None,
                 Some(match target {
@@ -608,10 +590,13 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                     ActionTarget::Wallpaper => {
                         Message::Dialog(crate::dialog::Message::LauncherWallpaper)
                     }
-                    ActionTarget::ClockApp => Message::PickDashboardApp("clock".to_string()),
-                    ActionTarget::WeatherApp => Message::PickDashboardApp("weather".to_string()),
-                    ActionTarget::CalendarApp => Message::PickDashboardApp("calendar".to_string()),
                     ActionTarget::CalendarPermission => Message::RequestCalendarPermission,
+                    ActionTarget::ResetDashboardApps => Message::SettingPatch(SettingsPatch {
+                        preferred_clock_app: Some(None),
+                        preferred_weather_app: Some(None),
+                        preferred_calendar_app: Some(None),
+                        ..Default::default()
+                    }),
                 }),
                 true,
                 height - theme::metrics::ACTION_GAP,
@@ -790,10 +775,8 @@ mod tests {
         assert_eq!(
             actions,
             [
-                "Clock app",
-                "Weather app",
-                "Calendar app",
                 "Calendar access",
+                "Reset app shortcuts",
                 "Choose wallpaper",
                 "Groups",
                 "Advanced",
@@ -877,7 +860,7 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_rows_show_the_saved_location_and_preferred_apps() {
+    fn dashboard_rows_show_the_saved_location_and_reset_action() {
         let settings = Settings {
             dashboard_widget_enabled: true,
             weather_location: "Adelaide".into(),
@@ -891,7 +874,7 @@ mod tests {
         )));
         assert!(rows.iter().any(|row| matches!(
             row,
-            Row::Action { subtitle, .. } if subtitle.contains("com.example.clock")
+            Row::Action { label, .. } if *label == "Reset app shortcuts"
         )));
     }
 

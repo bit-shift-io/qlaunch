@@ -1596,7 +1596,6 @@ enum Message {
     DashboardScrolled,
     DashboardPermissionRequested(Result<(), String>),
     RequestCalendarPermission,
-    PickDashboardApp(String),
     LaunchDashboardCategory(String),
     LaunchCalendarEvent(i64),
 }
@@ -3078,9 +3077,6 @@ impl App {
                     dashboard::request_calendar_permission,
                     Message::DashboardPermissionRequested,
                 );
-            }
-            Message::PickDashboardApp(category) => {
-                return self.open_dashboard_app_picker(category, None);
             }
             Message::LaunchDashboardCategory(category) => {
                 if self.pointer_dragged {

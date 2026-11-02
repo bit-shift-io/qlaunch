@@ -20,6 +20,7 @@ pub(crate) const WALLPAPER: char = '\u{e6ca}';
 pub(crate) const LOCK_OUTLINE: char = '\u{e3b1}';
 pub(crate) const NOTIFICATIONS_NONE: char = '\u{e451}';
 pub(crate) const ALARM: char = '\u{e072}';
+pub(crate) const RESET: char = '\u{e531}';
 pub(crate) const LINK: char = '\u{e380}';
 pub(crate) const CHECKLIST: char = '\u{e15b}';
 pub(crate) const CHECK: char = '\u{e156}';

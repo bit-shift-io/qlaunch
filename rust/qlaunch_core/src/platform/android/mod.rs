@@ -161,6 +161,9 @@ pub struct CalendarEventItem {
     pub all_day: bool,
     pub time_str: String,
     pub color: i32,
+    /// True when the instance falls on tomorrow rather than today.
+    #[serde(default)]
+    pub tomorrow: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

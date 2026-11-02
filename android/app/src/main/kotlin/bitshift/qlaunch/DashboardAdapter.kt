@@ -107,7 +107,9 @@ object DashboardAdapter {
 
         val eventsArray = JSONArray()
         val is24 = DateFormat.is24HourFormat(context)
-        val timeFormat = if (is24) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("h:mm a", Locale.getDefault())
+        // Calendar rows show a compact start time with no am/pm suffix so the
+        // title gets more width.
+        val timeFormat = if (is24) SimpleDateFormat("HH:mm", Locale.getDefault()) else SimpleDateFormat("h:mm", Locale.getDefault())
 
         try {
             context.contentResolver.query(
@@ -145,6 +147,11 @@ object DashboardAdapter {
                     // Calendar rows show only the start time (or "All day").
                     // The end time is deliberately never rendered.
                     val timeStr = if (allDay) "All day" else timeFormat.format(Date(begin))
+                    // Tag tomorrow's events so the widget can draw a day divider.
+                    val today = Calendar.getInstance()
+                    val eventDay = Calendar.getInstance().apply { timeInMillis = begin }
+                    val tomorrow = today.get(Calendar.YEAR) != eventDay.get(Calendar.YEAR) ||
+                        today.get(Calendar.DAY_OF_YEAR) != eventDay.get(Calendar.DAY_OF_YEAR)
 
                     val eventObj = JSONObject().apply {
                         put("event_id", eventId)
@@ -154,6 +161,7 @@ object DashboardAdapter {
                         put("all_day", allDay)
                         put("time_str", timeStr)
                         put("color", color)
+                        put("tomorrow", tomorrow)
                     }
                     eventsArray.put(eventObj)
                 }
