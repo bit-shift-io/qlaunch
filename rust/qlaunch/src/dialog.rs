@@ -1951,6 +1951,66 @@ mod tests {
     }
 
     #[test]
+    fn editor_save_plan_dispatches_app_and_folder_edits() {
+        let (mut app, item) = dialog_app();
+        let snapshot = app.snapshot.as_ref().unwrap();
+        let target = snapshot.page_ids[1].clone();
+        let mut app_editor = Editor::app(item.clone());
+        app_editor.name = "New name".into();
+        app_editor.group_id = target.clone();
+        let plan = editor_save_plan(&app_editor, snapshot);
+        assert!(matches!(
+            &plan[0],
+            Change::RenameItem(id, name) if id == &item.id && name == "New name"
+        ));
+        assert!(matches!(
+            &plan[1],
+            Change::MoveItem(id, group, _) if id == &item.id && group == &target
+        ));
+
+        let snapshot = app.snapshot.as_mut().unwrap();
+        let folder_id = "folder-group".to_string();
+        snapshot.groups.push(Group {
+            id: folder_id.clone(),
+            label: "Media".into(),
+            parent_id: Some(snapshot.root_group_id.clone()),
+            role: None,
+            order: 0,
+            hidden: false,
+            folder: true,
+        });
+        let tile = Item {
+            id: "folder-tile".into(),
+            group_id: snapshot.page_ids[0].clone(),
+            label: "Media".into(),
+            label_overridden: false,
+            app: None,
+            shortcut: None,
+            uninstalled: false,
+            order: 0,
+            icon_override: None,
+            folder_group_id: Some(folder_id.clone()),
+        };
+        snapshot.items.push(tile.clone());
+        let mut folder_editor = Editor::folder_edit(
+            folder_id.clone(),
+            "Media".into(),
+            snapshot.page_ids[0].clone(),
+        );
+        folder_editor.name = "New Media".into();
+        folder_editor.group_id = target.clone();
+        let plan = editor_save_plan(&folder_editor, snapshot);
+        assert!(matches!(
+            &plan[0],
+            Change::RenameGroup(id, name) if id == &folder_id && name == "New Media"
+        ));
+        assert!(matches!(
+            &plan[1],
+            Change::MoveItem(id, group, _) if id == &tile.id && group == &target
+        ));
+    }
+
+    #[test]
     fn app_save_plan_is_empty_when_nothing_changed() {
         let (app, item) = dialog_app();
         let snapshot = app.snapshot.as_ref().unwrap();

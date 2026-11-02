@@ -1851,6 +1851,71 @@ mod tests {
     }
 
     #[test]
+    fn editor_frame_maps_actions_and_announces_the_kind() {
+        let mut app = sample_app();
+        let item = app
+            .snapshot
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .find(|item| item.id == "app-0")
+            .unwrap()
+            .clone();
+        app.dialog = Some(dialog::Dialog::Editor(dialog::Editor::app(item)));
+        let app_frame = frame(&app).unwrap();
+        let message = |key: &str| match &node(&app_frame, key).target {
+            Target::Message(message) => &**message,
+            _ => panic!("{key} is not a message control"),
+        };
+        assert!(matches!(
+            message("dialog:action:Uninstall"),
+            crate::Message::Dialog(dialog::Message::AppUninstall)
+        ));
+        assert!(matches!(
+            message("dialog:action:Save"),
+            crate::Message::Dialog(dialog::Message::EditorSave)
+        ));
+        assert_eq!(announcement(&app), "Edit app");
+
+        app.dialog = Some(dialog::Dialog::Editor(dialog::Editor::folder_edit(
+            "folder-group".into(),
+            "Games".into(),
+            "apps".into(),
+        )));
+        let folder_frame = frame(&app).unwrap();
+        let message = |key: &str| match &node(&folder_frame, key).target {
+            Target::Message(message) => &**message,
+            _ => panic!("{key} is not a message control"),
+        };
+        assert!(matches!(
+            message("dialog:action:Delete"),
+            crate::Message::Dialog(dialog::Message::FolderDelete)
+        ));
+        assert!(matches!(
+            message("dialog:action:Save"),
+            crate::Message::Dialog(dialog::Message::EditorSave)
+        ));
+        assert_eq!(announcement(&app), "Edit folder");
+
+        let mut shortcut = app.snapshot.as_ref().unwrap().items[1].clone();
+        shortcut.id = "shortcut".into();
+        shortcut.app = None;
+        shortcut.shortcut = Some(ShortcutPayload::LockScreen);
+        app.dialog = Some(dialog::Dialog::Editor(dialog::Editor::app(shortcut)));
+        let shortcut_frame = frame(&app).unwrap();
+        let message = |key: &str| match &node(&shortcut_frame, key).target {
+            Target::Message(message) => &**message,
+            _ => panic!("{key} is not a message control"),
+        };
+        assert!(matches!(
+            message("dialog:action:Remove"),
+            crate::Message::Dialog(dialog::Message::AppRemove)
+        ));
+        assert_eq!(announcement(&app), "Edit shortcut");
+    }
+
+    #[test]
     fn select_frame_exposes_every_option() {
         let mut app = crate::tests::app();
         app.select = Some(dialog::Select {
@@ -1962,7 +2027,7 @@ mod tests {
     use iced::Size;
     use iced_android::Insets;
     use qlaunch_core::api::api::ModelSnapshot;
-    use qlaunch_core::model::{AppRef, Group, GroupRole, Item};
+    use qlaunch_core::model::{AppRef, Group, GroupRole, Item, ShortcutPayload};
     use qlaunch_core::settings::Settings;
 
     fn group(id: &str, label: &str, role: Option<GroupRole>, order: i32, folder: bool) -> Group {
