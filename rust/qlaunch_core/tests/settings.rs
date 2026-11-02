@@ -27,6 +27,11 @@ fn defaults_match_the_spec() {
     assert_eq!(s.swipe_up_action, GestureAction::None);
     assert_eq!(s.pull_down_action, GestureAction::None);
     assert_eq!(s.double_tap_action, GestureAction::Lock);
+    assert!(!s.dashboard_widget_enabled);
+    assert_eq!(s.weather_location, "");
+    assert_eq!(s.preferred_clock_app, None);
+    assert_eq!(s.preferred_weather_app, None);
+    assert_eq!(s.preferred_calendar_app, None);
 }
 
 #[test]
@@ -230,6 +235,11 @@ fn gesture_actions_default_for_old_configs() {
     assert_eq!(s.swipe_up_action, GestureAction::None);
     assert_eq!(s.pull_down_action, GestureAction::None);
     assert_eq!(s.double_tap_action, GestureAction::Lock);
+    assert!(!s.dashboard_widget_enabled);
+    assert_eq!(s.weather_location, "");
+    assert_eq!(s.preferred_clock_app, None);
+    assert_eq!(s.preferred_weather_app, None);
+    assert_eq!(s.preferred_calendar_app, None);
 }
 
 #[test]
@@ -241,6 +251,7 @@ fn field_names_serialise_verbatim() {
         keys,
         [
             "continuous_scroll",
+            "dashboard_widget_enabled",
             "double_tap_action",
             "grid_columns_landscape",
             "grid_columns_portrait",
@@ -257,13 +268,59 @@ fn field_names_serialise_verbatim() {
             "layout",
             "orientation",
             "page_transition_ms",
+            "preferred_calendar_app",
+            "preferred_clock_app",
+            "preferred_weather_app",
             "pull_down_action",
             "scroll_fade",
             "status_bar_visible",
             "swipe_up_action",
             "tab_visibility",
             "wallpaper_alpha",
+            "weather_location",
         ]
+    );
+}
+
+#[test]
+fn dashboard_widget_settings_round_trip() {
+    let mut s = Settings::default();
+    s.apply(&SettingsPatch {
+        dashboard_widget_enabled: Some(true),
+        weather_location: Some("5000".to_string()),
+        preferred_clock_app: Some(Some("com.google.android.deskclock".to_string())),
+        preferred_weather_app: Some(Some("au.gov.bom.weather".to_string())),
+        preferred_calendar_app: Some(Some("com.google.android.calendar".to_string())),
+        ..Default::default()
+    });
+    assert!(s.dashboard_widget_enabled);
+    assert_eq!(s.weather_location, "5000");
+    assert_eq!(
+        s.preferred_clock_app.as_deref(),
+        Some("com.google.android.deskclock")
+    );
+    assert_eq!(
+        s.preferred_weather_app.as_deref(),
+        Some("au.gov.bom.weather")
+    );
+    assert_eq!(
+        s.preferred_calendar_app.as_deref(),
+        Some("com.google.android.calendar")
+    );
+
+    let json = serde_json::to_string(&s).unwrap();
+    let restored: Settings = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored, s);
+
+    // Test clearing preferred apps
+    s.apply(&SettingsPatch {
+        preferred_clock_app: Some(None),
+        ..Default::default()
+    });
+    assert_eq!(s.preferred_clock_app, None);
+    assert_eq!(
+        s.preferred_weather_app.as_deref(),
+        Some("au.gov.bom.weather")
     );
 }
 

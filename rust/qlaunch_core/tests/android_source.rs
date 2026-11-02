@@ -1,7 +1,8 @@
 use qlaunch_core::model::{AppCategory, AppRef, IconImage};
 use qlaunch_core::platform::android::{
-    AndroidHost, AndroidList, AndroidSource, icon_ref, parse_backup_names_json, parse_icon_ref,
-    parse_list_json,
+    AndroidHost, AndroidList, AndroidSource, icon_ref, parse_alarm_json, parse_backup_names_json,
+    parse_calendar_events_json, parse_category_apps_json, parse_icon_ref, parse_list_json,
+    parse_weather_json,
 };
 use qlaunch_core::platform::{AppSource, LaunchError, PlatformError};
 
@@ -124,4 +125,76 @@ fn a_malformed_icon_reference_is_not_mistaken_for_a_real_one() {
     assert_eq!(parse_icon_ref("android-res://com.example/"), None);
     assert_eq!(icon_ref("", "drawable/icon"), None);
     assert_eq!(icon_ref("com.example", ""), None);
+}
+
+#[test]
+fn parse_alarm_json_handles_active_and_empty() {
+    let active = r#"{"has_alarm":true,"trigger_time":1700000000000,"time_str":"07:00"}"#;
+    let alarm = parse_alarm_json(active).expect("should parse alarm");
+    assert_eq!(alarm.trigger_time, 1700000000000);
+    assert_eq!(alarm.time_str, "07:00");
+
+    let no_alarm = r#"{"has_alarm":false}"#;
+    assert_eq!(parse_alarm_json(no_alarm), None);
+
+    let empty = "{}";
+    assert_eq!(parse_alarm_json(empty), None);
+}
+
+#[test]
+fn parse_calendar_events_json_handles_list() {
+    let json = r#"{
+        "permission_granted": true,
+        "events": [
+            {
+                "event_id": 42,
+                "title": "Sprint Planning",
+                "begin": 1700000000000,
+                "end": 1700003600000,
+                "all_day": false,
+                "time_str": "10:00",
+                "color": -12417548
+            }
+        ]
+    }"#;
+    let payload = parse_calendar_events_json(json).expect("should parse calendar payload");
+    assert!(payload.permission_granted);
+    assert_eq!(payload.events.len(), 1);
+    assert_eq!(payload.events[0].title, "Sprint Planning");
+    assert_eq!(payload.events[0].event_id, 42);
+    assert_eq!(payload.events[0].time_str, "10:00");
+    assert!(!payload.events[0].all_day);
+}
+
+#[test]
+fn parse_weather_json_handles_success_and_error() {
+    let json = r#"{
+        "location_label": "Adelaide",
+        "current_temp": 23.5,
+        "temp_min": 14.0,
+        "temp_max": 25.0,
+        "condition_code": 1
+    }"#;
+    let weather = parse_weather_json(json).expect("should parse weather");
+    assert_eq!(weather.location_label, "Adelaide");
+    assert_eq!(weather.current_temp, 23.5);
+    assert_eq!(weather.temp_min, 14.0);
+    assert_eq!(weather.temp_max, 25.0);
+    assert_eq!(weather.condition_code, 1);
+
+    let error_json = r#"{"error": "Location not found"}"#;
+    assert!(parse_weather_json(error_json).is_err());
+}
+
+#[test]
+fn parse_category_apps_json_handles_candidates() {
+    let json = r#"[
+        {"package": "com.google.android.deskclock", "label": "Clock", "is_recommended": true},
+        {"package": "com.example.calculator", "label": "Calculator", "is_recommended": false}
+    ]"#;
+    let apps = parse_category_apps_json(json).expect("should parse apps");
+    assert_eq!(apps.len(), 2);
+    assert_eq!(apps[0].package, "com.google.android.deskclock");
+    assert!(apps[0].is_recommended);
+    assert!(!apps[1].is_recommended);
 }

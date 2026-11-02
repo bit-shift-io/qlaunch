@@ -31,6 +31,23 @@ object QLaunchBridge {
     @JvmStatic fun launchShortcut(json: String) = LauncherActions.launchShortcut(json)
     @JvmStatic fun applyDisplaySettings(json: String) = LauncherActions.applyDisplaySettings(json)
     @JvmStatic fun publishAccessibility(json: String) = LauncherActions.publishAccessibility(json)
+
+    // Dashboard Widget methods
+    @JvmStatic fun currentTimeJson(): String = DashboardAdapter.getCurrentTimeJson(getAppContext())
+    @JvmStatic fun nextAlarmJson(): String = DashboardAdapter.getNextAlarmJson(getAppContext())
+    @JvmStatic fun calendarEventsJson(): String = DashboardAdapter.getCalendarEventsJson(getAppContext())
+    @JvmStatic fun hasCalendarPermission(): String = if (DashboardAdapter.hasCalendarPermission(getAppContext())) "true" else "false"
+    @JvmStatic fun requestCalendarPermission() = LauncherActions.onMain { DashboardAdapter.requestCalendarPermission(it) }
+    @JvmStatic fun fetchWeatherJson(location: String): String = DashboardAdapter.fetchWeatherJsonSync(location)
+    @JvmStatic fun categoryAppsJson(category: String): String = DashboardAdapter.getCategoryAppsJson(getAppContext(), category)
+    @JvmStatic fun launchCategoryApp(json: String) {
+        val obj = JSONObject(json)
+        val category = obj.getString("category")
+        val packageName = obj.optString("package", "").takeIf { it.isNotEmpty() }
+        val eventId = obj.optLong("event_id", 0)
+        DashboardAdapter.launchApp(getAppContext(), category, packageName, eventId)
+    }
+
     private var appContext: Context? = null
 
     @JvmStatic

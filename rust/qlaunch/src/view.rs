@@ -316,6 +316,19 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
             Some(&window),
             motion.as_ref(),
         );
+        // The dashboard is a header on the Home group only; it scrolls away
+        // with the app grid and never repeats on other pages.
+        let show_dashboard = snapshot.settings.dashboard_widget_enabled
+            && planned.group.as_ref()
+                == snapshot
+                    .home_group_id
+                    .as_ref()
+                    .or_else(|| snapshot.page_ids.first());
+        let rows: Element<'a, Message> = if show_dashboard {
+            column![crate::dashboard::view(app), rows].into()
+        } else {
+            rows
+        };
         // Every slot scrolls, so its rows are laid out at their true height. A
         // plain container would let iced compress a long group down to the page
         // height, shrinking every icon in it. Only the committed slot answers

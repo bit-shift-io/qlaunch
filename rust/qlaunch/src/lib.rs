@@ -1,6 +1,7 @@
 //! Iced Android/desktop launcher UI. The core remains the source of truth.
 mod accessibility;
 mod components;
+mod dashboard;
 mod dialog;
 mod elastic_scroll;
 mod field;
@@ -38,6 +39,7 @@ use iced::{Color, Element, Point, Subscription, Task, Theme, window};
 use iced_android::{self as platform, Insets};
 use qlaunch_core::api::{api as core, events::CoreEvent};
 use qlaunch_core::model::{AppRef, IconFormat, Id, Item, ShortcutPayload};
+use qlaunch_core::platform::android::{AlarmInfo, CalendarEventsPayload, TimeInfo, WeatherData};
 use qlaunch_core::settings::{GestureAction, LayoutStyle};
 
 #[cfg(target_os = "android")]
@@ -1582,6 +1584,20 @@ enum Message {
     ActionDone(Result<(), String>),
     Accessibility(ActionRequest),
     AccessibilitySettled(u64),
+    DashboardTick,
+    DashboardTime(Option<TimeInfo>),
+    DashboardAlarm(Option<AlarmInfo>),
+    DashboardCalendar(Result<CalendarEventsPayload, String>),
+    DashboardWeather(Result<WeatherData, String>),
+    DashboardWeatherDebounced(u64),
+    DashboardLocationDraft(String),
+    DashboardLocationCommit(u64),
+    CommitDashboardLocation,
+    DashboardPermissionRequested(Result<(), String>),
+    RequestCalendarPermission,
+    PickDashboardApp(String),
+    LaunchDashboardCategory(String),
+    LaunchCalendarEvent(i64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1633,6 +1649,15 @@ struct App {
     scale: f32,
     density: f32,
     pub(crate) snapshot: Option<core::ModelSnapshot>,
+    pub(crate) dashboard_time: Option<String>,
+    pub(crate) dashboard_date: Option<String>,
+    pub(crate) dashboard_alarm: Option<AlarmInfo>,
+    pub(crate) dashboard_calendar: Option<CalendarEventsPayload>,
+    pub(crate) dashboard_weather: Option<WeatherData>,
+    pub(crate) dashboard_weather_error: Option<String>,
+    dashboard_weather_generation: u64,
+    dashboard_location_draft: Option<String>,
+    dashboard_location_generation: u64,
     pager: Pager,
     pub(crate) folder: Option<Id>,
     pub(crate) searching: bool,
@@ -1687,7 +1712,7 @@ fn index_items(snapshot: &core::ModelSnapshot) -> HashMap<AppRef, usize> {
 /// Core calls perform JNI and disk IO. Never execute them on iced's UI thread.
 fn work<T: Send + 'static>(
     f: impl FnOnce() -> T + Send + 'static,
-    done: fn(T) -> Message,
+    done: impl FnOnce(T) -> Message + Send + 'static,
 ) -> Task<Message> {
     Task::perform(
         async move {
@@ -1716,6 +1741,15 @@ impl App {
             scale: 1.0,
             density: 1.0,
             snapshot: None,
+            dashboard_time: None,
+            dashboard_date: None,
+            dashboard_alarm: None,
+            dashboard_calendar: None,
+            dashboard_weather: None,
+            dashboard_weather_error: None,
+            dashboard_weather_generation: 0,
+            dashboard_location_draft: None,
+            dashboard_location_generation: 0,
             pager: Pager::new(0, 0),
             folder: None,
             searching: false,
@@ -1810,6 +1844,10 @@ impl App {
         if self.scroll_last.is_some() {
             subscriptions
                 .push(iced::time::every(Duration::from_millis(100)).map(|_| Message::ScrollTick));
+        }
+        if self.dashboard_enabled() && !self.background {
+            subscriptions
+                .push(iced::time::every(Duration::from_secs(30)).map(|_| Message::DashboardTick));
         }
         Subscription::batch(subscriptions)
     }
@@ -1955,6 +1993,148 @@ impl App {
         if first {
             log::info!("core ready in {} ms", self.started.elapsed().as_millis());
         }
+    }
+
+    fn dashboard_enabled(&self) -> bool {
+        self.snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.settings.dashboard_widget_enabled)
+    }
+
+    fn dashboard_weather_location(&self) -> String {
+        self.snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.settings.weather_location.trim().to_string())
+            .unwrap_or_default()
+    }
+
+    fn preferred_dashboard_app(&self, category: &str) -> Option<String> {
+        let settings = &self.snapshot.as_ref()?.settings;
+        match category {
+            "clock" => settings.preferred_clock_app.clone(),
+            "weather" => settings.preferred_weather_app.clone(),
+            "calendar" => settings.preferred_calendar_app.clone(),
+            _ => None,
+        }
+    }
+
+    /// Refreshes every dashboard source. Platform calls run off the UI thread;
+    /// the weather lookup only runs when a location has been configured.
+    fn dashboard_refresh(&self) -> Task<Message> {
+        if !self.dashboard_enabled() {
+            return Task::none();
+        }
+        Task::batch([
+            self.dashboard_core_refresh(),
+            self.dashboard_weather_refresh(),
+        ])
+    }
+
+    /// Time, alarm and calendar are cheap local queries; weather is a network
+    /// request, so it has its own task and can be debounced while typing.
+    fn dashboard_core_refresh(&self) -> Task<Message> {
+        if !self.dashboard_enabled() {
+            return Task::none();
+        }
+        Task::batch([
+            work(dashboard::current_time, Message::DashboardTime),
+            work(dashboard::next_alarm, Message::DashboardAlarm),
+            work(dashboard::calendar_events, Message::DashboardCalendar),
+        ])
+    }
+
+    fn dashboard_weather_refresh(&self) -> Task<Message> {
+        if !self.dashboard_enabled() {
+            return Task::none();
+        }
+        let location = self.dashboard_weather_location();
+        if location.is_empty() {
+            Task::done(Message::DashboardWeather(Err(String::new())))
+        } else {
+            work(
+                move || dashboard::fetch_weather(&location),
+                Message::DashboardWeather,
+            )
+        }
+    }
+
+    /// Waits for the location field to settle before hitting the network. Every
+    /// keystroke bumps the generation, so only the last request runs.
+    fn schedule_dashboard_weather(&mut self) -> Task<Message> {
+        self.dashboard_weather_generation += 1;
+        let generation = self.dashboard_weather_generation;
+        Task::perform(
+            async move {
+                tokio::time::sleep(Duration::from_millis(700)).await;
+                generation
+            },
+            Message::DashboardWeatherDebounced,
+        )
+    }
+
+    fn edit_dashboard_location(&mut self, value: String) -> Task<Message> {
+        self.dashboard_location_draft = Some(value);
+        self.dashboard_location_generation += 1;
+        let generation = self.dashboard_location_generation;
+        Task::perform(
+            async move {
+                tokio::time::sleep(Duration::from_millis(600)).await;
+                generation
+            },
+            Message::DashboardLocationCommit,
+        )
+    }
+
+    /// Persists the typed location once it has settled. Committing on every
+    /// keystroke would let an earlier write land after a later one.
+    fn commit_dashboard_location(&mut self) -> Task<Message> {
+        let Some(value) = self.dashboard_location_draft.take() else {
+            return Task::none();
+        };
+        let saved = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.settings.weather_location.clone())
+            .unwrap_or_default();
+        if value == saved {
+            return Task::none();
+        }
+        work(
+            move || {
+                block_on(core::update_settings(screens::settings::location_patch(
+                    value,
+                )))
+            },
+            Message::SettingsDone,
+        )
+    }
+
+    fn launch_dashboard_category(&mut self, category: String, event_id: i64) -> Task<Message> {
+        if self.preferred_dashboard_app(&category).is_none() {
+            return self.open_dashboard_app_picker(category, None);
+        }
+        let package = self.preferred_dashboard_app(&category);
+        work(
+            move || dashboard::launch_category_app(&category, package.as_deref(), event_id),
+            Message::SimpleDone,
+        )
+    }
+
+    fn open_dashboard_app_picker(
+        &mut self,
+        category: String,
+        event_id: Option<i64>,
+    ) -> Task<Message> {
+        let work_category = category.clone();
+        self.dialog = Some(dialog::Dialog::AppPicker(dialog::AppPickerState {
+            category: category.clone(),
+            event_id,
+            apps: None,
+        }));
+        work(
+            move || dashboard::category_apps(&work_category),
+            move |result| Message::Dialog(dialog::Message::AppPickerLoaded(category, result)),
+        )
     }
 
     /// The group a shortcut or folder created from a menu belongs to. Always a
@@ -2424,6 +2604,47 @@ impl App {
                     action: dialog::ConfirmAction::Restore(name),
                 }));
             }
+            D::AppPickerLoaded(category, result) => {
+                if let Some(Dialog::AppPicker(state)) = &mut self.dialog
+                    && state.category == category
+                {
+                    state.apps = Some(result);
+                }
+            }
+            D::AppPickerChosen(category, package) => {
+                let event_id = match &self.dialog {
+                    Some(Dialog::AppPicker(state)) if state.category == category => state.event_id,
+                    _ => None,
+                };
+                self.dialog = None;
+                let save_category = category.clone();
+                let save_package = package.clone();
+                let save = work(
+                    move || {
+                        let mut patch = qlaunch_core::settings::SettingsPatch::default();
+                        match save_category.as_str() {
+                            "clock" => patch.preferred_clock_app = Some(Some(save_package)),
+                            "weather" => patch.preferred_weather_app = Some(Some(save_package)),
+                            "calendar" => patch.preferred_calendar_app = Some(Some(save_package)),
+                            _ => {}
+                        }
+                        block_on(core::update_settings(patch))
+                    },
+                    Message::SettingsDone,
+                );
+                let launch_package = Some(package);
+                let launch = work(
+                    move || {
+                        dashboard::launch_category_app(
+                            &category,
+                            launch_package.as_deref(),
+                            event_id.unwrap_or(0),
+                        )
+                    },
+                    Message::SimpleDone,
+                );
+                return Task::batch([save, launch]);
+            }
             D::ConfirmYes => {
                 let Some(Dialog::Confirm(state)) = &self.dialog else {
                     return Task::none();
@@ -2834,6 +3055,64 @@ impl App {
             self.accessibility.cancel_scroll();
         }
         match message {
+            Message::DashboardTick => return self.dashboard_refresh(),
+            Message::DashboardTime(info) => {
+                if let Some(info) = info {
+                    self.dashboard_time = Some(info.time);
+                    self.dashboard_date = Some(info.date);
+                }
+            }
+            Message::DashboardAlarm(alarm) => self.dashboard_alarm = alarm,
+            Message::DashboardCalendar(result) => match result {
+                Ok(payload) => self.dashboard_calendar = Some(payload),
+                Err(error) => log::warn!("dashboard calendar refresh failed: {error}"),
+            },
+            Message::DashboardWeather(result) => match result {
+                Ok(weather) => {
+                    self.dashboard_weather = Some(weather);
+                    self.dashboard_weather_error = None;
+                }
+                Err(error) => {
+                    self.dashboard_weather = None;
+                    self.dashboard_weather_error = (!error.is_empty()).then_some(error);
+                }
+            },
+            Message::DashboardPermissionRequested(result) => {
+                if let Err(error) = result {
+                    return self.update(Message::Snackbar(error));
+                }
+                return self.dashboard_refresh();
+            }
+            Message::DashboardWeatherDebounced(generation) => {
+                if generation == self.dashboard_weather_generation {
+                    return self.dashboard_weather_refresh();
+                }
+            }
+            Message::DashboardLocationDraft(value) => return self.edit_dashboard_location(value),
+            Message::DashboardLocationCommit(generation) => {
+                if generation == self.dashboard_location_generation {
+                    return self.commit_dashboard_location();
+                }
+            }
+            Message::CommitDashboardLocation => return self.commit_dashboard_location(),
+            Message::RequestCalendarPermission => {
+                return work(
+                    dashboard::request_calendar_permission,
+                    Message::DashboardPermissionRequested,
+                );
+            }
+            Message::PickDashboardApp(category) => {
+                return self.open_dashboard_app_picker(category, None);
+            }
+            Message::LaunchDashboardCategory(category) => {
+                return self.launch_dashboard_category(category, 0);
+            }
+            Message::LaunchCalendarEvent(event_id) => {
+                if self.preferred_dashboard_app("calendar").is_some() {
+                    return self.launch_dashboard_category("calendar".to_string(), event_id);
+                }
+                return self.open_dashboard_app_picker("calendar".to_string(), Some(event_id));
+            }
             Message::ScopedDialog(generation, message) => {
                 if generation == self.dialog_generation {
                     return self.update(*message);
@@ -3023,11 +3302,29 @@ impl App {
             Message::SettingsDone(result) => {
                 self.settings_drag = None;
                 match result {
-                    Ok(snapshot) => self.apply_snapshot(snapshot, false),
+                    Ok(snapshot) => {
+                        let dashboard = snapshot.settings.dashboard_widget_enabled;
+                        let location = snapshot.settings.weather_location.trim().to_string();
+                        self.apply_snapshot(snapshot, false);
+                        if location.is_empty() {
+                            self.dashboard_weather = None;
+                            self.dashboard_weather_error = None;
+                        }
+                        if dashboard {
+                            let core = self.dashboard_core_refresh();
+                            let weather = self.schedule_dashboard_weather();
+                            return Task::batch([core, weather]);
+                        }
+                    }
                     Err(error) => return self.update(Message::Snackbar(error)),
                 }
             }
             Message::Push(screen) => {
+                let commit = if self.screens.last() == Some(&Screen::Settings) {
+                    self.commit_dashboard_location()
+                } else {
+                    Task::none()
+                };
                 if let Some(dialog) = self.dialog.take() {
                     self.suspended_dialogs.push((self.screens.len(), dialog));
                 }
@@ -3036,8 +3333,14 @@ impl App {
                 self.pressed = None;
                 self.pending_target = None;
                 self.gesture = Gesture::new();
+                return commit;
             }
             Message::PopScreen => {
+                let commit = if self.screens.last() == Some(&Screen::Settings) {
+                    self.commit_dashboard_location()
+                } else {
+                    Task::none()
+                };
                 self.screens.pop();
                 if self
                     .suspended_dialogs
@@ -3046,6 +3349,7 @@ impl App {
                 {
                     self.dialog = self.suspended_dialogs.pop().map(|(_, dialog)| dialog);
                 }
+                return commit;
             }
             Message::Snackbar(message) => {
                 self.snackbar_generation += 1;
@@ -3088,13 +3392,18 @@ impl App {
                     self.window
                 );
                 self.set_foreground(visible);
+                let refresh = if visible {
+                    self.dashboard_refresh()
+                } else {
+                    Task::none()
+                };
                 match action {
                     WindowAction::Open => {
                         let (id, open) = window::open(window_settings());
                         self.window = Some(id);
-                        return open.map(Message::Opened);
+                        return Task::batch([open.map(Message::Opened), refresh]);
                     }
-                    WindowAction::Nothing => {}
+                    WindowAction::Nothing => return refresh,
                 }
             }
             // Only ever clears a stale background state: `Unfocused` still does
@@ -3105,6 +3414,7 @@ impl App {
                     log::info!("window focused while marked background; resuming");
                     self.set_foreground(true);
                 }
+                return self.dashboard_refresh();
             }
             Message::Insets(insets) => {
                 self.insets = insets;
@@ -3122,7 +3432,14 @@ impl App {
                 self.size = size;
             }
             Message::Loaded(result) => match result {
-                Ok(snapshot) => self.apply_snapshot(snapshot, self.snapshot.is_none()),
+                Ok(snapshot) => {
+                    let first = self.snapshot.is_none();
+                    let dashboard = snapshot.settings.dashboard_widget_enabled;
+                    self.apply_snapshot(snapshot, first);
+                    if dashboard {
+                        return self.dashboard_refresh();
+                    }
+                }
                 Err(error) => self.error = Some(error),
             },
             Message::Mutated(result) => match result {

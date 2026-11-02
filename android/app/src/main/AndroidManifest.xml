@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+    <!-- Permissions for Dashboard Widget: internet for weather, calendar for upcoming events -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
     <!-- Uninstalling from the app settings popup sends ACTION_DELETE; without
          this the system's uninstaller refuses the request. A normal permission,
          granted at install time. -->
@@ -14,6 +17,18 @@
          returns an empty list and the launcher looks empty. -->
     <queries>
         <intent><action android:name="android.intent.action.CREATE_SHORTCUT"/></intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+        <intent><action android:name="android.intent.action.SHOW_ALARMS"/></intent>
+        <intent><action android:name="android.intent.action.SET_ALARM"/></intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="content" android:host="com.android.calendar"/>
+        </intent>
+        <!-- Weather app discovery lists launcher apps so the user can pick any
+             installed weather app, not only ones matching a known intent. -->
         <intent>
             <action android:name="android.intent.action.MAIN"/>
             <category android:name="android.intent.category.LAUNCHER"/>

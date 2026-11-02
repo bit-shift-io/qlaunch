@@ -87,6 +87,11 @@ pub struct Settings {
     pub swipe_up_action: GestureAction,
     pub pull_down_action: GestureAction,
     pub double_tap_action: GestureAction,
+    pub dashboard_widget_enabled: bool,
+    pub weather_location: String,
+    pub preferred_clock_app: Option<String>,
+    pub preferred_weather_app: Option<String>,
+    pub preferred_calendar_app: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -114,6 +119,11 @@ pub struct SettingsPatch {
     pub swipe_up_action: Option<GestureAction>,
     pub pull_down_action: Option<GestureAction>,
     pub double_tap_action: Option<GestureAction>,
+    pub dashboard_widget_enabled: Option<bool>,
+    pub weather_location: Option<String>,
+    pub preferred_clock_app: Option<Option<String>>,
+    pub preferred_weather_app: Option<Option<String>>,
+    pub preferred_calendar_app: Option<Option<String>>,
 }
 
 impl Default for Settings {
@@ -142,6 +152,11 @@ impl Default for Settings {
             swipe_up_action: GestureAction::None,
             pull_down_action: GestureAction::None,
             double_tap_action: GestureAction::Lock,
+            dashboard_widget_enabled: false,
+            weather_location: String::new(),
+            preferred_clock_app: None,
+            preferred_weather_app: None,
+            preferred_calendar_app: None,
         }
     }
 }
@@ -165,7 +180,7 @@ impl Settings {
     pub fn apply(&mut self, patch: &SettingsPatch) {
         macro_rules! overwrite {
             ($($field:ident),* $(,)?) => {
-                $(if let Some(v) = patch.$field { self.$field = v; })*
+                $(if let Some(v) = patch.$field.clone() { self.$field = v; })*
             };
         }
         overwrite!(
@@ -192,6 +207,11 @@ impl Settings {
             swipe_up_action,
             pull_down_action,
             double_tap_action,
+            dashboard_widget_enabled,
+            weather_location,
+            preferred_clock_app,
+            preferred_weather_app,
+            preferred_calendar_app,
         );
     }
 }

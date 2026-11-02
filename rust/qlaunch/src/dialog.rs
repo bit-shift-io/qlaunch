@@ -51,6 +51,11 @@ pub(crate) enum Message {
     GroupChooseApps,
     RestoreChosen(String),
     ConfirmYes,
+    AppPickerLoaded(
+        String,
+        Result<Vec<qlaunch_core::platform::android::AppChoice>, String>,
+    ),
+    AppPickerChosen(String, String),
 }
 
 /// One popup. Every variant draws through the same card; only its rows and
@@ -66,6 +71,7 @@ pub(crate) enum Dialog {
     GroupEditor(GroupEditorState),
     Confirm(ConfirmState),
     RestorePicker(RestorePickerState),
+    AppPicker(AppPickerState),
 }
 
 pub(crate) struct AppEditor {
@@ -310,6 +316,12 @@ pub(crate) struct RestorePickerState {
     pub backups: Option<Result<Vec<String>, String>>,
 }
 
+pub(crate) struct AppPickerState {
+    pub category: String,
+    pub event_id: Option<i64>,
+    pub apps: Option<Result<Vec<qlaunch_core::platform::android::AppChoice>, String>>,
+}
+
 pub(crate) struct Select {
     pub field: SelectField,
     pub options: Vec<SelectOption>,
@@ -393,6 +405,12 @@ pub(crate) fn heading(dialog: &Dialog) -> Option<String> {
         Dialog::GroupEditor(state) => Some(state.label.clone()),
         Dialog::Confirm(state) => Some(state.title.clone()),
         Dialog::RestorePicker(_) => Some("Restore config".into()),
+        Dialog::AppPicker(state) => Some(match state.category.as_str() {
+            "clock" => "Choose Clock App".into(),
+            "calendar" => "Choose Calendar App".into(),
+            "weather" => "Choose Weather App".into(),
+            _ => "Choose App".into(),
+        }),
     }
 }
 
@@ -630,6 +648,30 @@ pub(crate) fn rows(app: &App, dialog: &Dialog) -> Vec<Row> {
                 }
             }
         },
+        Dialog::AppPicker(state) => match &state.apps {
+            None => rows.push(Row::Note {
+                label: "Loading apps…".into(),
+            }),
+            Some(Err(error)) => rows.push(Row::Text {
+                label: error.clone(),
+                error: true,
+            }),
+            Some(Ok(apps)) if apps.is_empty() => rows.push(Row::Note {
+                label: "No apps found.".into(),
+            }),
+            Some(Ok(apps)) => {
+                for app in apps {
+                    rows.push(Row::Tile {
+                        label: app.label.clone(),
+                        subtitle: if app.is_recommended {
+                            Some("Recommended".into())
+                        } else {
+                            None
+                        },
+                    });
+                }
+            }
+        },
     }
     rows
 }
@@ -658,7 +700,7 @@ pub(crate) fn action_labels(dialog: &Dialog) -> Vec<String> {
             labels.push("Save".into());
             labels
         }
-        Dialog::Launcher | Dialog::RestorePicker(_) => Vec::new(),
+        Dialog::Launcher | Dialog::RestorePicker(_) | Dialog::AppPicker(_) => Vec::new(),
         Dialog::AddShortcut(_) => vec!["Cancel".into()],
         Dialog::CommandShortcut(_) => vec!["Cancel".into(), "Add".into()],
         Dialog::AddGroup(_) => vec!["Cancel".into(), "Add".into()],
@@ -742,7 +784,7 @@ pub(crate) fn layout(app: &App, dialog: &Dialog, window: Size) -> DialogLayout {
         };
     let list = matches!(
         dialog,
-        Dialog::Launcher | Dialog::AddShortcut(_) | Dialog::RestorePicker(_)
+        Dialog::Launcher | Dialog::AddShortcut(_) | Dialog::RestorePicker(_) | Dialog::AppPicker(_)
     );
     let gap = if list { 0.0 } else { 16.0 };
     let mut row_rects = Vec::with_capacity(rows.len());
@@ -1257,6 +1299,28 @@ fn body<'a>(app: &'a App, dialog: &'a Dialog, text_settings: &Text) -> Element<'
                 }
             }
         },
+        Dialog::AppPicker(state) => match &state.apps {
+            None => rows = rows.push(plain_line(text_settings, "Loading apps…", false, false)),
+            Some(Err(error)) => rows = rows.push(plain_line(text_settings, error, false, true)),
+            Some(Ok(apps)) if apps.is_empty() => {
+                rows = rows.push(plain_line(text_settings, "No apps found.", false, false));
+            }
+            Some(Ok(apps)) => {
+                for app in apps {
+                    let label = if app.is_recommended {
+                        format!("{} — Recommended", app.label)
+                    } else {
+                        app.label.clone()
+                    };
+                    rows = rows.push(tile(
+                        text_settings,
+                        &label,
+                        None,
+                        Message::AppPickerChosen(state.category.clone(), app.package.clone()),
+                    ));
+                }
+            }
+        },
     }
     rows.finish()
 }
@@ -1316,7 +1380,7 @@ fn actions<'a>(app: &App, dialog: &Dialog, text_settings: &Text) -> Vec<Element<
                 editor.can_save(),
             ));
         }
-        Dialog::Launcher | Dialog::RestorePicker(_) => {}
+        Dialog::Launcher | Dialog::RestorePicker(_) | Dialog::AppPicker(_) => {}
         Dialog::AddShortcut(state) => actions.push(components::text_button(
             text_settings,
             "Cancel",

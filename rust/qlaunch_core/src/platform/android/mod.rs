@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::model::{AppCategory, AppEntry, AppRef, IconFormat, IconImage};
 use crate::platform::backup::{is_backup_name, sort_backup_names};
@@ -134,6 +134,120 @@ pub fn parse_backup_names_json(json: &str) -> Result<Vec<String>, PlatformError>
     let names: Vec<String> = serde_json::from_str(json)
         .map_err(|e| PlatformError::Io(format!("bad backup list JSON: {e}")))?;
     Ok(sort_backup_names(names))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimeInfo {
+    pub time: String,
+    pub date: String,
+}
+
+pub fn parse_time_json(json: &str) -> Option<TimeInfo> {
+    serde_json::from_str(json).ok()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AlarmInfo {
+    pub trigger_time: i64,
+    pub time_str: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarEventItem {
+    pub event_id: i64,
+    pub title: String,
+    pub begin: i64,
+    pub end: i64,
+    pub all_day: bool,
+    pub time_str: String,
+    pub color: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CalendarEventsPayload {
+    pub permission_granted: bool,
+    pub events: Vec<CalendarEventItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WeatherData {
+    pub location_label: String,
+    pub current_temp: f32,
+    pub temp_min: f32,
+    pub temp_max: f32,
+    pub condition_code: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AppChoice {
+    pub package: String,
+    pub label: String,
+    pub is_recommended: bool,
+}
+
+#[derive(Deserialize)]
+struct RawAlarm {
+    #[serde(default)]
+    has_alarm: bool,
+    #[serde(default)]
+    trigger_time: i64,
+    #[serde(default)]
+    time_str: String,
+}
+
+pub fn parse_alarm_json(json: &str) -> Option<AlarmInfo> {
+    let raw: RawAlarm = serde_json::from_str(json).ok()?;
+    if raw.has_alarm && !raw.time_str.is_empty() {
+        Some(AlarmInfo {
+            trigger_time: raw.trigger_time,
+            time_str: raw.time_str,
+        })
+    } else {
+        None
+    }
+}
+
+pub fn parse_calendar_events_json(json: &str) -> Result<CalendarEventsPayload, PlatformError> {
+    serde_json::from_str(json)
+        .map_err(|e| PlatformError::Io(format!("bad calendar events JSON: {e}")))
+}
+
+#[derive(Deserialize)]
+struct RawWeather {
+    #[serde(default)]
+    location_label: String,
+    #[serde(default)]
+    current_temp: f64,
+    #[serde(default)]
+    temp_min: f64,
+    #[serde(default)]
+    temp_max: f64,
+    #[serde(default)]
+    condition_code: i32,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+pub fn parse_weather_json(json: &str) -> Result<WeatherData, PlatformError> {
+    let raw: RawWeather = serde_json::from_str(json)
+        .map_err(|e| PlatformError::Io(format!("bad weather JSON: {e}")))?;
+    if let Some(err) = raw.error {
+        if !err.is_empty() {
+            return Err(PlatformError::Io(err));
+        }
+    }
+    Ok(WeatherData {
+        location_label: raw.location_label,
+        current_temp: raw.current_temp as f32,
+        temp_min: raw.temp_min as f32,
+        temp_max: raw.temp_max as f32,
+        condition_code: raw.condition_code,
+    })
+}
+
+pub fn parse_category_apps_json(json: &str) -> Result<Vec<AppChoice>, PlatformError> {
+    serde_json::from_str(json)
+        .map_err(|e| PlatformError::Io(format!("bad category apps JSON: {e}")))
 }
 
 /// Converts Android's packed `0xAARRGGBB` pixels, as `Bitmap.getPixels` returns

@@ -653,6 +653,27 @@ fn screen_frame(app: &App) -> Frame {
                             }
                         }
                     }
+                    Row::TextField {
+                        field: _,
+                        label,
+                        value,
+                        placeholder: _,
+                    } => push(
+                        app,
+                        &mut frame.nodes,
+                        "settings:weather-location".to_string(),
+                        Target::Input {
+                            widget_id: "weather-location",
+                            on_input: screens::settings::weather_location_message,
+                        },
+                        Role::TextField,
+                        format!("{label}, {value}"),
+                        bounds,
+                        vec![Action::Click, Action::SetText],
+                        false,
+                        Some(value),
+                        Some(viewport),
+                    ),
                     Row::Action {
                         label,
                         subtitle,
@@ -669,6 +690,16 @@ fn screen_frame(app: &App) -> Frame {
                             ActionTarget::Wallpaper => {
                                 Message::Dialog(crate::dialog::Message::LauncherWallpaper)
                             }
+                            ActionTarget::ClockApp => {
+                                Message::PickDashboardApp("clock".to_string())
+                            }
+                            ActionTarget::WeatherApp => {
+                                Message::PickDashboardApp("weather".to_string())
+                            }
+                            ActionTarget::CalendarApp => {
+                                Message::PickDashboardApp("calendar".to_string())
+                            }
+                            ActionTarget::CalendarPermission => Message::RequestCalendarPermission,
                         },
                         false,
                         true,

@@ -33,11 +33,13 @@ pub(crate) enum SettingField {
     SwipeUpAction,
     PullDownAction,
     DoubleTapAction,
+    DashboardWidget,
+    WeatherLocation,
 }
 
 impl SettingField {
     #[allow(dead_code)] // used by the coverage test
-    pub(crate) fn all() -> [Self; 23] {
+    pub(crate) fn all() -> [Self; 25] {
         use SettingField::*;
         [
             ContinuousScroll,
@@ -63,6 +65,8 @@ impl SettingField {
             SwipeUpAction,
             PullDownAction,
             DoubleTapAction,
+            DashboardWidget,
+            WeatherLocation,
         ]
     }
 }
@@ -87,9 +91,15 @@ pub(crate) enum Row {
         label: &'static str,
         options: Vec<(String, bool)>,
     },
+    TextField {
+        field: SettingField,
+        label: &'static str,
+        value: String,
+        placeholder: &'static str,
+    },
     Action {
         label: &'static str,
-        subtitle: &'static str,
+        subtitle: String,
         target: ActionTarget,
     },
 }
@@ -99,6 +109,10 @@ pub(crate) enum ActionTarget {
     Groups,
     Advanced,
     Wallpaper,
+    ClockApp,
+    WeatherApp,
+    CalendarApp,
+    CalendarPermission,
 }
 
 fn choices(field: SettingField, label: &'static str, labels: &[&str], selected: usize) -> Row {
@@ -133,6 +147,10 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             max,
             unit,
         }
+    };
+    let preferred = |label: &str, app: &Option<String>| match app {
+        Some(package) => format!("{label}: {package}"),
+        None => format!("{label}: not set"),
     };
     vec![
         Row::Header("Display"),
@@ -256,19 +274,51 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             &["None", "Lock", "Search", "Notifications"],
             settings.double_tap_action as usize,
         ),
+        Row::Header("Dashboard"),
+        switch(
+            DashboardWidget,
+            "Show dashboard widget",
+            settings.dashboard_widget_enabled,
+        ),
+        Row::TextField {
+            field: WeatherLocation,
+            label: "Weather location",
+            value: settings.weather_location.clone(),
+            placeholder: "Postcode or suburb",
+        },
+        Row::Action {
+            label: "Clock app",
+            subtitle: preferred("Opens", &settings.preferred_clock_app),
+            target: ActionTarget::ClockApp,
+        },
+        Row::Action {
+            label: "Weather app",
+            subtitle: preferred("Opens", &settings.preferred_weather_app),
+            target: ActionTarget::WeatherApp,
+        },
+        Row::Action {
+            label: "Calendar app",
+            subtitle: preferred("Opens", &settings.preferred_calendar_app),
+            target: ActionTarget::CalendarApp,
+        },
+        Row::Action {
+            label: "Calendar access",
+            subtitle: "Grant permission to show upcoming events.".into(),
+            target: ActionTarget::CalendarPermission,
+        },
         Row::Action {
             label: "Choose wallpaper",
-            subtitle: "Pick one with the system wallpaper chooser.",
+            subtitle: "Pick one with the system wallpaper chooser.".into(),
             target: ActionTarget::Wallpaper,
         },
         Row::Action {
             label: "Groups",
-            subtitle: "Add, rename, reorder and fill the tabs.",
+            subtitle: "Add, rename, reorder and fill the tabs.".into(),
             target: ActionTarget::Groups,
         },
         Row::Action {
             label: "Advanced",
-            subtitle: "Restart, backup, restore and factory reset.",
+            subtitle: "Restart, backup, restore and factory reset.".into(),
             target: ActionTarget::Advanced,
         },
     ]
@@ -290,9 +340,24 @@ pub(crate) fn message(field: SettingField, value: i64) -> SettingsPatch {
         SettingField::LabelSize => patch.label_size = Some(value),
         SettingField::LabelShadow => patch.label_shadow = Some(value != 0),
         SettingField::LabelShadowBlur => patch.label_shadow_blur = Some(value),
+        SettingField::DashboardWidget => patch.dashboard_widget_enabled = Some(value != 0),
         _ => return choice_patch(field, value as usize),
     }
     patch
+}
+
+/// A settings patch for the weather location, applied once typing settles.
+pub(crate) fn location_patch(value: String) -> SettingsPatch {
+    SettingsPatch {
+        weather_location: Some(value),
+        ..Default::default()
+    }
+}
+
+/// The text input callback exposed to accessibility, which needs a plain
+/// function pointer rather than a closure.
+pub(crate) fn weather_location_message(value: String) -> crate::Message {
+    crate::Message::DashboardLocationDraft(value)
 }
 
 /// The action choices every gesture row offers, in display order.
@@ -393,6 +458,9 @@ pub(crate) fn row_height(row: &Row, text: &theme::Text, available: f32) -> f32 {
                         .max(theme::metrics::CHIP_HEIGHT)
                         + components::CHIP_SPACING)
                 - components::CHIP_SPACING
+        }
+        Row::TextField { .. } => {
+            body + theme::metrics::FIELD_HEIGHT + theme::metrics::SETTINGS_ROW_PADDING
         }
         Row::Action {
             label, subtitle, ..
@@ -496,6 +564,23 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
             } => components::choice_row(&typography, label, &options, available, move |index| {
                 Message::SettingPatch(choice_patch(field, index))
             }),
+            Row::TextField {
+                field: _,
+                label,
+                value,
+                placeholder,
+            } => {
+                let value = app.dashboard_location_draft.clone().unwrap_or(value);
+                components::text_field(
+                    &typography,
+                    label,
+                    &value,
+                    placeholder,
+                    "weather-location",
+                    Message::DashboardLocationDraft,
+                    Message::CommitDashboardLocation,
+                )
+            }
             Row::Action {
                 label,
                 subtitle,
@@ -503,11 +588,15 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
             } => components::list_tile_with_height(
                 &typography,
                 label,
-                Some(subtitle),
+                Some(&subtitle),
                 Some(match target {
                     ActionTarget::Groups => icons::DASHBOARD_CUSTOMIZE,
                     ActionTarget::Advanced => icons::SETTINGS,
                     ActionTarget::Wallpaper => icons::WALLPAPER,
+                    ActionTarget::ClockApp
+                    | ActionTarget::WeatherApp
+                    | ActionTarget::CalendarApp
+                    | ActionTarget::CalendarPermission => icons::DASHBOARD_CUSTOMIZE,
                 }),
                 None,
                 Some(match target {
@@ -516,6 +605,10 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                     ActionTarget::Wallpaper => {
                         Message::Dialog(crate::dialog::Message::LauncherWallpaper)
                     }
+                    ActionTarget::ClockApp => Message::PickDashboardApp("clock".to_string()),
+                    ActionTarget::WeatherApp => Message::PickDashboardApp("weather".to_string()),
+                    ActionTarget::CalendarApp => Message::PickDashboardApp("calendar".to_string()),
+                    ActionTarget::CalendarPermission => Message::RequestCalendarPermission,
                 }),
                 true,
                 height - theme::metrics::ACTION_GAP,
@@ -574,7 +667,8 @@ mod tests {
             .filter_map(|row| match row {
                 Row::Switch { field, .. }
                 | Row::Slider { field, .. }
-                | Row::Choice { field, .. } => Some(*field),
+                | Row::Choice { field, .. }
+                | Row::TextField { field, .. } => Some(*field),
                 _ => None,
             })
             .collect();
@@ -591,7 +685,10 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(headers, ["Display", "Window", "Icon", "Text", "Actions"]);
+        assert_eq!(
+            headers,
+            ["Display", "Window", "Icon", "Text", "Actions", "Dashboard"]
+        );
     }
 
     #[test]
@@ -674,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn wallpaper_groups_and_advanced_follow_all_settings() {
+    fn dashboard_actions_then_bottom_cards_follow_all_settings() {
         let rows = rows(&Settings::default(), None);
         let first_action = rows
             .iter()
@@ -687,7 +784,18 @@ mod tests {
                 _ => panic!("settings must precede the bottom action cards"),
             })
             .collect();
-        assert_eq!(actions, ["Choose wallpaper", "Groups", "Advanced"]);
+        assert_eq!(
+            actions,
+            [
+                "Clock app",
+                "Weather app",
+                "Calendar app",
+                "Calendar access",
+                "Choose wallpaper",
+                "Groups",
+                "Advanced",
+            ]
+        );
     }
 
     #[test]
@@ -748,6 +856,43 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_switch_and_location_patch_the_dashboard_settings() {
+        assert_eq!(
+            message(SettingField::DashboardWidget, 1),
+            SettingsPatch {
+                dashboard_widget_enabled: Some(true),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            location_patch("5000".to_string()),
+            SettingsPatch {
+                weather_location: Some("5000".to_string()),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn dashboard_rows_show_the_saved_location_and_preferred_apps() {
+        let settings = Settings {
+            dashboard_widget_enabled: true,
+            weather_location: "Adelaide".into(),
+            preferred_clock_app: Some("com.example.clock".into()),
+            ..Settings::default()
+        };
+        let rows = rows(&settings, None);
+        assert!(rows.iter().any(|row| matches!(
+            row,
+            Row::TextField { value, .. } if value == "Adelaide"
+        )));
+        assert!(rows.iter().any(|row| matches!(
+            row,
+            Row::Action { subtitle, .. } if subtitle.contains("com.example.clock")
+        )));
+    }
+
+    #[test]
     fn slider_drag_is_transient_and_completion_clears_it() {
         let mut app = crate::tests::app();
         let saved = app.snapshot.as_ref().unwrap().settings.page_transition_ms;
@@ -768,14 +913,21 @@ mod tests {
     #[test]
     fn action_cards_grow_to_fit_subtitles_on_narrow_screens() {
         let typography = theme::Text::new();
+        let mut grown = 0;
         for action in rows(&Settings::default(), None)
             .iter()
             .filter(|r| matches!(r, Row::Action { .. }))
         {
-            assert!(
-                row_height(action, &typography, 168.0) > row_height(action, &typography, 388.0)
-            );
+            let narrow = row_height(action, &typography, 168.0);
+            let wide = row_height(action, &typography, 388.0);
+            assert!(narrow >= wide);
+            if narrow > wide {
+                grown += 1;
+            }
         }
+        // The longer subtitles wrap onto extra lines; short dashboard rows fit
+        // on one line at both widths.
+        assert!(grown >= 3, "expected some actions to wrap, got {grown}");
     }
 
     #[test]

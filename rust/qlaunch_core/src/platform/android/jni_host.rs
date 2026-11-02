@@ -11,7 +11,9 @@ use jni::{JNIEnv, JavaVM};
 use crate::api::events::CoreEvent;
 use crate::model::{AppRef, IconImage};
 use crate::platform::android::{
-    AndroidHost, AndroidList, icon_from_int_slots, parse_backup_names_json, parse_list_json,
+    AlarmInfo, AndroidHost, AndroidList, AppChoice, CalendarEventsPayload, TimeInfo, WeatherData,
+    icon_from_int_slots, parse_alarm_json, parse_backup_names_json, parse_calendar_events_json,
+    parse_category_apps_json, parse_list_json, parse_time_json, parse_weather_json,
 };
 use crate::platform::{LaunchError, PlatformError};
 
@@ -84,6 +86,57 @@ impl JniHost {
             }
         })
         .map_err(|e| e.to_string())
+    }
+
+    pub fn current_time() -> Option<TimeInfo> {
+        let json = Self::call_string("currentTimeJson").ok()?;
+        parse_time_json(&json)
+    }
+
+    pub fn next_alarm() -> Option<AlarmInfo> {
+        let json = Self::call_string("nextAlarmJson").ok()?;
+        parse_alarm_json(&json)
+    }
+
+    pub fn calendar_events() -> Result<CalendarEventsPayload, PlatformError> {
+        let json = Self::call_string("calendarEventsJson").map_err(|e| PlatformError::Io(e))?;
+        parse_calendar_events_json(&json)
+    }
+
+    pub fn has_calendar_permission() -> bool {
+        Self::call_string("hasCalendarPermission")
+            .map(|s| s == "true")
+            .unwrap_or(false)
+    }
+
+    pub fn request_calendar_permission() -> Result<(), String> {
+        Self::call_void("requestCalendarPermission", &[])
+    }
+
+    pub fn fetch_weather(location: &str) -> Result<WeatherData, PlatformError> {
+        let json = Self::call_string_arg("fetchWeatherJson", location)
+            .map_err(|e| PlatformError::Io(e))?;
+        parse_weather_json(&json)
+    }
+
+    pub fn category_apps(category: &str) -> Result<Vec<AppChoice>, PlatformError> {
+        let json = Self::call_string_arg("categoryAppsJson", category)
+            .map_err(|e| PlatformError::Io(e))?;
+        parse_category_apps_json(&json)
+    }
+
+    pub fn launch_category_app(
+        category: &str,
+        package: Option<&str>,
+        event_id: i64,
+    ) -> Result<(), String> {
+        let payload = serde_json::json!({
+            "category": category,
+            "package": package.unwrap_or(""),
+            "event_id": event_id,
+        })
+        .to_string();
+        Self::call_void("launchCategoryApp", &[payload])
     }
 
     pub fn new() -> Self {
