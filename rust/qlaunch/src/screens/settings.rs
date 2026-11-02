@@ -284,7 +284,7 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             field: WeatherLocation,
             label: "Weather location",
             value: settings.weather_location.clone(),
-            placeholder: "Postcode or suburb",
+            placeholder: "City or suburb, e.g. Adelaide",
         },
         Row::Action {
             label: "Clock app",
@@ -571,7 +571,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 placeholder,
             } => {
                 let value = app.dashboard_location_draft.clone().unwrap_or(value);
-                components::text_field(
+                container(components::text_field(
                     &typography,
                     label,
                     &value,
@@ -579,7 +579,10 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                     "weather-location",
                     Message::DashboardLocationDraft,
                     Message::CommitDashboardLocation,
-                )
+                ))
+                .padding([0, 16])
+                .width(Fill)
+                .into()
             }
             Row::Action {
                 label,

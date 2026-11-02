@@ -3,13 +3,41 @@
 use iced::alignment::Vertical;
 use iced::widget::{column, container, mouse_area, row, scrollable, space, text};
 use iced::{Color, Element, Fill, Length};
-#[cfg(not(target_os = "android"))]
-use qlaunch_core::platform::android::CalendarEventItem;
 use qlaunch_core::platform::android::{
-    AlarmInfo, AppChoice, CalendarEventsPayload, TimeInfo, WeatherData,
+    AlarmInfo, AppChoice, CalendarEventItem, CalendarEventsPayload, TimeInfo, WeatherData,
 };
 
-use crate::{App, Message};
+use crate::{App, Message, icons};
+
+/// Timed events may stay visible for this long after they start, so a meeting
+/// that just began isn't yanked off the list mid-glance.
+const PAST_EVENT_GRACE_MS: i64 = 10 * 60 * 1000;
+
+/// Drops timed events whose start is more than [`PAST_EVENT_GRACE_MS`] before
+/// `now_ms`. All-day events are kept: their midnight start is not "late".
+pub(crate) fn filter_past_events(events: &mut Vec<CalendarEventItem>, now_ms: i64) {
+    let cutoff = now_ms - PAST_EVENT_GRACE_MS;
+    events.retain(|event| event.all_day || event.begin >= cutoff);
+}
+
+/// Splits a formatted clock time into its digits and an optional am/pm suffix,
+/// so the suffix can be drawn smaller than the time.
+pub(crate) fn split_time(time: &str) -> (String, Option<String>) {
+    if let Some((main, suffix)) = time.rsplit_once(' ')
+        && (suffix.eq_ignore_ascii_case("am") || suffix.eq_ignore_ascii_case("pm"))
+    {
+        return (main.to_string(), Some(suffix.to_string()));
+    }
+    (time.to_string(), None)
+}
+
+/// Wall-clock epoch milliseconds.
+pub(crate) fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_millis() as i64)
+        .unwrap_or(0)
+}
 
 pub(crate) fn condition_symbol(code: i32) -> &'static str {
     match code {
@@ -161,18 +189,11 @@ fn shadowed_text<'a>(
     bold: bool,
 ) -> Element<'a, Message> {
     let owned = content.into();
-    // Bold weight is deliberately avoided: on Android a hand-built bold
-    // `iced::Font` resolves to a face with no renderable glyphs, so the clock
-    // and temperature came out invisible. Size alone gives the emphasis.
     let _ = bold;
-    let font = iced::Font::DEFAULT;
-
-    let shadow_color = Color::from_rgba(0.0, 0.0, 0.0, 0.65);
-
-    let fg = text(owned.clone())
-        .size(size)
-        .color(color)
-        .font(font);
+    // Do NOT set an explicit `.font(...)`. On this Android iced build,
+    // `iced::Font::DEFAULT` resolves to a face that draws no glyphs, so the
+    // clock/date/calendar text disappeared. The app's default font renders fine.
+    let fg = text(owned).size(size).color(color);
 
     fg.into()
 }
@@ -186,16 +207,41 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     // 1. Clock & Date
     let time_str = app.dashboard_time.as_deref().unwrap_or("10:14");
     let date_str = app.dashboard_date.as_deref().unwrap_or("Mon, 2 Nov");
-    log::info!("dashboard view: time={time_str:?} date={date_str:?} alarm={:?} weather={:?} cal={:?}", app.dashboard_alarm.is_some(), app.dashboard_weather.is_some(), app.dashboard_calendar.as_ref().map(|c| c.events.len()).unwrap_or(0));
 
-    let mut date_line = format!("{date_str}");
-    if let Some(alarm) = &app.dashboard_alarm {
-        date_line.push_str(&format!("  •  ⏰ {}", alarm.time_str));
+    let alarm_label = app
+        .dashboard_alarm
+        .as_ref()
+        .map(|alarm| alarm.time_str.clone())
+        .unwrap_or_else(|| "None".to_string());
+
+    let (clock_main, clock_suffix) = split_time(time_str);
+    // Tight line height lifts the large digits so their top lines up with the
+    // first calendar row instead of sitting below its baseline box.
+    let clock_main_text = text(clock_main)
+        .size(42.0)
+        .color(text_color)
+        .line_height(1.0);
+    let mut time_row = row![Element::from(clock_main_text)]
+        .spacing(4)
+        .align_y(Vertical::Bottom);
+    if let Some(suffix) = clock_suffix {
+        time_row = time_row.push(shadowed_text(suffix, 20.0, muted_color, false));
     }
 
+    let alarm_line = row![
+        text(icons::ALARM.to_string())
+            .font(icons::FONT)
+            .size(15.0)
+            .color(muted_color),
+        shadowed_text(alarm_label, 15.0, muted_color, false),
+    ]
+    .spacing(6)
+    .align_y(Vertical::Center);
+
     let clock_column = column![
-        shadowed_text(time_str, 28.0, text_color, false),
-        shadowed_text(date_line, 15.0, muted_color, false),
+        time_row,
+        shadowed_text(date_str, 15.0, muted_color, false),
+        alarm_line,
     ]
     .spacing(2);
 
@@ -203,10 +249,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     let weather_element: Element<'_, Message> = if let Some(weather) = &app.dashboard_weather {
         let symbol = condition_symbol(weather.condition_code);
         let temp_line = format!("{} {:.0}°C", symbol, weather.current_temp);
-        let detail_line = format!(
-            "{}  {:.0}° / {:.0}°",
-            weather.location_label, weather.temp_min, weather.temp_max
-        );
+        let detail_line = format!("{:.0}° / {:.0}°", weather.temp_min, weather.temp_max);
 
         mouse_area(
             column![
@@ -214,9 +257,9 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 shadowed_text(detail_line, 13.0, muted_color, false),
             ]
             .spacing(3)
-            .align_x(iced::alignment::Horizontal::Right),
+            .align_x(iced::alignment::Horizontal::Left),
         )
-        .on_press(Message::LaunchDashboardCategory("weather".to_string()))
+        .on_release(Message::LaunchDashboardCategory("weather".to_string()))
         .into()
     } else if let Some(err) = &app.dashboard_weather_error {
         mouse_area(
@@ -225,9 +268,9 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 shadowed_text(err, 12.0, Color::from_rgb8(255, 180, 180), false),
             ]
             .spacing(2)
-            .align_x(iced::alignment::Horizontal::Right),
+            .align_x(iced::alignment::Horizontal::Left),
         )
-        .on_press(Message::LaunchDashboardCategory("weather".to_string()))
+        .on_release(Message::LaunchDashboardCategory("weather".to_string()))
         .into()
     } else {
         let configured = app
@@ -251,31 +294,33 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 shadowed_text(subtitle, 12.0, muted_color, false),
             ]
             .spacing(2)
-            .align_x(iced::alignment::Horizontal::Right),
+            .align_x(iced::alignment::Horizontal::Left),
         )
-        .on_press(message)
+        .on_release(message)
         .into()
     };
 
-    let top_row = row![clock_column, space().width(Fill), weather_element,]
-        .align_y(Vertical::Center)
-        .width(Fill);
+    // Left column: clock/date/alarm stacked above the weather.
+    let left_column = column![
+        mouse_area(clock_column).on_release(Message::LaunchDashboardCategory("clock".to_string())),
+        weather_element,
+    ]
+    .spacing(14)
+    .width(Fill);
 
-    // 3. Calendar Events
-    let mut widget_column = column![top_row].spacing(10);
-
+    // Right column: today/tomorrow calendar list.
     let has_permission = app
         .dashboard_calendar
         .as_ref()
         .map(|c| c.permission_granted)
         .unwrap_or(true);
 
-    if !has_permission {
-        let perm_prompt = mouse_area(
+    let calendar_panel: Element<'_, Message> = if !has_permission {
+        mouse_area(
             container(
                 row![shadowed_text(
                     "📅 Tap to show calendar events",
-                    13.5,
+                    13.0,
                     muted_color,
                     false
                 ),]
@@ -290,11 +335,12 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 ..Default::default()
             }),
         )
-        .on_press(Message::RequestCalendarPermission);
-
-        widget_column = widget_column.push(perm_prompt);
+        .on_release(Message::RequestCalendarPermission)
+        .into()
     } else if let Some(cal) = &app.dashboard_calendar {
-        if !cal.events.is_empty() {
+        if cal.events.is_empty() {
+            space().into()
+        } else {
             let mut event_rows = column![].spacing(6);
 
             for event in &cal.events {
@@ -319,39 +365,70 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                     ..Default::default()
                 });
 
-                let time_text = shadowed_text(&event.time_str, 12.5, muted_color, false);
-                let title_text = container(shadowed_text(&event.title, 13.5, text_color, false))
-                    .width(Fill)
-                    .clip(true);
+                let time_text = container(shadowed_text(&event.time_str, 13.0, muted_color, false))
+                    .width(Length::Fixed(70.0))
+                    .align_x(iced::alignment::Horizontal::Right);
+                // One line per event, clipped at the column edge, so four rows
+                // fit before the list scrolls.
+                let title_text = container(
+                    text(event.title.clone())
+                        .size(15.0)
+                        .color(text_color)
+                        .wrapping(iced::widget::text::Wrapping::None),
+                )
+                .width(Fill)
+                .clip(true);
 
                 let event_id = event.event_id;
                 let row_item = mouse_area(
                     row![
                         color_pill,
-                        container(time_text).width(Length::Fixed(60.0)),
                         title_text,
+                        time_text,
+                        // Clearance for the scrollbar that appears while scrolling.
+                        space().width(Length::Fixed(12.0)),
                     ]
                     .spacing(8)
                     .width(Fill)
                     .align_y(Vertical::Center),
                 )
-                .on_press(Message::LaunchCalendarEvent(event_id));
+                .on_release(Message::LaunchCalendarEvent(event_id));
 
                 event_rows = event_rows.push(row_item);
             }
 
+            // About four rows fit; more than that scrolls inside the panel.
             if cal.events.len() <= 4 {
-                widget_column = widget_column.push(event_rows);
+                event_rows.into()
             } else {
-                let scroll_box = scrollable(event_rows)
-                    .height(Length::Fixed(110.0))
-                    .direction(crate::theme::vertical_scrollbar(true));
-                widget_column = widget_column.push(scroll_box);
+                scrollable(event_rows)
+                    .height(Fill)
+                    // The shared scrollbar state hides it until the user
+                    // actually scrolls this panel.
+                    .direction(crate::theme::vertical_scrollbar(
+                        app.scrollbars_visible(),
+                    ))
+                    .on_scroll(|_| Message::DashboardScrolled)
+                    .into()
             }
         }
-    }
+    } else {
+        space().into()
+    };
 
-    container(widget_column)
+    // Clock/alarm/weather left, calendar list right. The calendar stretches to
+    // the full widget height (the taller left column), then scrolls internally.
+    let content = row![
+        container(left_column).width(Length::FillPortion(2)),
+        container(calendar_panel)
+            .width(Length::FillPortion(3))
+            .height(Fill),
+    ]
+    .spacing(20)
+    .width(Fill)
+    .align_y(Vertical::Top);
+
+    container(content)
         .padding(iced::Padding {
             top: 8.0,
             right: if app.size.width > app.size.height {
@@ -372,7 +449,44 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
 
 #[cfg(test)]
 mod tests {
-    use super::condition_symbol;
+    use super::{condition_symbol, filter_past_events, split_time};
+    use qlaunch_core::platform::android::CalendarEventItem;
+
+    fn event(id: i64, begin: i64, all_day: bool) -> CalendarEventItem {
+        CalendarEventItem {
+            event_id: id,
+            title: format!("event {id}"),
+            begin,
+            end: begin + 3_600_000,
+            all_day,
+            time_str: "10:00".to_string(),
+            color: 0,
+        }
+    }
+
+    #[test]
+    fn past_events_more_than_ten_minutes_old_are_dropped() {
+        let now = 100_000_000i64;
+        let mut events = vec![
+            event(1, now - 11 * 60 * 1000, false), // 11 min ago: hidden
+            event(2, now - 5 * 60 * 1000, false),  // 5 min ago: still shown
+            event(3, now + 60_000, false),         // future: shown
+            event(4, 0, true),                     // all-day: always shown
+        ];
+        filter_past_events(&mut events, now);
+        assert_eq!(
+            events.iter().map(|e| e.event_id).collect::<Vec<_>>(),
+            vec![2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn clock_time_splits_into_digits_and_am_pm() {
+        assert_eq!(split_time("2:17 pm"), ("2:17".into(), Some("pm".into())));
+        assert_eq!(split_time("11:05 AM"), ("11:05".into(), Some("AM".into())));
+        // 24-hour times have no suffix to draw smaller.
+        assert_eq!(split_time("14:17"), ("14:17".into(), None));
+    }
 
     #[test]
     fn weather_codes_map_to_recognisable_symbols() {

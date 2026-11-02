@@ -142,6 +142,8 @@ object DashboardAdapter {
                     // Ensure opacity
                     color = color or (0xFF shl 24)
 
+                    // Calendar rows show only the start time (or "All day").
+                    // The end time is deliberately never rendered.
                     val timeStr = if (allDay) "All day" else timeFormat.format(Date(begin))
 
                     val eventObj = JSONObject().apply {
@@ -180,7 +182,9 @@ object DashboardAdapter {
 
         try {
             // Step 1: Geocoding lookup
-            val geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${URLEncoder.encode(trimmed, "UTF-8")}&count=1&country=AU&language=en&format=json"
+            // Open-Meteo's geocoder takes `countryCode`; `country` was ignored,
+            // which let a postcode like 5000 resolve to Zaragoza, Spain.
+            val geoUrl = "https://geocoding-api.open-meteo.com/v1/search?name=${URLEncoder.encode(trimmed, "UTF-8")}&count=1&countryCode=AU&language=en&format=json"
             val geoResp = httpGet(geoUrl)
             val geoJson = JSONObject(geoResp)
             val results = geoJson.optJSONArray("results")
@@ -194,16 +198,29 @@ object DashboardAdapter {
             val lon = first.getDouble("longitude")
             val name = first.optString("name", trimmed)
 
-            // Step 2: Forecast lookup with BOM model
-            val forecastUrl = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&models=bom_access_global"
-            val forecastResp = httpGet(forecastUrl)
-            val fJson = JSONObject(forecastResp)
+            // Step 2: Forecast lookup. BOM ACCESS is requested first, but it
+            // currently returns nulls for Australian locations, so fall back
+            // to the default model rather than rendering zeros.
+            val baseForecast =
+                "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto"
+            var fJson = JSONObject(httpGet("$baseForecast&models=bom_access_global"))
+            var current = fJson.optJSONObject("current")
+            var missing = current == null || current.isNull("temperature_2m")
+            if (missing) {
+                fJson = JSONObject(httpGet(baseForecast))
+                current = fJson.optJSONObject("current")
+                missing = current == null || current.isNull("temperature_2m")
+            }
+            if (missing || current == null) {
+                return JSONObject().apply {
+                    put("error", "Weather unavailable for $trimmed")
+                }.toString()
+            }
 
-            val current = fJson.optJSONObject("current")
             val daily = fJson.optJSONObject("daily")
 
-            val currentTemp = current?.optDouble("temperature_2m", 0.0) ?: 0.0
-            val weatherCode = current?.optInt("weather_code", 0) ?: 0
+            val currentTemp = current.optDouble("temperature_2m", 0.0)
+            val weatherCode = current.optInt("weather_code", 0)
 
             val maxTemp = daily?.optJSONArray("temperature_2m_max")?.optDouble(0, currentTemp) ?: currentTemp
             val minTemp = daily?.optJSONArray("temperature_2m_min")?.optDouble(0, currentTemp) ?: currentTemp
@@ -232,8 +249,8 @@ object DashboardAdapter {
         val url = URL(urlStr)
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "GET"
-        conn.connectTimeout = 8000
-        conn.readTimeout = 8000
+        conn.connectTimeout = 10000
+        conn.readTimeout = 12000
         conn.setRequestProperty("User-Agent", "QLaunch/1.0 (Android)")
         conn.instanceFollowRedirects = true
 

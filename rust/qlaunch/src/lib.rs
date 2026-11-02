@@ -1593,6 +1593,7 @@ enum Message {
     DashboardLocationDraft(String),
     DashboardLocationCommit(u64),
     CommitDashboardLocation,
+    DashboardScrolled,
     DashboardPermissionRequested(Result<(), String>),
     RequestCalendarPermission,
     PickDashboardApp(String),
@@ -1658,6 +1659,9 @@ struct App {
     dashboard_weather_generation: u64,
     dashboard_location_draft: Option<String>,
     dashboard_location_generation: u64,
+    /// Set when the current pointer gesture has moved past the tap slop, so a
+    /// drag that ends over a dashboard row doesn't launch it.
+    pointer_dragged: bool,
     pager: Pager,
     pub(crate) folder: Option<Id>,
     pub(crate) searching: bool,
@@ -1750,6 +1754,7 @@ impl App {
             dashboard_weather_generation: 0,
             dashboard_location_draft: None,
             dashboard_location_generation: 0,
+            pointer_dragged: false,
             pager: Pager::new(0, 0),
             folder: None,
             searching: false,
@@ -3064,7 +3069,10 @@ impl App {
             }
             Message::DashboardAlarm(alarm) => self.dashboard_alarm = alarm,
             Message::DashboardCalendar(result) => match result {
-                Ok(payload) => self.dashboard_calendar = Some(payload),
+                Ok(mut payload) => {
+                    dashboard::filter_past_events(&mut payload.events, dashboard::now_ms());
+                    self.dashboard_calendar = Some(payload);
+                }
                 Err(error) => log::warn!("dashboard calendar refresh failed: {error}"),
             },
             Message::DashboardWeather(result) => match result {
@@ -3095,6 +3103,7 @@ impl App {
                 }
             }
             Message::CommitDashboardLocation => return self.commit_dashboard_location(),
+            Message::DashboardScrolled => self.scroll_last = Some(Instant::now()),
             Message::RequestCalendarPermission => {
                 return work(
                     dashboard::request_calendar_permission,
@@ -3105,9 +3114,15 @@ impl App {
                 return self.open_dashboard_app_picker(category, None);
             }
             Message::LaunchDashboardCategory(category) => {
+                if self.pointer_dragged {
+                    return Task::none();
+                }
                 return self.launch_dashboard_category(category, 0);
             }
             Message::LaunchCalendarEvent(event_id) => {
+                if self.pointer_dragged {
+                    return Task::none();
+                }
                 if self.preferred_dashboard_app("calendar").is_some() {
                     return self.launch_dashboard_category("calendar".to_string(), event_id);
                 }
@@ -3939,6 +3954,7 @@ impl App {
                 // Kept at info: the last input line is what tells a live event
                 // loop from a frozen one when the window has gone away.
                 log::info!("touch pressed {id:?} at {position:?}");
+                self.pointer_dragged = false;
                 if self.overlay.is_some() {
                     self.pressed = None;
                     self.pending_target = None;
@@ -3955,6 +3971,9 @@ impl App {
                 let outcome = self.gesture.moved(id, position, Instant::now(), at_top);
                 if !self.gesture.is_tap_candidate() {
                     self.pressed = None;
+                }
+                if self.gesture.moved_past_slop() {
+                    self.pointer_dragged = true;
                 }
                 self.apply_gesture(outcome)
             }
@@ -4014,9 +4033,13 @@ impl App {
                 if !self.gesture.is_tap_candidate() {
                     self.pressed = None;
                 }
+                if self.gesture.moved_past_slop() {
+                    self.pointer_dragged = true;
+                }
                 self.apply_gesture(outcome)
             }
             Event::ButtonPressed(Button::Left) => {
+                self.pointer_dragged = false;
                 if self.overlay.is_some() {
                     return Task::none();
                 }

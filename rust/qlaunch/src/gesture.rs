@@ -102,6 +102,13 @@ impl Gesture {
         self.phase == Phase::Pressed && self.target.is_some() && !self.slop_exceeded
     }
 
+    /// Whether the current gesture has moved beyond the tap slop. Unlike
+    /// [`Self::is_tap_candidate`], this does not require an identified target,
+    /// so it also works for widgets outside the launcher grid.
+    pub fn moved_past_slop(&self) -> bool {
+        self.slop_exceeded
+    }
+
     pub fn sequence(&self) -> u64 {
         self.sequence
     }
