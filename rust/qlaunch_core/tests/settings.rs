@@ -29,6 +29,7 @@ fn defaults_match_the_spec() {
     assert_eq!(s.double_tap_action, GestureAction::Lock);
     assert!(!s.dashboard_widget_enabled);
     assert_eq!(s.weather_location, "");
+    assert_eq!(s.dashboard_opacity, 40);
     assert_eq!(s.preferred_clock_app, None);
     assert_eq!(s.preferred_weather_app, None);
     assert_eq!(s.preferred_calendar_app, None);
@@ -237,6 +238,7 @@ fn gesture_actions_default_for_old_configs() {
     assert_eq!(s.double_tap_action, GestureAction::Lock);
     assert!(!s.dashboard_widget_enabled);
     assert_eq!(s.weather_location, "");
+    assert_eq!(s.dashboard_opacity, 40);
     assert_eq!(s.preferred_clock_app, None);
     assert_eq!(s.preferred_weather_app, None);
     assert_eq!(s.preferred_calendar_app, None);
@@ -251,6 +253,7 @@ fn field_names_serialise_verbatim() {
         keys,
         [
             "continuous_scroll",
+            "dashboard_opacity",
             "dashboard_widget_enabled",
             "double_tap_action",
             "grid_columns_landscape",
@@ -288,6 +291,7 @@ fn dashboard_widget_settings_round_trip() {
     s.apply(&SettingsPatch {
         dashboard_widget_enabled: Some(true),
         weather_location: Some("5000".to_string()),
+        dashboard_opacity: Some(55),
         preferred_clock_app: Some(Some("com.google.android.deskclock".to_string())),
         preferred_weather_app: Some(Some("au.gov.bom.weather".to_string())),
         preferred_calendar_app: Some(Some("com.google.android.calendar".to_string())),
@@ -295,6 +299,7 @@ fn dashboard_widget_settings_round_trip() {
     });
     assert!(s.dashboard_widget_enabled);
     assert_eq!(s.weather_location, "5000");
+    assert_eq!(s.dashboard_opacity, 55);
     assert_eq!(
         s.preferred_clock_app.as_deref(),
         Some("com.google.android.deskclock")

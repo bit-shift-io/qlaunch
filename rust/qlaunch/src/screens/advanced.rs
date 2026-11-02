@@ -1,8 +1,8 @@
 //! The Advanced page and its operation-result copy.
 
-use crate::{App, Message, components, theme};
+use crate::{App, Message, components, icons, theme};
+use iced::widget::{column, container};
 use iced::Element;
-use iced::widget::column;
 use qlaunch_core::api::api::ModelSnapshot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +10,8 @@ pub(crate) enum Row {
     Restart,
     Backup,
     Restore,
+    CalendarAccess,
+    ResetAppShortcuts,
     FactoryReset,
 }
 
@@ -19,6 +21,8 @@ impl Row {
             Row::Restart => "Restart Launcher",
             Row::Backup => "Backup config",
             Row::Restore => "Restore config",
+            Row::CalendarAccess => "Calendar access",
+            Row::ResetAppShortcuts => "Reset app shortcuts",
             Row::FactoryReset => "Factory Reset",
         }
     }
@@ -27,13 +31,32 @@ impl Row {
             Row::Restart => "Re-reads the saved layout and the installed applications.",
             Row::Backup => "Saves the whole layout to a dated file in Downloads.",
             Row::Restore => "Replaces the layout with a backup from Downloads.",
+            Row::CalendarAccess => "Grant permission to show upcoming events.",
+            Row::ResetAppShortcuts => "Tap the widget to choose its clock, weather and calendar apps again.",
             Row::FactoryReset => "Wipes every group, item and setting, after confirmation.",
+        }
+    }
+    pub(crate) fn icon(self) -> char {
+        match self {
+            Row::Restart => icons::RESET,
+            Row::Backup => icons::BACKUP,
+            Row::Restore => icons::RESTORE,
+            Row::CalendarAccess => icons::CALENDAR,
+            Row::ResetAppShortcuts => icons::RESET,
+            Row::FactoryReset => icons::DELETE_FOREVER,
         }
     }
 }
 
 pub(crate) fn rows() -> Vec<Row> {
-    vec![Row::Restart, Row::Backup, Row::Restore, Row::FactoryReset]
+    vec![
+        Row::Restart,
+        Row::Backup,
+        Row::Restore,
+        Row::CalendarAccess,
+        Row::ResetAppShortcuts,
+        Row::FactoryReset,
+    ]
 }
 
 /// What Restore does once the All Files Access check answers: list the backups,
@@ -75,20 +98,36 @@ pub(crate) fn restore_message(result: &Result<ModelSnapshot, String>, name: &str
 
 pub(crate) fn view(app: &App) -> Element<'_, Message> {
     let typography = theme::Text::new();
+    let side = theme::metrics::SETTINGS_SIDE_MARGIN;
+    let right = side + theme::metrics::SETTINGS_SCROLLBAR_GUTTER;
+    let available =
+        components::chip_available(crate::grid::content_width(app.size, app.insets) - side - right);
     let motion = app.motion(crate::Region::Screen);
     let mut content = column![];
     for row in rows() {
-        content = content.push(crate::elastic_scroll::row(
-            components::action_tile(
-                &typography,
-                row.label(),
-                row.subtitle(),
-                Message::Advanced(row),
-            ),
-            &motion,
-        ));
+        let card = components::action_card(
+            &typography,
+            row.label(),
+            row.subtitle(),
+            row.icon(),
+            Message::Advanced(row),
+            available,
+        );
+        content = content.push(crate::elastic_scroll::row(card, &motion));
     }
-    super::scaffold(app, "Advanced", vec![], content.into())
+    super::scaffold(
+        app,
+        "Advanced",
+        vec![],
+        container(content)
+            .padding(iced::Padding {
+                left: theme::metrics::SETTINGS_SIDE_MARGIN,
+                right: theme::metrics::SETTINGS_SIDE_MARGIN
+                    + theme::metrics::SETTINGS_SCROLLBAR_GUTTER,
+                ..Default::default()
+            })
+            .into(),
+    )
 }
 
 #[cfg(test)]
@@ -100,7 +139,14 @@ mod tests {
     fn rows_match_order() {
         assert_eq!(
             rows(),
-            vec![Row::Restart, Row::Backup, Row::Restore, Row::FactoryReset]
+            vec![
+                Row::Restart,
+                Row::Backup,
+                Row::Restore,
+                Row::CalendarAccess,
+                Row::ResetAppShortcuts,
+                Row::FactoryReset,
+            ]
         );
     }
 

@@ -690,15 +690,6 @@ fn screen_frame(app: &App) -> Frame {
                             ActionTarget::Wallpaper => {
                                 Message::Dialog(crate::dialog::Message::LauncherWallpaper)
                             }
-                            ActionTarget::CalendarPermission => Message::RequestCalendarPermission,
-                            ActionTarget::ResetDashboardApps => {
-                                Message::SettingPatch(qlaunch_core::settings::SettingsPatch {
-                                    preferred_clock_app: Some(None),
-                                    preferred_weather_app: Some(None),
-                                    preferred_calendar_app: Some(None),
-                                    ..Default::default()
-                                })
-                            }
                         },
                         false,
                         true,
@@ -714,8 +705,17 @@ fn screen_frame(app: &App) -> Frame {
                     + typography.role(theme::TextRole::BodyMedium).line_height
                     + 16.0,
             );
-            let offset = add_scroll(app, &mut frame, Region::Screen, viewport, height * 4.0);
-            for (i, row) in screens::advanced::rows().into_iter().enumerate() {
+            let rows = screens::advanced::rows();
+            let gap = theme::metrics::ACTION_GAP;
+            let stride = height + gap;
+            let offset = add_scroll(
+                app,
+                &mut frame,
+                Region::Screen,
+                viewport,
+                stride * rows.len() as f32,
+            );
+            for (i, row) in rows.into_iter().enumerate() {
                 control(
                     app,
                     &mut frame,
@@ -723,7 +723,7 @@ fn screen_frame(app: &App) -> Frame {
                     format!("{}, {}", row.label(), row.subtitle()),
                     rect(
                         viewport.x,
-                        viewport.y + i as f32 * height - offset,
+                        viewport.y + i as f32 * stride + gap - offset,
                         viewport.width,
                         height,
                     ),

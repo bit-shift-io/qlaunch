@@ -89,6 +89,7 @@ pub struct Settings {
     pub double_tap_action: GestureAction,
     pub dashboard_widget_enabled: bool,
     pub weather_location: String,
+    pub dashboard_opacity: i64,
     pub preferred_clock_app: Option<String>,
     pub preferred_weather_app: Option<String>,
     pub preferred_calendar_app: Option<String>,
@@ -121,6 +122,7 @@ pub struct SettingsPatch {
     pub double_tap_action: Option<GestureAction>,
     pub dashboard_widget_enabled: Option<bool>,
     pub weather_location: Option<String>,
+    pub dashboard_opacity: Option<i64>,
     pub preferred_clock_app: Option<Option<String>>,
     pub preferred_weather_app: Option<Option<String>>,
     pub preferred_calendar_app: Option<Option<String>>,
@@ -154,6 +156,7 @@ impl Default for Settings {
             double_tap_action: GestureAction::Lock,
             dashboard_widget_enabled: false,
             weather_location: String::new(),
+            dashboard_opacity: 40,
             preferred_clock_app: None,
             preferred_weather_app: None,
             preferred_calendar_app: None,
@@ -173,6 +176,7 @@ impl Settings {
         self.label_size = self.label_size.clamp(0, 100);
         self.label_shadow_blur = self.label_shadow_blur.clamp(0, 10);
         self.page_transition_ms = self.page_transition_ms.clamp(100, 800);
+        self.dashboard_opacity = self.dashboard_opacity.clamp(0, 100);
     }
 
     /// Overwrites the fields the patch sets. Does not clamp; call
@@ -209,6 +213,7 @@ impl Settings {
             double_tap_action,
             dashboard_widget_enabled,
             weather_location,
+            dashboard_opacity,
             preferred_clock_app,
             preferred_weather_app,
             preferred_calendar_app,

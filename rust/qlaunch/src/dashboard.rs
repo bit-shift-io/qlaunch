@@ -31,6 +31,24 @@ pub(crate) fn split_time(time: &str) -> (String, Option<String>) {
     (time.to_string(), None)
 }
 
+/// The colour of the calendar event currently in progress, if any. When two
+/// overlap, the one that started most recently wins.
+pub(crate) fn active_event_color(events: &[CalendarEventItem], now_ms: i64) -> Option<Color> {
+    events
+        .iter()
+        .filter(|event| event.begin <= now_ms && now_ms < event.end)
+        .max_by_key(|event| event.begin)
+        .map(|event| {
+            let argb = event.color as i32;
+            Color::from_rgba(
+                ((argb >> 16) & 0xFF) as f32 / 255.0,
+                ((argb >> 8) & 0xFF) as f32 / 255.0,
+                (argb & 0xFF) as f32 / 255.0,
+                1.0,
+            )
+        })
+}
+
 /// Wall-clock epoch milliseconds.
 pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()
@@ -238,7 +256,8 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         shadowed_text(date_str, 15.0, muted_color, false),
         alarm_line,
     ]
-    .spacing(2);
+    .spacing(2)
+    .align_x(iced::alignment::Horizontal::Center);
 
     // 2. Weather
     let weather_element: Element<'_, Message> = if let Some(weather) = &app.dashboard_weather {
@@ -252,7 +271,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 shadowed_text(detail_line, 15.0, muted_color, false),
             ]
             .spacing(3)
-            .align_x(iced::alignment::Horizontal::Left),
+            .align_x(iced::alignment::Horizontal::Center),
         )
         .on_release(Message::LaunchDashboardCategory("weather".to_string()))
         .into()
@@ -263,7 +282,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 shadowed_text(err, 12.0, Color::from_rgb8(255, 180, 180), false),
             ]
             .spacing(2)
-            .align_x(iced::alignment::Horizontal::Left),
+            .align_x(iced::alignment::Horizontal::Center),
         )
         .on_release(Message::LaunchDashboardCategory("weather".to_string()))
         .into()
@@ -289,7 +308,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 shadowed_text(subtitle, 12.0, muted_color, false),
             ]
             .spacing(2)
-            .align_x(iced::alignment::Horizontal::Left),
+            .align_x(iced::alignment::Horizontal::Center),
         )
         .on_release(message)
         .into()
@@ -301,7 +320,8 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         weather_element,
     ]
     .spacing(2)
-    .width(Fill);
+    .width(Fill)
+    .align_x(iced::alignment::Horizontal::Center);
 
     // Right column: today/tomorrow calendar list.
     let has_permission = app
@@ -437,14 +457,31 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         space().into()
     };
 
-    // Clock/alarm/weather left, calendar list right. The calendar stretches to
-    // the full widget height (the taller left column), then scrolls internally.
-    let content = row![
-        container(left_column).width(Length::FillPortion(1)),
-        container(calendar_panel)
-            .width(Length::FillPortion(2))
-            .height(Fill),
-    ]
+    // Two translucent cards: clock/alarm/weather on the left and the calendar
+    // list on the right. The opacity comes from the dashboard setting, and an
+    // active event tints both cards.
+    let card_alpha = app
+        .snapshot
+        .as_ref()
+        .map(|snapshot| snapshot.settings.dashboard_opacity)
+        .unwrap_or(40) as f32
+        / 100.0;
+    let tint = app
+        .dashboard_calendar
+        .as_ref()
+        .and_then(|calendar| active_event_color(&calendar.events, now_ms()));
+
+    let left_card = container(left_column)
+        .width(Length::FillPortion(1))
+        .padding(12)
+        .style(crate::theme::dashboard_card(card_alpha, tint));
+    let calendar_card = container(calendar_panel)
+        .width(Length::FillPortion(2))
+        .height(Fill)
+        .padding(12)
+        .style(crate::theme::dashboard_card(card_alpha, tint));
+
+    let content = row![left_card, calendar_card]
     .spacing(12)
     .width(Fill)
     .align_y(Vertical::Top);
@@ -470,7 +507,9 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
 
 #[cfg(test)]
 mod tests {
-    use super::{condition_symbol, filter_past_events, split_time};
+    use super::{
+        active_event_color, condition_symbol, filter_past_events, split_time,
+    };
     use qlaunch_core::platform::android::CalendarEventItem;
 
     fn event(id: i64, begin: i64, all_day: bool) -> CalendarEventItem {
@@ -500,6 +539,21 @@ mod tests {
             events.iter().map(|e| e.event_id).collect::<Vec<_>>(),
             vec![2, 3, 4]
         );
+    }
+
+    #[test]
+    fn active_event_color_tracks_running_events_only() {
+        let now = 100_000_000i64;
+        let running = event(1, now - 1000, false);
+        let future = event(2, now + 5000, false);
+        let ended = CalendarEventItem {
+            event_id: 3,
+            begin: now - 9_000,
+            end: now - 5_000,
+            ..running.clone()
+        };
+        assert!(active_event_color(&[running], now).is_some());
+        assert!(active_event_color(&[future, ended], now).is_none());
     }
 
     #[test]

@@ -34,12 +34,13 @@ pub(crate) enum SettingField {
     PullDownAction,
     DoubleTapAction,
     DashboardWidget,
+    DashboardOpacity,
     WeatherLocation,
 }
 
 impl SettingField {
     #[allow(dead_code)] // used by the coverage test
-    pub(crate) fn all() -> [Self; 25] {
+    pub(crate) fn all() -> [Self; 26] {
         use SettingField::*;
         [
             ContinuousScroll,
@@ -66,6 +67,7 @@ impl SettingField {
             PullDownAction,
             DoubleTapAction,
             DashboardWidget,
+            DashboardOpacity,
             WeatherLocation,
         ]
     }
@@ -109,8 +111,6 @@ pub(crate) enum ActionTarget {
     Groups,
     Advanced,
     Wallpaper,
-    CalendarPermission,
-    ResetDashboardApps,
 }
 
 fn choices(field: SettingField, label: &'static str, labels: &[&str], selected: usize) -> Row {
@@ -274,21 +274,19 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             "Show dashboard widget",
             settings.dashboard_widget_enabled,
         ),
+        number(
+            DashboardOpacity,
+            "Card opacity",
+            settings.dashboard_opacity,
+            0,
+            100,
+            "%",
+        ),
         Row::TextField {
             field: WeatherLocation,
             label: "Weather location",
             value: settings.weather_location.clone(),
             placeholder: "City or suburb, e.g. Adelaide",
-        },
-        Row::Action {
-            label: "Calendar access",
-            subtitle: "Grant permission to show upcoming events.".into(),
-            target: ActionTarget::CalendarPermission,
-        },
-        Row::Action {
-            label: "Reset app shortcuts",
-            subtitle: "Tap the widget to choose its clock, weather and calendar apps again.".into(),
-            target: ActionTarget::ResetDashboardApps,
         },
         Row::Action {
             label: "Choose wallpaper",
@@ -325,6 +323,7 @@ pub(crate) fn message(field: SettingField, value: i64) -> SettingsPatch {
         SettingField::LabelShadow => patch.label_shadow = Some(value != 0),
         SettingField::LabelShadowBlur => patch.label_shadow_blur = Some(value),
         SettingField::DashboardWidget => patch.dashboard_widget_enabled = Some(value != 0),
+        SettingField::DashboardOpacity => patch.dashboard_opacity = Some(value),
         _ => return choice_patch(field, value as usize),
     }
     patch
@@ -454,8 +453,8 @@ pub(crate) fn row_height(row: &Row, text: &theme::Text, available: f32) -> f32 {
             let width = (available - theme::metrics::ICON_SIZE - 16.0).max(1.0);
             let title = text.role(theme::TextRole::BodyLarge);
             let subtitle_style = text.role(theme::TextRole::BodyMedium);
-            (wrapped_lines(label, title.size, width) * title.line_height
-                + wrapped_lines(subtitle, subtitle_style.size, width) * subtitle_style.line_height
+            (components::wrapped_lines(label, title.size, width) * title.line_height
+                + components::wrapped_lines(subtitle, subtitle_style.size, width) * subtitle_style.line_height
                 + 16.0)
                 .max(theme::metrics::LIST_TWO_LINE)
                 + theme::metrics::ACTION_GAP
@@ -465,26 +464,6 @@ pub(crate) fn row_height(row: &Row, text: &theme::Text, available: f32) -> f32 {
 
 /// Conservative word wrapping, matching the fixed chrome font's approximate
 /// advance. Unlike a character count, this accounts for words moving together.
-fn wrapped_lines(label: &str, size: f32, width: f32) -> f32 {
-    let capacity = (width / (size * 0.6)).floor().max(1.0) as usize;
-    let mut lines = 1;
-    let mut used = 0;
-    for word in label.split_whitespace() {
-        let length = word.chars().count();
-        if used > 0 && used + 1 + length > capacity {
-            lines += 1;
-            used = 0;
-        }
-        if used > 0 {
-            used += 1;
-        }
-        used += length;
-        lines += used.saturating_sub(1) / capacity;
-        used = used.saturating_sub(1) % capacity + 1;
-    }
-    lines as f32
-}
-
 pub(crate) fn view(app: &App) -> Element<'_, Message> {
     let Some(snapshot) = &app.snapshot else {
         return container(column![]).into();
@@ -572,53 +551,27 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 label,
                 subtitle,
                 target,
-            } => components::list_tile_with_height(
+            } => components::action_card(
                 &typography,
                 label,
-                Some(&subtitle),
-                Some(match target {
+                &subtitle,
+                match target {
                     ActionTarget::Groups => icons::DASHBOARD_CUSTOMIZE,
                     ActionTarget::Advanced => icons::SETTINGS,
                     ActionTarget::Wallpaper => icons::WALLPAPER,
-                    ActionTarget::CalendarPermission => icons::DASHBOARD_CUSTOMIZE,
-                    ActionTarget::ResetDashboardApps => icons::RESET,
-                }),
-                None,
-                Some(match target {
+                },
+                match target {
                     ActionTarget::Groups => Message::Push(Screen::Groups),
                     ActionTarget::Advanced => Message::Push(Screen::Advanced),
                     ActionTarget::Wallpaper => {
                         Message::Dialog(crate::dialog::Message::LauncherWallpaper)
                     }
-                    ActionTarget::CalendarPermission => Message::RequestCalendarPermission,
-                    ActionTarget::ResetDashboardApps => Message::SettingPatch(SettingsPatch {
-                        preferred_clock_app: Some(None),
-                        preferred_weather_app: Some(None),
-                        preferred_calendar_app: Some(None),
-                        ..Default::default()
-                    }),
-                }),
-                true,
-                height - theme::metrics::ACTION_GAP,
+                },
+                available,
             ),
         };
         if is_action {
-            content = content.push(crate::elastic_scroll::row(
-                container(
-                    container(element)
-                        .width(Fill)
-                        .style(theme::settings_card)
-                        .clip(true),
-                )
-                .width(Fill)
-                .height(height)
-                .padding(iced::Padding {
-                    top: theme::metrics::ACTION_GAP,
-                    ..Default::default()
-                })
-                .into(),
-                &motion,
-            ));
+            content = content.push(crate::elastic_scroll::row(element, &motion));
         } else if is_header {
             content = content.push(crate::elastic_scroll::row(
                 container(element).width(Fill).height(height).into(),
@@ -774,13 +727,7 @@ mod tests {
             .collect();
         assert_eq!(
             actions,
-            [
-                "Calendar access",
-                "Reset app shortcuts",
-                "Choose wallpaper",
-                "Groups",
-                "Advanced",
-            ]
+            ["Choose wallpaper", "Groups", "Advanced"]
         );
     }
 
@@ -860,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn dashboard_rows_show_the_saved_location_and_reset_action() {
+    fn dashboard_rows_show_the_saved_location() {
         let settings = Settings {
             dashboard_widget_enabled: true,
             weather_location: "Adelaide".into(),
@@ -871,10 +818,6 @@ mod tests {
         assert!(rows.iter().any(|row| matches!(
             row,
             Row::TextField { value, .. } if value == "Adelaide"
-        )));
-        assert!(rows.iter().any(|row| matches!(
-            row,
-            Row::Action { label, .. } if *label == "Reset app shortcuts"
         )));
     }
 

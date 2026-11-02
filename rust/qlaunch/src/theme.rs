@@ -159,6 +159,35 @@ pub(crate) fn settings_card(_: &iced::Theme) -> container::Style {
     }
 }
 
+/// The translucent card behind a dashboard panel. `alpha` is 0..=1. `tint`
+/// blends an active event colour into the card's base surface.
+pub(crate) fn dashboard_card(
+    alpha: f32,
+    tint: Option<Color>,
+) -> impl Fn(&iced::Theme) -> container::Style {
+    let base = match tint {
+        Some(tint) => Color {
+            r: color::SURFACE_CONTAINER.r * 0.55 + tint.r * 0.45,
+            g: color::SURFACE_CONTAINER.g * 0.55 + tint.g * 0.45,
+            b: color::SURFACE_CONTAINER.b * 0.55 + tint.b * 0.45,
+            a: 1.0,
+        },
+        None => color::SURFACE_CONTAINER,
+    };
+    move |_| container::Style {
+        background: Some(
+            Color {
+                a: alpha.clamp(0.0, 1.0),
+                ..base
+            }
+            .into(),
+        ),
+        text_color: Some(color::ON_SURFACE),
+        border: iced::border::rounded(20),
+        ..Default::default()
+    }
+}
+
 /// The card behind a dropped-down select menu.
 pub(crate) fn menu(_: &iced::Theme) -> container::Style {
     container::Style {

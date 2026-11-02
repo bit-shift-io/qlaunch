@@ -20,6 +20,28 @@ pub(crate) fn list_tile_height(has_subtitle: bool) -> f32 {
     }
 }
 
+/// Estimates how many wrapped lines `label` needs at `size` in `width`, using
+/// the same rough advance the settings page uses for row heights.
+pub(crate) fn wrapped_lines(label: &str, size: f32, width: f32) -> f32 {
+    let capacity = (width / (size * 0.6)).floor().max(1.0) as usize;
+    let mut lines = 1;
+    let mut used = 0;
+    for word in label.split_whitespace() {
+        let length = word.chars().count();
+        if used > 0 && used + 1 + length > capacity {
+            lines += 1;
+            used = 0;
+        }
+        if used > 0 {
+            used += 1;
+        }
+        used += length;
+        lines += used.saturating_sub(1) / capacity;
+        used = used.saturating_sub(1) % capacity + 1;
+    }
+    lines as f32
+}
+
 pub(crate) fn app_bar_height() -> f32 {
     theme::metrics::APP_BAR_HEIGHT
 }
@@ -208,21 +230,46 @@ pub(crate) fn list_tile_with_height<'a>(
     .into()
 }
 
-pub(crate) fn action_tile<'a>(
+/// A card-wrapped action row shared by Settings and Advanced. The height and
+/// gutters live here so every action card has identical padding.
+pub(crate) fn action_card<'a>(
     text_settings: &Text,
     title: &str,
     subtitle: &str,
+    leading: char,
     message: Message,
+    available: f32,
 ) -> Element<'a, Message> {
-    list_tile(
-        text_settings,
-        title,
-        Some(subtitle),
-        None,
-        None,
-        Some(message),
-        true,
+    let title_style = text_settings.role(TextRole::BodyLarge);
+    let subtitle_style = text_settings.role(TextRole::BodyMedium);
+    let width = (available - theme::metrics::ICON_SIZE - 16.0).max(1.0);
+    let height = (wrapped_lines(title, title_style.size, width) * title_style.line_height
+        + wrapped_lines(subtitle, subtitle_style.size, width) * subtitle_style.line_height
+        + 16.0)
+        .max(theme::metrics::LIST_TWO_LINE)
+        + theme::metrics::ACTION_GAP;
+    container(
+        container(list_tile_with_height(
+            text_settings,
+            title,
+            Some(subtitle),
+            Some(leading),
+            None,
+            Some(message),
+            true,
+            height - theme::metrics::ACTION_GAP,
+        ))
+        .width(Fill)
+        .style(theme::settings_card)
+        .clip(true),
     )
+    .width(Fill)
+    .height(height)
+    .padding(iced::Padding {
+        top: theme::metrics::ACTION_GAP,
+        ..Default::default()
+    })
+    .into()
 }
 
 fn text_button_with<'a>(

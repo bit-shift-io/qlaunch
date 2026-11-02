@@ -3182,6 +3182,22 @@ impl App {
                         // so the permission is checked before listing.
                         return work(storage::has_all_files_access, Message::RestoreAccessChecked);
                     }
+                    Row::CalendarAccess => {
+                        return work(
+                            dashboard::request_calendar_permission,
+                            Message::DashboardPermissionRequested,
+                        );
+                    }
+                    Row::ResetAppShortcuts => {
+                        return self.update(Message::SettingPatch(
+                            qlaunch_core::settings::SettingsPatch {
+                                preferred_clock_app: Some(None),
+                                preferred_weather_app: Some(None),
+                                preferred_calendar_app: Some(None),
+                                ..Default::default()
+                            },
+                        ));
+                    }
                     Row::FactoryReset => {
                         self.dialog = Some(dialog::Dialog::Confirm(dialog::ConfirmState {
                             title: "Factory Reset".into(),
