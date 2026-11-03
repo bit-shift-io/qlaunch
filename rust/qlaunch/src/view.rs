@@ -235,38 +235,51 @@ pub(crate) fn page_slot_plan(app: &App) -> [PageSlotPlan; 3] {
     })
 }
 
-pub(crate) fn title_slot_plan(app: &App) -> [TitleSlotPlan; 3] {
-    let slots = app.pager.slots();
+/// Title slots to build: the centred title, its two neighbours, and one
+/// off-screen buffer on each side. The buffers let the next title slide in from
+/// an edge instead of popping in when a page settles.
+pub(crate) const STRIP_SLOTS: usize = 5;
+
+pub(crate) fn title_slot_plan(app: &App) -> Vec<TitleSlotPlan> {
+    let slots = app.pager.slots_window(STRIP_SLOTS);
     let snapshot = app.snapshot.as_ref();
     let page_ids = snapshot
         .map(|snapshot| snapshot.page_ids.as_slice())
         .unwrap_or_default();
+    let centre = (STRIP_SLOTS / 2) as isize;
 
-    std::array::from_fn(|index| {
-        let group = page_ids.get(slots[index]).cloned();
-        let label = group
-            .as_ref()
-            .and_then(|id| {
-                snapshot?
-                    .groups
-                    .iter()
-                    .find(|candidate| &candidate.id == id)
-            })
-            .map(|group| group.label.clone())
-            .unwrap_or_default();
-        TitleSlotPlan {
-            key: group.as_ref().map_or_else(
-                || format!("title:empty:{index}"),
-                |id| format!("title:{id}:{index}"),
-            ),
-            label,
-            message: match index {
-                0 => Message::Step(-1),
-                1 => Message::Search,
-                _ => Message::Step(1),
-            },
-        }
-    })
+    slots
+        .into_iter()
+        .enumerate()
+        .map(|(index, page)| {
+            let group = page_ids.get(page).cloned();
+            let label = group
+                .as_ref()
+                .and_then(|id| {
+                    snapshot?
+                        .groups
+                        .iter()
+                        .find(|candidate| &candidate.id == id)
+                })
+                .map(|group| group.label.clone())
+                .unwrap_or_default();
+            TitleSlotPlan {
+                key: group.as_ref().map_or_else(
+                    || format!("title:empty:{index}"),
+                    |id| format!("title:{id}:{index}"),
+                ),
+                label,
+                // Only the centred title and its neighbours are tappable; the
+                // buffer slots sit outside the clip and get an inert target.
+                message: match index as isize - centre {
+                    -1 => Message::Step(-1),
+                    0 => Message::Search,
+                    1 => Message::Step(1),
+                    _ => Message::Dialog(crate::dialog::Message::Noop),
+                },
+            }
+        })
+        .collect()
 }
 
 /// Three wrapped page slots. Only the committed slot scrolls; the neighbours
@@ -388,26 +401,31 @@ fn title_strip<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'
     let settings = &app.snapshot.as_ref().unwrap().settings;
     let offset = app.pager.offset();
     let plan = title_slot_plan(app);
+    let centre = (plan.len() / 2) as f32;
     let height = grid::title_height(settings);
-    let slots = std::array::from_fn(|index| {
-        let planned = &plan[index];
-        let position = index as f32 - 1.0;
-        // Neighbours stay clearly visible mid-slide: a label that fades to
-        // almost nothing until the animation ends reads as "appearing" rather
-        // than sliding in. The floor keeps the incoming and outgoing names
-        // legible the whole way, then they settle back to a dimmed neighbour.
-        let opacity = (1.0 - (position - offset).abs() * 0.45).max(0.55);
-        Slot {
-            key: planned.key.clone(),
-            content: title_button(
-                app,
-                planned.label.clone(),
-                colour,
-                opacity,
-                planned.message.clone(),
-            ),
-        }
-    });
+    let slots = plan
+        .iter()
+        .enumerate()
+        .map(|(index, planned)| {
+            let position = index as f32 - centre;
+            // Neighbours stay clearly visible mid-slide: a label that fades to
+            // almost nothing until the animation ends reads as "appearing"
+            // rather than sliding in. The floor keeps the incoming and outgoing
+            // names legible the whole way, then they settle back to a dimmed
+            // neighbour.
+            let opacity = (1.0 - (position - offset).abs() * 0.45).max(0.55);
+            Slot {
+                key: planned.key.clone(),
+                content: title_button(
+                    app,
+                    planned.label.clone(),
+                    colour,
+                    opacity,
+                    planned.message.clone(),
+                ),
+            }
+        })
+        .collect();
 
     let interaction = if settled(app) {
         Interaction::All

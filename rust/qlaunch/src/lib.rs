@@ -1035,6 +1035,57 @@ pub(crate) mod tests {
         assert_eq!(app.gesture.target(), Some(&Start::Blank));
     }
 
+    #[test]
+    fn launching_a_folder_member_closes_the_folder() {
+        let mut app = app();
+        app.folder = Some("folder-group".into());
+        let mut member = item(&app, "member");
+        member.group_id = "folder-group".into();
+        app.snapshot.as_mut().unwrap().items.push(member.clone());
+        let _ = app.activate(member);
+        assert!(
+            app.folder.is_none(),
+            "the folder should be closed once the app launches"
+        );
+    }
+
+    #[test]
+    fn running_calendar_events_survive_for_the_tint_after_their_row_hides() {
+        let mut app = app();
+        let now = crate::dashboard::now_ms();
+        // A long meeting that began thirty minutes ago: its row is already
+        // hidden, but the event is still running.
+        let event = qlaunch_core::platform::android::CalendarEventItem {
+            event_id: 7,
+            title: "Long meeting".into(),
+            begin: now - 30 * 60 * 1000,
+            end: now + 30 * 60 * 1000,
+            all_day: false,
+            time_str: "10:00".into(),
+            color: 0xFF4285F4u32 as i32,
+            tomorrow: false,
+        };
+        let _ = app.update(Message::DashboardCalendar(Ok(CalendarEventsPayload {
+            permission_granted: true,
+            events: vec![event.clone()],
+        })));
+
+        let mut rows = vec![event];
+        crate::dashboard::filter_past_events(&mut rows, now);
+        assert!(rows.is_empty(), "the row hides ten minutes after it starts");
+
+        let stored = app.dashboard_calendar.as_ref().unwrap();
+        assert_eq!(
+            stored.events.len(),
+            1,
+            "the stored list keeps running events"
+        );
+        assert!(
+            crate::dashboard::active_event_color(&stored.events, now).is_some(),
+            "the tint must last for the whole event"
+        );
+    }
+
     fn widget_states(tree: &iced::advanced::widget::Tree) -> Vec<usize> {
         let mut states = Vec::new();
         if let iced::advanced::widget::tree::State::Some(state) = &tree.state {
@@ -1256,13 +1307,17 @@ pub(crate) mod tests {
                 format!("page:{}", page_ids[1]),
             ],
         );
+        // Five title slots: one off-screen buffer each side of the centre. On
+        // page 0 the window wraps to [1, 2, 0, 1, 2].
         let titles = crate::view::title_slot_plan(&app);
-        assert_eq!(titles[0].key, format!("title:{}:0", page_ids[2]));
-        assert_eq!(titles[0].label, label_of(&app, &page_ids[2]));
-        assert_eq!(titles[1].key, format!("title:{}:1", page_ids[0]));
-        assert_eq!(titles[1].label, label_of(&app, &page_ids[0]));
-        assert_eq!(titles[2].key, format!("title:{}:2", page_ids[1]));
-        assert_eq!(titles[2].label, label_of(&app, &page_ids[1]));
+        assert_eq!(titles.len(), crate::view::STRIP_SLOTS);
+        for (index, page) in [1usize, 2, 0, 1, 2].into_iter().enumerate() {
+            assert_eq!(
+                titles[index].key,
+                format!("title:{}:{index}", page_ids[page])
+            );
+            assert_eq!(titles[index].label, label_of(&app, &page_ids[page]));
+        }
 
         // Fewer groups than slots leaves the empty slots keyed by position.
         app.snapshot.as_mut().unwrap().page_ids.truncate(1);
@@ -1300,9 +1355,18 @@ pub(crate) mod tests {
     fn title_buttons_keep_step_and_search_messages() {
         let app = app();
         let titles = crate::view::title_slot_plan(&app);
-        assert!(matches!(titles[0].message, Message::Step(-1)));
-        assert!(matches!(titles[1].message, Message::Search));
-        assert!(matches!(titles[2].message, Message::Step(1)));
+        // Centre and its neighbours page/search; the off-screen buffers are inert.
+        assert!(matches!(titles[1].message, Message::Step(-1)));
+        assert!(matches!(titles[2].message, Message::Search));
+        assert!(matches!(titles[3].message, Message::Step(1)));
+        assert!(matches!(
+            titles[0].message,
+            Message::Dialog(crate::dialog::Message::Noop)
+        ));
+        assert!(matches!(
+            titles[4].message,
+            Message::Dialog(crate::dialog::Message::Noop)
+        ));
     }
 
     fn publish(app: &mut App) {
@@ -3144,10 +3208,10 @@ impl App {
             }
             Message::DashboardAlarm(alarm) => self.dashboard_alarm = alarm,
             Message::DashboardCalendar(result) => match result {
-                Ok(mut payload) => {
-                    dashboard::filter_past_events(&mut payload.events, dashboard::now_ms());
-                    self.dashboard_calendar = Some(payload);
-                }
+                // Keep the full payload: the calendar rows drop events ten
+                // minutes after they start, but the card tint must last for the
+                // whole event. Filtering here would take the tint with the row.
+                Ok(payload) => self.dashboard_calendar = Some(payload),
                 Err(error) => log::warn!("dashboard calendar refresh failed: {error}"),
             },
             Message::DashboardWeather(result) => match result {
@@ -4261,6 +4325,9 @@ impl App {
             self.folder = None;
             return self.open_search();
         }
+        // Launching leaves the launcher, so the folder should not still be open
+        // when the user returns.
+        self.folder = None;
         work(
             move || {
                 block_on(async {

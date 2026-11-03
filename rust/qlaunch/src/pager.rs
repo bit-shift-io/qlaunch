@@ -66,6 +66,18 @@ impl Pager {
         ]
     }
 
+    /// `len` wrapped page indices centred on the committed page, for the title
+    /// strip's sliding buffer.
+    pub fn slots_window(&self, len: usize) -> Vec<usize> {
+        if self.count == 0 {
+            return vec![0; len];
+        }
+        let centre = (len / 2) as i64;
+        (0..len as i64)
+            .map(|index| wrap(self.committed as i64 + index - centre, self.count))
+            .collect()
+    }
+
     pub fn is_animating(&self) -> bool {
         self.animation.is_some()
     }
@@ -236,6 +248,21 @@ mod tests {
     fn slots_wrap_at_both_ends() {
         assert_eq!(Pager::new(3, 0).slots(), [2, 0, 1]);
         assert_eq!(Pager::new(3, 2).slots(), [1, 2, 0]);
+    }
+
+    #[test]
+    fn slots_window_keeps_a_buffer_each_side_and_wraps() {
+        // The centre of the window is the committed page.
+        assert_eq!(Pager::new(5, 2).slots_window(5), vec![0, 1, 2, 3, 4]);
+        // A three-page ring repeats to fill the window.
+        assert_eq!(Pager::new(3, 0).slots_window(5), vec![1, 2, 0, 1, 2]);
+        assert_eq!(Pager::new(3, 2).slots_window(5), vec![0, 1, 2, 0, 1]);
+    }
+
+    #[test]
+    fn slots_window_is_safe_for_short_pagers() {
+        assert_eq!(Pager::new(0, 0).slots_window(3), vec![0, 0, 0]);
+        assert_eq!(Pager::new(1, 0).slots_window(5), vec![0, 0, 0, 0, 0]);
     }
 
     #[test]

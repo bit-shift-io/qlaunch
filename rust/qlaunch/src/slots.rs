@@ -29,13 +29,23 @@ pub(crate) enum Interaction {
     All,
 }
 
-/// How the three slots are arranged.
+/// How the slots are arranged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Arrangement {
-    /// Full-width pages side by side, dragged by the pager offset.
+    /// Three full-width pages side by side, dragged by the pager offset.
     Pages(usize),
-    /// Three equal thirds of the width, shifted together.
-    Strip,
+    /// `len` equal thirds of the width, shifted together. The middle slot is
+    /// centred when the pager is settled; the outer slots are the buffer that
+    /// lets a title slide in from either side.
+    Strip(usize),
+}
+
+/// The slot index a row centres on when the pager is settled.
+pub(crate) fn centre(arrangement: Arrangement) -> usize {
+    match arrangement {
+        Arrangement::Pages(_) => 1,
+        Arrangement::Strip(len) => len / 2,
+    }
 }
 
 /// The slot's own rectangle, before the arrangement's translation.
@@ -47,7 +57,7 @@ pub(crate) fn child_bounds(
 ) -> Rectangle {
     match arrangement {
         Arrangement::Pages(_) => Rectangle::new(Point::ORIGIN, Size::new(width, height)),
-        Arrangement::Strip => {
+        Arrangement::Strip(_) => {
             let third = width / 3.0;
             Rectangle::new(
                 Point::new(index as f32 * third, 0.0),
@@ -69,7 +79,12 @@ pub(crate) fn translation(
             (index as f32 - 1.0 - offset) * width * page_travel(columns),
             0.0,
         ),
-        Arrangement::Strip => Vector::new(-offset * width / 3.0, 0.0),
+        // The centre slot sits at `index == centre(arrangement)` when settled,
+        // so the strip shifts by one third per page plus the centring offset.
+        Arrangement::Strip(_) => Vector::new(
+            -(offset + centre(arrangement) as f32 - 1.0) * width / 3.0,
+            0.0,
+        ),
     }
 }
 
@@ -92,15 +107,18 @@ fn is_redraw(event: &Event) -> bool {
 }
 
 /// Which slot an event reaches.
-fn reaches(interaction: Interaction, index: usize, redraw: bool) -> bool {
+fn reaches(interaction: Interaction, arrangement: Arrangement, index: usize, redraw: bool) -> bool {
+    let middle = centre(arrangement);
     if redraw {
-        return index == 1;
+        return index == middle;
     }
 
     match interaction {
         Interaction::None => false,
-        Interaction::Centre => index == 1,
-        Interaction::All => index < 3,
+        Interaction::Centre => index == middle,
+        // The centred title and its two neighbours take input; the off-screen
+        // buffer slots stay inert.
+        Interaction::All => index.abs_diff(middle) <= 1,
     }
 }
 
@@ -138,7 +156,7 @@ fn slot_input(
     cursor: mouse::Cursor,
     viewport: &Rectangle,
 ) -> Option<(mouse::Cursor, Rectangle, Vector)> {
-    if !reaches(interaction, index, redraw) {
+    if !reaches(interaction, arrangement, index, redraw) {
         return None;
     }
 
@@ -171,13 +189,13 @@ fn child_input(
     )
 }
 
-/// The three semantic keys of the current slots, kept in the widget state so a
-/// slot that changes group gets a fresh tree instead of a stale scroll offset.
+/// The semantic keys of the current slots, kept in the widget state so a slot
+/// that changes group gets a fresh tree instead of a stale scroll offset.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SlotKeys([String; 3]);
+struct SlotKeys(Vec<String>);
 
 pub(crate) struct Slots<'a> {
-    slots: [Slot<'a>; 3],
+    slots: Vec<Slot<'a>>,
     arrangement: Arrangement,
     offset: f32,
     width: f32,
@@ -195,7 +213,7 @@ impl<'a> Slots<'a> {
         interaction: Interaction,
     ) -> Self {
         Slots {
-            slots,
+            slots: slots.into(),
             arrangement: Arrangement::Pages(columns),
             offset,
             width,
@@ -204,17 +222,19 @@ impl<'a> Slots<'a> {
         }
     }
 
-    /// Three third-width slots in a row `height` tall.
+    /// Third-width slots in a row `height` tall. The middle slot is centred when
+    /// settled; the outer slots are the off-screen buffer the strip slides
+    /// through.
     pub(crate) fn strip(
-        slots: [Slot<'a>; 3],
+        slots: Vec<Slot<'a>>,
         offset: f32,
         width: f32,
         height: f32,
         interaction: Interaction,
     ) -> Self {
         Slots {
+            arrangement: Arrangement::Strip(slots.len()),
             slots,
-            arrangement: Arrangement::Strip,
             offset,
             width,
             height: Length::Fixed(height),
@@ -223,7 +243,7 @@ impl<'a> Slots<'a> {
     }
 
     fn keys(&self) -> SlotKeys {
-        SlotKeys(std::array::from_fn(|index| self.slots[index].key.clone()))
+        SlotKeys(self.slots.iter().map(|slot| slot.key.clone()).collect())
     }
 }
 
@@ -457,6 +477,7 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Slots<'_> {
         operation: &mut dyn iced::advanced::widget::Operation,
     ) {
         let allowed = self.interaction;
+        let arrangement = self.arrangement;
 
         for (index, (slot, child_tree)) in self
             .slots
@@ -466,7 +487,7 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Slots<'_> {
         {
             // The centre page carries `scroll_to("apps")` and the scroll
             // resets, so operations reach exactly the slots input reaches.
-            if !reaches(allowed, index, false) {
+            if !reaches(allowed, arrangement, index, false) {
                 continue;
             }
 
@@ -719,7 +740,7 @@ mod tests {
         assert!(
             slot_input(
                 Interaction::None,
-                Arrangement::Strip,
+                Arrangement::Strip(3),
                 0.0,
                 WIDTH,
                 1,
@@ -732,7 +753,7 @@ mod tests {
         assert!(
             slot_input(
                 Interaction::None,
-                Arrangement::Strip,
+                Arrangement::Strip(3),
                 0.0,
                 WIDTH,
                 0,
@@ -841,34 +862,55 @@ mod tests {
     fn strip_children_are_thirds_and_translate_together() {
         let third = WIDTH / 3.0;
         assert_eq!(
-            child_bounds(Arrangement::Strip, 0, WIDTH, HEIGHT),
+            child_bounds(Arrangement::Strip(3), 0, WIDTH, HEIGHT),
             Rectangle::new(Point::ORIGIN, Size::new(third, HEIGHT)),
         );
         assert_eq!(
-            child_bounds(Arrangement::Strip, 1, WIDTH, HEIGHT),
+            child_bounds(Arrangement::Strip(3), 1, WIDTH, HEIGHT),
             Rectangle::new(Point::new(third, 0.0), Size::new(third, HEIGHT)),
         );
         assert_eq!(
-            child_bounds(Arrangement::Strip, 2, WIDTH, HEIGHT),
+            child_bounds(Arrangement::Strip(3), 2, WIDTH, HEIGHT),
             Rectangle::new(Point::new(2.0 * third, 0.0), Size::new(third, HEIGHT)),
         );
         for index in 0..3 {
             assert_eq!(
-                translation(Arrangement::Strip, index, 0.5, WIDTH),
+                translation(Arrangement::Strip(3), index, 0.5, WIDTH),
                 Vector::new(-0.5 * third, 0.0),
             );
             assert_eq!(
-                translation(Arrangement::Strip, index, 1.0, WIDTH),
+                translation(Arrangement::Strip(3), index, 1.0, WIDTH),
                 Vector::new(-third, 0.0),
             );
         }
     }
 
     #[test]
+    fn a_five_slot_strip_keeps_its_buffer_in_place_across_the_commit() {
+        // The slot that has entered from the right at the end of a forward slide
+        // (offset one page, centre fixed) is the slot that sits on the right
+        // once the page commits and the window shifts. Its on-screen x must not
+        // change, so the title slides in instead of popping in.
+        let third = WIDTH / 3.0;
+        let pre = child_bounds(Arrangement::Strip(5), 4, WIDTH, HEIGHT).x
+            + translation(Arrangement::Strip(5), 4, 1.0, WIDTH).x;
+        let post = child_bounds(Arrangement::Strip(5), 3, WIDTH, HEIGHT).x
+            + translation(Arrangement::Strip(5), 3, 0.0, WIDTH).x;
+        assert_eq!(pre, 2.0 * third);
+        assert_eq!(post, pre);
+        // The centre slot is the middle of the window when settled.
+        assert_eq!(
+            child_bounds(Arrangement::Strip(5), 2, WIDTH, HEIGHT).x
+                + translation(Arrangement::Strip(5), 2, 0.0, WIDTH).x,
+            third,
+        );
+    }
+
+    #[test]
     fn strip_translation_never_changes_child_spacing() {
         let left = |index: usize, offset: f32| {
-            child_bounds(Arrangement::Strip, index, WIDTH, HEIGHT).x
-                + translation(Arrangement::Strip, index, offset, WIDTH).x
+            child_bounds(Arrangement::Strip(5), index, WIDTH, HEIGHT).x
+                + translation(Arrangement::Strip(5), index, offset, WIDTH).x
         };
         for offset in [0.0, 0.25, 0.5, 1.0, 2.9] {
             let first = left(0, offset);
@@ -907,7 +949,7 @@ mod tests {
         assert!(!seen.contains(&Touched::Diff("x".into())), "{seen:?}");
         assert_eq!(
             tree.state.downcast_ref::<SlotKeys>(),
-            &SlotKeys(["a".into(), "x".into(), "c".into()]),
+            &SlotKeys(vec!["a".into(), "x".into(), "c".into()]),
         );
     }
 
@@ -969,7 +1011,7 @@ mod tests {
     fn touch_events_reach_all_three_settled_strip_slots() {
         let log: Log = Rc::new(RefCell::new(Vec::new()));
         let settled = Slots::strip(
-            [slot("a", &log), slot("b", &log), slot("c", &log)],
+            vec![slot("a", &log), slot("b", &log), slot("c", &log)],
             0.0,
             WIDTH,
             HEIGHT,
@@ -980,7 +1022,7 @@ mod tests {
         }
 
         let moving = Slots::strip(
-            [slot("a", &log), slot("b", &log), slot("c", &log)],
+            vec![slot("a", &log), slot("b", &log), slot("c", &log)],
             0.0,
             WIDTH,
             HEIGHT,
@@ -990,5 +1032,28 @@ mod tests {
             assert!(!allows(&moving, index, false), "index {index} is gated");
         }
         assert!(allows(&moving, 1, true));
+    }
+
+    #[test]
+    fn only_the_centred_strip_slots_take_input() {
+        let log: Log = Rc::new(RefCell::new(Vec::new()));
+        let strip = Slots::strip(
+            (0..5)
+                .map(|index| slot(&format!("s{index}"), &log))
+                .collect(),
+            0.0,
+            WIDTH,
+            HEIGHT,
+            Interaction::All,
+        );
+        // Centre and its two neighbours are live; the buffers are inert.
+        assert!(!allows(&strip, 0, false));
+        assert!(allows(&strip, 1, false));
+        assert!(allows(&strip, 2, false));
+        assert!(allows(&strip, 3, false));
+        assert!(!allows(&strip, 4, false));
+        // Only the centre gets the redraw request.
+        assert!(allows(&strip, 2, true));
+        assert!(!allows(&strip, 1, true));
     }
 }

@@ -362,13 +362,17 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
         .on_release(Message::RequestCalendarPermission)
         .into()
     } else if let Some(cal) = &app.dashboard_calendar {
-        if cal.events.is_empty() {
+        // Rows hide a timed event ten minutes after it starts. The card tint
+        // below reads the stored list, unfiltered, so it lasts the whole event.
+        let mut events = cal.events.clone();
+        filter_past_events(&mut events, now_ms());
+        if events.is_empty() {
             space().into()
         } else {
             let mut event_rows = column![].spacing(6);
             let mut saw_tomorrow = false;
 
-            for event in &cal.events {
+            for event in &events {
                 if event.tomorrow && !saw_tomorrow {
                     saw_tomorrow = true;
                     event_rows = event_rows.push(
@@ -446,7 +450,7 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
             }
 
             // About four rows fit; more than that scrolls inside the panel.
-            if cal.events.len() <= 4 {
+            if events.len() <= 4 {
                 event_rows.into()
             } else {
                 scrollable(event_rows)
