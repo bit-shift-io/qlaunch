@@ -90,6 +90,11 @@ pub struct Settings {
     pub dashboard_widget_enabled: bool,
     pub weather_location: String,
     pub dashboard_opacity: i64,
+    /// How often the dashboard's calendar events are re-read, in minutes.
+    pub dashboard_calendar_refresh_minutes: i64,
+    /// How often the dashboard's weather is re-fetched, in minutes. Weather is
+    /// a network call, so it defaults to a slower cadence than the calendar.
+    pub dashboard_weather_refresh_minutes: i64,
     pub preferred_clock_app: Option<String>,
     pub preferred_weather_app: Option<String>,
     pub preferred_calendar_app: Option<String>,
@@ -123,6 +128,8 @@ pub struct SettingsPatch {
     pub dashboard_widget_enabled: Option<bool>,
     pub weather_location: Option<String>,
     pub dashboard_opacity: Option<i64>,
+    pub dashboard_calendar_refresh_minutes: Option<i64>,
+    pub dashboard_weather_refresh_minutes: Option<i64>,
     pub preferred_clock_app: Option<Option<String>>,
     pub preferred_weather_app: Option<Option<String>>,
     pub preferred_calendar_app: Option<Option<String>>,
@@ -157,6 +164,8 @@ impl Default for Settings {
             dashboard_widget_enabled: false,
             weather_location: String::new(),
             dashboard_opacity: 40,
+            dashboard_calendar_refresh_minutes: 5,
+            dashboard_weather_refresh_minutes: 30,
             preferred_clock_app: None,
             preferred_weather_app: None,
             preferred_calendar_app: None,
@@ -177,6 +186,10 @@ impl Settings {
         self.label_shadow_blur = self.label_shadow_blur.clamp(0, 10);
         self.page_transition_ms = self.page_transition_ms.clamp(100, 800);
         self.dashboard_opacity = self.dashboard_opacity.clamp(0, 100);
+        self.dashboard_calendar_refresh_minutes =
+            self.dashboard_calendar_refresh_minutes.clamp(1, 1440);
+        self.dashboard_weather_refresh_minutes =
+            self.dashboard_weather_refresh_minutes.clamp(5, 1440);
     }
 
     /// Overwrites the fields the patch sets. Does not clamp; call
@@ -214,6 +227,8 @@ impl Settings {
             dashboard_widget_enabled,
             weather_location,
             dashboard_opacity,
+            dashboard_calendar_refresh_minutes,
+            dashboard_weather_refresh_minutes,
             preferred_clock_app,
             preferred_weather_app,
             preferred_calendar_app,

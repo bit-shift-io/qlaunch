@@ -30,6 +30,8 @@ fn defaults_match_the_spec() {
     assert!(!s.dashboard_widget_enabled);
     assert_eq!(s.weather_location, "");
     assert_eq!(s.dashboard_opacity, 40);
+    assert_eq!(s.dashboard_calendar_refresh_minutes, 5);
+    assert_eq!(s.dashboard_weather_refresh_minutes, 30);
     assert_eq!(s.preferred_clock_app, None);
     assert_eq!(s.preferred_weather_app, None);
     assert_eq!(s.preferred_calendar_app, None);
@@ -75,6 +77,28 @@ fn every_ranged_field_clamps_to_its_maximum() {
     assert_eq!(s.icon_alpha, 100);
     assert_eq!(s.label_size, 100);
     assert_eq!(s.label_shadow_blur, 10);
+}
+
+#[test]
+fn dashboard_refresh_intervals_clamp_to_safe_minimums() {
+    let mut s = Settings::default();
+    s.apply(&SettingsPatch {
+        dashboard_calendar_refresh_minutes: Some(0),
+        dashboard_weather_refresh_minutes: Some(1),
+        ..Default::default()
+    });
+    s.clamp();
+    assert_eq!(s.dashboard_calendar_refresh_minutes, 1);
+    assert_eq!(s.dashboard_weather_refresh_minutes, 5);
+
+    s.apply(&SettingsPatch {
+        dashboard_calendar_refresh_minutes: Some(i64::MAX),
+        dashboard_weather_refresh_minutes: Some(i64::MAX),
+        ..Default::default()
+    });
+    s.clamp();
+    assert_eq!(s.dashboard_calendar_refresh_minutes, 1440);
+    assert_eq!(s.dashboard_weather_refresh_minutes, 1440);
 }
 
 #[test]
@@ -239,6 +263,8 @@ fn gesture_actions_default_for_old_configs() {
     assert!(!s.dashboard_widget_enabled);
     assert_eq!(s.weather_location, "");
     assert_eq!(s.dashboard_opacity, 40);
+    assert_eq!(s.dashboard_calendar_refresh_minutes, 5);
+    assert_eq!(s.dashboard_weather_refresh_minutes, 30);
     assert_eq!(s.preferred_clock_app, None);
     assert_eq!(s.preferred_weather_app, None);
     assert_eq!(s.preferred_calendar_app, None);
@@ -253,7 +279,9 @@ fn field_names_serialise_verbatim() {
         keys,
         [
             "continuous_scroll",
+            "dashboard_calendar_refresh_minutes",
             "dashboard_opacity",
+            "dashboard_weather_refresh_minutes",
             "dashboard_widget_enabled",
             "double_tap_action",
             "grid_columns_landscape",
@@ -292,6 +320,8 @@ fn dashboard_widget_settings_round_trip() {
         dashboard_widget_enabled: Some(true),
         weather_location: Some("5000".to_string()),
         dashboard_opacity: Some(55),
+        dashboard_calendar_refresh_minutes: Some(15),
+        dashboard_weather_refresh_minutes: Some(120),
         preferred_clock_app: Some(Some("com.google.android.deskclock".to_string())),
         preferred_weather_app: Some(Some("au.gov.bom.weather".to_string())),
         preferred_calendar_app: Some(Some("com.google.android.calendar".to_string())),
@@ -300,6 +330,8 @@ fn dashboard_widget_settings_round_trip() {
     assert!(s.dashboard_widget_enabled);
     assert_eq!(s.weather_location, "5000");
     assert_eq!(s.dashboard_opacity, 55);
+    assert_eq!(s.dashboard_calendar_refresh_minutes, 15);
+    assert_eq!(s.dashboard_weather_refresh_minutes, 120);
     assert_eq!(
         s.preferred_clock_app.as_deref(),
         Some("com.google.android.deskclock")

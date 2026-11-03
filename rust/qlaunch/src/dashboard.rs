@@ -220,9 +220,15 @@ fn shadowed_text<'a>(
 
 // --- Main Widget View ---
 
-pub(crate) fn view(app: &App) -> Element<'_, Message> {
-    let text_color = Color::WHITE;
-    let muted_color = Color::from_rgba(1.0, 1.0, 1.0, 0.75);
+pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
+    // `alpha` is the page's paging fade, so the widget dims with the app icons
+    // as a page slides rather than staying pinned above them.
+    let alpha = alpha.clamp(0.0, 1.0);
+    let text_color = Color {
+        a: alpha,
+        ..Color::WHITE
+    };
+    let muted_color = Color::from_rgba(1.0, 1.0, 1.0, 0.75 * alpha);
 
     // 1. Clock & Date
     let time_str = app.dashboard_time.as_deref().unwrap_or("10:14");
@@ -238,7 +244,10 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
     // Tight line height lifts the large digits so their top lines up with the
     // first calendar row. The am/pm suffix is intentionally not drawn.
     let time_row = row![Element::from(
-        text(clock_main).size(28.0).color(text_color).line_height(1.0)
+        text(clock_main)
+            .size(28.0)
+            .color(text_color)
+            .line_height(1.0)
     )];
 
     let alarm_line = row![
@@ -279,7 +288,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         mouse_area(
             column![
                 shadowed_text("Weather", 16.0, text_color, true),
-                shadowed_text(err, 12.0, Color::from_rgb8(255, 180, 180), false),
+                shadowed_text(err, 12.0, Color::from_rgba8(255, 180, 180, alpha), false,),
             ]
             .spacing(2)
             .align_x(iced::alignment::Horizontal::Center),
@@ -341,8 +350,8 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 ),]
                 .padding([6.0, 10.0]),
             )
-            .style(|_| container::Style {
-                background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.25).into()),
+            .style(move |_| container::Style {
+                background: Some(Color::from_rgba(0.0, 0.0, 0.0, 0.25 * alpha).into()),
                 border: iced::Border {
                     radius: 8.0.into(),
                     ..Default::default()
@@ -366,8 +375,10 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                         container(space())
                             .width(Fill)
                             .height(Length::Fixed(1.0))
-                            .style(|_| container::Style {
-                                background: Some(Color::from_rgba(1.0, 1.0, 1.0, 0.25).into()),
+                            .style(move |_| container::Style {
+                                background: Some(
+                                    Color::from_rgba(1.0, 1.0, 1.0, 0.25 * alpha).into(),
+                                ),
                                 ..Default::default()
                             }),
                     );
@@ -377,7 +388,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                 let r = ((color_argb >> 16) & 0xFF) as f32 / 255.0;
                 let g = ((color_argb >> 8) & 0xFF) as f32 / 255.0;
                 let b = (color_argb & 0xFF) as f32 / 255.0;
-                let event_color = Color::from_rgba(r, g, b, a);
+                let event_color = Color::from_rgba(r, g, b, a * alpha);
 
                 // The line is an overlay in a stack whose base is the title, so
                 // it stretches to the full text height, including wrapped lines.
@@ -407,12 +418,8 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                     .align_x(iced::alignment::Horizontal::Right);
                 // Long titles wrap onto extra lines; the row and the scrollable
                 // grow with them.
-                let title_text = container(
-                    text(event.title.clone())
-                        .size(15.0)
-                        .color(text_color),
-                )
-                .width(Fill);
+                let title_text =
+                    container(text(event.title.clone()).size(15.0).color(text_color)).width(Fill);
 
                 let title_with_line = iced::widget::stack![
                     // Base layer reserves the gutter and determines the height.
@@ -446,9 +453,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
                     .height(Fill)
                     // The shared scrollbar state hides it until the user
                     // actually scrolls this panel.
-                    .direction(crate::theme::vertical_scrollbar(
-                        app.scrollbars_visible(),
-                    ))
+                    .direction(crate::theme::vertical_scrollbar(app.scrollbars_visible()))
                     .on_scroll(|_| Message::DashboardScrolled)
                     .into()
             }
@@ -465,7 +470,8 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         .as_ref()
         .map(|snapshot| snapshot.settings.dashboard_opacity)
         .unwrap_or(40) as f32
-        / 100.0;
+        / 100.0
+        * alpha;
     let tint = app
         .dashboard_calendar
         .as_ref()
@@ -482,9 +488,9 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
         .style(crate::theme::dashboard_card(card_alpha, tint));
 
     let content = row![left_card, calendar_card]
-    .spacing(12)
-    .width(Fill)
-    .align_y(Vertical::Top);
+        .spacing(12)
+        .width(Fill)
+        .align_y(Vertical::Top);
 
     container(content)
         .padding(iced::Padding {
@@ -507,9 +513,7 @@ pub(crate) fn view(app: &App) -> Element<'_, Message> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        active_event_color, condition_symbol, filter_past_events, split_time,
-    };
+    use super::{active_event_color, condition_symbol, filter_past_events, split_time};
     use qlaunch_core::platform::android::CalendarEventItem;
 
     fn event(id: i64, begin: i64, all_day: bool) -> CalendarEventItem {

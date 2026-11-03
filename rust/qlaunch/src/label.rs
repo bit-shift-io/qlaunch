@@ -5,7 +5,7 @@ use iced::advanced::{
     Layout, Widget, layout, mouse, renderer, text,
     widget::{Tree, tree},
 };
-use iced::{Element, Fill, Length, Rectangle, Size};
+use iced::{Color, Element, Fill, Length, Point, Rectangle, Size, Vector};
 
 use crate::{Message, theme::Typography};
 
@@ -15,6 +15,30 @@ pub(crate) fn ellipsized<'a>(value: &str, typography: Typography) -> Element<'a,
     Element::new(Label {
         value: value.to_owned(),
         typography,
+        color: None,
+        centered: false,
+        shadow: None,
+    })
+}
+
+/// A launcher label that keeps its left edge visible. Short text is centred
+/// when `centered`; text too wide for the slot is ellipsized on the right at a
+/// character boundary and drawn from the left, so the start of a long name is
+/// never clipped away. `shadow` draws the same glyphs behind in a contrasting
+/// colour.
+pub(crate) fn fitted<'a>(
+    value: String,
+    typography: Typography,
+    color: Color,
+    centered: bool,
+    shadow: Option<Color>,
+) -> Element<'a, Message> {
+    Element::new(Label {
+        value,
+        typography,
+        color: Some(color),
+        centered,
+        shadow,
     })
 }
 
@@ -25,6 +49,9 @@ pub(crate) fn measured_width(value: &str, typography: Typography) -> f32 {
         Label {
             value: value.to_owned(),
             typography,
+            color: None,
+            centered: false,
+            shadow: None,
         }
         .text(value),
     )
@@ -34,12 +61,19 @@ pub(crate) fn measured_width(value: &str, typography: Typography) -> f32 {
 struct Label {
     value: String,
     typography: Typography,
+    /// `None` uses the renderer's default text colour.
+    color: Option<Color>,
+    centered: bool,
+    shadow: Option<Color>,
 }
 
 #[derive(Default)]
 struct State {
     paragraph: text::paragraph::Plain<Paragraph>,
     key: Option<(String, Typography, f32)>,
+    /// The full value was too wide and was shortened with an ellipsis, so it
+    /// must be drawn from the left even when `centered` is set.
+    ellipsized: bool,
 }
 
 impl Label {
@@ -82,6 +116,7 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Label {
             let display = fit_label(&self.value, |candidate| {
                 Paragraph::with_text(self.text(candidate)).min_width() <= size.width
             });
+            state.ellipsized = display != self.value;
             state.paragraph.update(self.text(&display));
             state.key = Some(key);
         }
@@ -99,14 +134,34 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Label {
         viewport: &Rectangle,
     ) {
         let bounds = layout.bounds();
-        if let Some(clip) = bounds.intersection(viewport) {
-            renderer.fill_paragraph(
-                tree.state.downcast_ref::<State>().paragraph.raw(),
-                bounds.position(),
-                style.text_color,
-                clip,
-            );
+        let Some(clip) = bounds.intersection(viewport) else {
+            return;
+        };
+        let state = tree.state.downcast_ref::<State>();
+        let paragraph = state.paragraph.raw();
+        let position = Point::new(
+            label_x(
+                bounds,
+                paragraph.min_width(),
+                self.centered,
+                state.ellipsized,
+            ),
+            bounds.y,
+        );
+        if let Some(shadow) = self.shadow {
+            let offset = if self.centered {
+                Vector::new(2.0, 1.0)
+            } else {
+                Vector::new(1.0, 1.0)
+            };
+            renderer.fill_paragraph(paragraph, position + offset, shadow, clip);
         }
+        renderer.fill_paragraph(
+            paragraph,
+            position,
+            self.color.unwrap_or(style.text_color),
+            clip,
+        );
     }
 
     fn operate(
@@ -117,6 +172,17 @@ impl Widget<Message, iced::Theme, iced::Renderer> for Label {
         operation: &mut dyn iced::advanced::widget::Operation,
     ) {
         operation.text(None, layout.bounds(), &self.value);
+    }
+}
+
+/// Where the fitted paragraph is drawn. Short text centres when asked; a long
+/// word keeps its left edge at `bounds.x` even when centred, so the ellipsis
+/// only ever eats the right side.
+fn label_x(bounds: Rectangle, text_width: f32, centered: bool, ellipsized: bool) -> f32 {
+    if centered && !ellipsized && text_width <= bounds.width {
+        bounds.x + (bounds.width - text_width) / 2.0
+    } else {
+        bounds.x
     }
 }
 
@@ -159,6 +225,17 @@ mod tests {
     }
 
     #[test]
+    fn long_labels_keep_their_left_edge_when_centred() {
+        let bounds = Rectangle::new(Point::new(100.0, 0.0), Size::new(80.0, 20.0));
+        // A short label centres in the slot.
+        assert_eq!(label_x(bounds, 40.0, true, false), 120.0);
+        // An ellipsized label starts at the left edge, so the name is readable.
+        assert_eq!(label_x(bounds, 79.0, true, true), 100.0);
+        // Left-aligned labels never centre.
+        assert_eq!(label_x(bounds, 40.0, false, false), 100.0);
+    }
+
+    #[test]
     fn ellipsis_fitting_handles_unicode_and_tiny_widths() {
         assert_eq!(
             fit_label("日本語のフォルダ", |s| s.chars().count() <= 4),
@@ -181,6 +258,9 @@ mod tests {
         let mut label = Label {
             value: "A destination with a long name".into(),
             typography: crate::theme::Text::new().role(crate::theme::TextRole::BodyLarge),
+            color: None,
+            centered: false,
+            shadow: None,
         };
         let mut tree = Tree::new(&label as &dyn Widget<Message, iced::Theme, iced::Renderer>);
         label.layout(

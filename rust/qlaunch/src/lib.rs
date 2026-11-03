@@ -6,6 +6,7 @@ mod dialog;
 mod elastic_scroll;
 mod field;
 mod folder;
+mod folder_icon;
 mod fonts;
 pub mod gesture;
 pub mod grid;
@@ -76,6 +77,27 @@ pub(crate) mod tests {
         // A window that really went away is reopened on the next foreground.
         assert_eq!(window_action(true, None), WindowAction::Open);
         assert_eq!(window_action(false, None), WindowAction::Nothing);
+    }
+
+    #[test]
+    fn dashboard_sources_only_go_due_after_their_interval() {
+        let now = Instant::now();
+        let interval = Duration::from_secs(5 * 60);
+        // Never run: due immediately.
+        assert!(dashboard_due(None, interval, now));
+        // Just ran: not due.
+        assert!(!dashboard_due(Some(now), interval, now));
+        assert!(!dashboard_due(
+            Some(now - Duration::from_secs(4 * 60)),
+            interval,
+            now
+        ));
+        // Interval elapsed: due again.
+        assert!(dashboard_due(
+            Some(now - Duration::from_secs(5 * 60)),
+            interval,
+            now
+        ));
     }
 
     #[test]
@@ -1656,6 +1678,10 @@ struct App {
     pub(crate) dashboard_weather: Option<WeatherData>,
     pub(crate) dashboard_weather_error: Option<String>,
     dashboard_weather_generation: u64,
+    /// When the calendar was last re-read, and when the weather was last
+    /// fetched, so `DashboardTick` can honour the per-source refresh settings.
+    dashboard_calendar_last: Option<Instant>,
+    dashboard_weather_last: Option<Instant>,
     dashboard_location_draft: Option<String>,
     dashboard_location_generation: u64,
     /// Set when the current pointer gesture has moved past the tap slop, so a
@@ -1727,6 +1753,12 @@ fn work<T: Send + 'static>(
     )
 }
 
+/// Whether a dashboard source last refreshed at `last` is due again at `now`.
+/// `None` means it has never run, so it is due.
+fn dashboard_due(last: Option<Instant>, interval: Duration, now: Instant) -> bool {
+    last.is_none_or(|last| now.saturating_duration_since(last) >= interval)
+}
+
 impl App {
     fn new() -> (Self, Task<Message>) {
         let (id, open) = window::open(window_settings());
@@ -1751,6 +1783,8 @@ impl App {
             dashboard_weather: None,
             dashboard_weather_error: None,
             dashboard_weather_generation: 0,
+            dashboard_calendar_last: None,
+            dashboard_weather_last: None,
             dashboard_location_draft: None,
             dashboard_location_generation: 0,
             pointer_dragged: false,
@@ -2022,31 +2056,104 @@ impl App {
         }
     }
 
-    /// Refreshes every dashboard source. Platform calls run off the UI thread;
-    /// the weather lookup only runs when a location has been configured.
-    fn dashboard_refresh(&self) -> Task<Message> {
+    /// How long between calendar re-reads, from the settings.
+    fn dashboard_calendar_interval(&self) -> Duration {
+        let minutes = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.settings.dashboard_calendar_refresh_minutes)
+            .unwrap_or(5)
+            .max(1) as u64;
+        Duration::from_secs(minutes * 60)
+    }
+
+    /// How long between weather fetches, from the settings.
+    fn dashboard_weather_interval(&self) -> Duration {
+        let minutes = self
+            .snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.settings.dashboard_weather_refresh_minutes)
+            .unwrap_or(30)
+            .max(5) as u64;
+        Duration::from_secs(minutes * 60)
+    }
+
+    /// Refreshes every dashboard source now, regardless of the intervals. Used
+    /// for explicit actions: first load, enabling the widget, a new location.
+    fn dashboard_refresh(&mut self) -> Task<Message> {
         if !self.dashboard_enabled() {
             return Task::none();
         }
+        let now = Instant::now();
+        self.dashboard_calendar_last = Some(now);
+        self.dashboard_weather_last = Some(now);
         Task::batch([
-            self.dashboard_core_refresh(),
+            self.dashboard_clock_refresh(),
+            self.dashboard_calendar_refresh(),
             self.dashboard_weather_refresh(),
         ])
     }
 
-    /// Time, alarm and calendar are cheap local queries; weather is a network
-    /// request, so it has its own task and can be debounced while typing.
-    fn dashboard_core_refresh(&self) -> Task<Message> {
+    /// The 30-second tick: the clock is cheap and always re-read; the calendar
+    /// and the network weather call only run when their interval has elapsed.
+    fn dashboard_tick(&mut self) -> Task<Message> {
+        if !self.dashboard_enabled() {
+            return Task::none();
+        }
+        let now = Instant::now();
+        let calendar_due = dashboard_due(
+            self.dashboard_calendar_last,
+            self.dashboard_calendar_interval(),
+            now,
+        );
+        let weather_due = dashboard_due(
+            self.dashboard_weather_last,
+            self.dashboard_weather_interval(),
+            now,
+        );
+        if calendar_due {
+            self.dashboard_calendar_last = Some(now);
+        }
+        if weather_due {
+            self.dashboard_weather_last = Some(now);
+        }
+        Task::batch([
+            self.dashboard_clock_refresh(),
+            if calendar_due {
+                self.dashboard_calendar_refresh()
+            } else {
+                Task::none()
+            },
+            if weather_due {
+                self.dashboard_weather_refresh()
+            } else {
+                Task::none()
+            },
+        ])
+    }
+
+    /// Time and alarm are cheap local queries, refreshed on every tick so the
+    /// clock never lags more than the tick period.
+    fn dashboard_clock_refresh(&self) -> Task<Message> {
         if !self.dashboard_enabled() {
             return Task::none();
         }
         Task::batch([
             work(dashboard::current_time, Message::DashboardTime),
             work(dashboard::next_alarm, Message::DashboardAlarm),
-            work(dashboard::calendar_events, Message::DashboardCalendar),
         ])
     }
 
+    /// Re-reads calendar events. Local, but heavier than the clock.
+    fn dashboard_calendar_refresh(&self) -> Task<Message> {
+        if !self.dashboard_enabled() {
+            return Task::none();
+        }
+        work(dashboard::calendar_events, Message::DashboardCalendar)
+    }
+
+    /// Weather is a network request, so it has its own task and can be debounced
+    /// while typing.
     fn dashboard_weather_refresh(&self) -> Task<Message> {
         if !self.dashboard_enabled() {
             return Task::none();
@@ -3028,7 +3135,7 @@ impl App {
             self.accessibility.cancel_scroll();
         }
         match message {
-            Message::DashboardTick => return self.dashboard_refresh(),
+            Message::DashboardTick => return self.dashboard_tick(),
             Message::DashboardTime(info) => {
                 if let Some(info) = info {
                     self.dashboard_time = Some(info.time);
@@ -3061,6 +3168,7 @@ impl App {
             }
             Message::DashboardWeatherDebounced(generation) => {
                 if generation == self.dashboard_weather_generation {
+                    self.dashboard_weather_last = Some(Instant::now());
                     return self.dashboard_weather_refresh();
                 }
             }
@@ -3301,15 +3409,38 @@ impl App {
                     Ok(snapshot) => {
                         let dashboard = snapshot.settings.dashboard_widget_enabled;
                         let location = snapshot.settings.weather_location.trim().to_string();
+                        let was_dashboard = self.dashboard_enabled();
+                        let old_location = self.dashboard_weather_location();
                         self.apply_snapshot(snapshot, false);
                         if location.is_empty() {
                             self.dashboard_weather = None;
                             self.dashboard_weather_error = None;
                         }
                         if dashboard {
-                            let core = self.dashboard_core_refresh();
-                            let weather = self.schedule_dashboard_weather();
-                            return Task::batch([core, weather]);
+                            // The clock is local and cheap, so it always
+                            // refreshes. Calendar and network weather are only
+                            // forced when the widget was just enabled or its
+                            // location changed; otherwise they keep their own
+                            // cadence, so moving a slider doesn't hit the web.
+                            let force = !was_dashboard || location != old_location;
+                            if force {
+                                self.dashboard_calendar_last = Some(Instant::now());
+                                self.dashboard_weather_last = Some(Instant::now());
+                            }
+                            let weather = if force {
+                                self.schedule_dashboard_weather()
+                            } else {
+                                Task::none()
+                            };
+                            return Task::batch([
+                                self.dashboard_clock_refresh(),
+                                if force {
+                                    self.dashboard_calendar_refresh()
+                                } else {
+                                    Task::none()
+                                },
+                                weather,
+                            ]);
                         }
                     }
                     Err(error) => return self.update(Message::Snackbar(error)),
@@ -3389,7 +3520,7 @@ impl App {
                 );
                 self.set_foreground(visible);
                 let refresh = if visible {
-                    self.dashboard_refresh()
+                    self.dashboard_tick()
                 } else {
                     Task::none()
                 };
@@ -3410,7 +3541,7 @@ impl App {
                     log::info!("window focused while marked background; resuming");
                     self.set_foreground(true);
                 }
-                return self.dashboard_refresh();
+                return self.dashboard_tick();
             }
             Message::Insets(insets) => {
                 self.insets = insets;
@@ -4330,15 +4461,35 @@ impl App {
                     groups.push(group);
                 }
             }
-            groups
-                .into_iter()
-                .flat_map(|group| {
-                    snapshot
+            // A folder tile draws its first four members, so their icons are
+            // warmed too even though they are not items of this page.
+            let mut wanted: Vec<AppRef> = Vec::new();
+            let mut seen: HashSet<AppRef> = HashSet::new();
+            for group in groups {
+                for item in snapshot.items.iter().filter(|item| &item.group_id == group) {
+                    if let Some(app) = item.app.as_ref()
+                        && seen.insert(app.clone())
+                    {
+                        wanted.push(app.clone());
+                    }
+                    let Some(folder_id) = item.folder_group_id.as_ref() else {
+                        continue;
+                    };
+                    for member in snapshot
                         .items
                         .iter()
-                        .filter(move |item| &item.group_id == group)
-                })
-                .filter_map(|i| i.app.clone())
+                        .filter(|member| &member.group_id == folder_id)
+                    {
+                        if let Some(app) = member.app.as_ref()
+                            && seen.insert(app.clone())
+                        {
+                            wanted.push(app.clone());
+                        }
+                    }
+                }
+            }
+            wanted
+                .into_iter()
                 .take(limit)
                 .filter(|a| !self.icons.contains_key(a))
                 .collect()

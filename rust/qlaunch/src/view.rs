@@ -325,7 +325,7 @@ fn pages<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'a, Mes
                     .as_ref()
                     .or_else(|| snapshot.page_ids.first());
         let rows: Element<'a, Message> = if show_dashboard {
-            column![crate::dashboard::view(app), rows].into()
+            column![crate::dashboard::view(app, alpha), rows].into()
         } else {
             rows
         };
@@ -392,7 +392,11 @@ fn title_strip<'a>(app: &'a App, colour: Color, content_width: f32) -> Element<'
     let slots = std::array::from_fn(|index| {
         let planned = &plan[index];
         let position = index as f32 - 1.0;
-        let opacity = (1.0 - (position - offset).abs() * 0.6).max(0.0);
+        // Neighbours stay clearly visible mid-slide: a label that fades to
+        // almost nothing until the animation ends reads as "appearing" rather
+        // than sliding in. The floor keeps the incoming and outgoing names
+        // legible the whole way, then they settle back to a dimmed neighbour.
+        let opacity = (1.0 - (position - offset).abs() * 0.45).max(0.55);
         Slot {
             key: planned.key.clone(),
             content: title_button(
@@ -579,10 +583,34 @@ fn shortcut_glyph(shortcut: Option<&ShortcutPayload>) -> Option<char> {
     }
 }
 
+/// The first four member apps of a folder, in display order, whose icons are
+/// already decoded. Empty until `App::warm_icons` has loaded the members, which
+/// is when the tile falls back to the generic folder glyph.
+fn folder_preview_handles(app: &App, folder_id: &str) -> Vec<image::Handle> {
+    let Some(snapshot) = &app.snapshot else {
+        return Vec::new();
+    };
+    snapshot
+        .items
+        .iter()
+        .filter(|item| item.group_id.as_str() == folder_id)
+        .filter_map(|item| item.app.as_ref())
+        .filter_map(|reference| app.icons.get(reference).cloned())
+        .take(4)
+        .collect()
+}
+
 fn cell<'a>(app: &'a App, item: &'a Item, colour: Color, alpha: f32) -> Element<'a, Message> {
     let settings = &app.snapshot.as_ref().unwrap().settings;
     let icon_alpha = settings.icon_alpha as f32 / 100.0 * alpha;
-    let icon: Element<'a, Message> = if let Some(handle) = item
+    let preview = item
+        .folder_group_id
+        .as_deref()
+        .map(|folder_id| folder_preview_handles(app, folder_id))
+        .filter(|handles| !handles.is_empty());
+    let icon: Element<'a, Message> = if let Some(handles) = preview {
+        crate::folder_icon::preview(handles, settings.icon_size as f32, icon_alpha)
+    } else if let Some(handle) = item
         .app
         .as_ref()
         .and_then(|reference| app.icons.get(reference))
@@ -667,43 +695,25 @@ pub(crate) fn label<'a>(
     centered: bool,
 ) -> Element<'a, Message> {
     let settings = &app.snapshot.as_ref().unwrap().settings;
-    let make = |value: String, colour| {
-        text(value)
-            .size(settings.label_size as f32)
-            .line_height(1.17)
-            .color(colour)
-            .font(crate::fonts::label_font(settings.label_typeface))
-            .align_x(if centered {
-                iced::alignment::Horizontal::Center
-            } else {
-                iced::alignment::Horizontal::Left
-            })
-            .width(Fill)
+    let typography = crate::theme::Typography {
+        size: settings.label_size as f32,
+        line_height: settings.label_size as f32 * 1.17,
+        font: crate::fonts::label_font(settings.label_typeface),
     };
-    let foreground = make(value.clone(), colour);
-    if settings.label_shadow {
+    // A long label is ellipsized and left-aligned inside the widget, so the
+    // shadow is drawn by the same widget rather than a separate pinned copy.
+    let shadow = settings.label_shadow.then(|| {
         let contrast = if settings.label_colour == LabelColour::Black {
             Color::WHITE
         } else {
             Color::BLACK
         };
-        iced::widget::stack![
-            iced::widget::pin(make(
-                value,
-                Color {
-                    a: colour.a,
-                    ..contrast
-                }
-            ))
-            .height(iced::Shrink)
-            .x(if centered { 2.0 } else { 1.0 })
-            .y(1.0),
-            foreground
-        ]
-        .into()
-    } else {
-        foreground.into()
-    }
+        Color {
+            a: colour.a,
+            ..contrast
+        }
+    });
+    crate::label::fitted(value, typography, colour, centered, shadow)
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 //! The Advanced page and its operation-result copy.
 
 use crate::{App, Message, components, icons, theme};
-use iced::widget::{column, container};
 use iced::Element;
+use iced::widget::{column, container};
 use qlaunch_core::api::api::ModelSnapshot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +32,9 @@ impl Row {
             Row::Backup => "Saves the whole layout to a dated file in Downloads.",
             Row::Restore => "Replaces the layout with a backup from Downloads.",
             Row::CalendarAccess => "Grant permission to show upcoming events.",
-            Row::ResetAppShortcuts => "Tap the widget to choose its clock, weather and calendar apps again.",
+            Row::ResetAppShortcuts => {
+                "Tap the widget to choose its clock, weather and calendar apps again."
+            }
             Row::FactoryReset => "Wipes every group, item and setting, after confirmation.",
         }
     }

@@ -35,12 +35,14 @@ pub(crate) enum SettingField {
     DoubleTapAction,
     DashboardWidget,
     DashboardOpacity,
+    DashboardCalendarRefresh,
+    DashboardWeatherRefresh,
     WeatherLocation,
 }
 
 impl SettingField {
     #[allow(dead_code)] // used by the coverage test
-    pub(crate) fn all() -> [Self; 26] {
+    pub(crate) fn all() -> [Self; 28] {
         use SettingField::*;
         [
             ContinuousScroll,
@@ -68,6 +70,8 @@ impl SettingField {
             DoubleTapAction,
             DashboardWidget,
             DashboardOpacity,
+            DashboardCalendarRefresh,
+            DashboardWeatherRefresh,
             WeatherLocation,
         ]
     }
@@ -282,6 +286,22 @@ pub(crate) fn rows(settings: &Settings, drag: Option<(SettingField, f32)>) -> Ve
             100,
             "%",
         ),
+        number(
+            DashboardCalendarRefresh,
+            "Calendar refresh",
+            settings.dashboard_calendar_refresh_minutes,
+            1,
+            240,
+            " min",
+        ),
+        number(
+            DashboardWeatherRefresh,
+            "Weather refresh",
+            settings.dashboard_weather_refresh_minutes,
+            5,
+            240,
+            " min",
+        ),
         Row::TextField {
             field: WeatherLocation,
             label: "Weather location",
@@ -324,6 +344,12 @@ pub(crate) fn message(field: SettingField, value: i64) -> SettingsPatch {
         SettingField::LabelShadowBlur => patch.label_shadow_blur = Some(value),
         SettingField::DashboardWidget => patch.dashboard_widget_enabled = Some(value != 0),
         SettingField::DashboardOpacity => patch.dashboard_opacity = Some(value),
+        SettingField::DashboardCalendarRefresh => {
+            patch.dashboard_calendar_refresh_minutes = Some(value)
+        }
+        SettingField::DashboardWeatherRefresh => {
+            patch.dashboard_weather_refresh_minutes = Some(value)
+        }
         _ => return choice_patch(field, value as usize),
     }
     patch
@@ -454,7 +480,8 @@ pub(crate) fn row_height(row: &Row, text: &theme::Text, available: f32) -> f32 {
             let title = text.role(theme::TextRole::BodyLarge);
             let subtitle_style = text.role(theme::TextRole::BodyMedium);
             (components::wrapped_lines(label, title.size, width) * title.line_height
-                + components::wrapped_lines(subtitle, subtitle_style.size, width) * subtitle_style.line_height
+                + components::wrapped_lines(subtitle, subtitle_style.size, width)
+                    * subtitle_style.line_height
                 + 16.0)
                 .max(theme::metrics::LIST_TWO_LINE)
                 + theme::metrics::ACTION_GAP
@@ -725,10 +752,7 @@ mod tests {
                 _ => panic!("settings must precede the bottom action cards"),
             })
             .collect();
-        assert_eq!(
-            actions,
-            ["Choose wallpaper", "Groups", "Advanced"]
-        );
+        assert_eq!(actions, ["Choose wallpaper", "Groups", "Advanced"]);
     }
 
     #[test]
@@ -819,6 +843,24 @@ mod tests {
             row,
             Row::TextField { value, .. } if value == "Adelaide"
         )));
+    }
+
+    #[test]
+    fn dashboard_refresh_rows_patch_their_own_minutes() {
+        assert_eq!(
+            message(SettingField::DashboardCalendarRefresh, 10),
+            SettingsPatch {
+                dashboard_calendar_refresh_minutes: Some(10),
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            message(SettingField::DashboardWeatherRefresh, 90),
+            SettingsPatch {
+                dashboard_weather_refresh_minutes: Some(90),
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
