@@ -354,14 +354,14 @@ pub(crate) fn frame(app: &App) -> Option<Frame> {
     } else {
         launcher_frame(app)
     };
-    if let Some((generation, _)) = &app.snackbar {
-        frame.announcement_key = format!("snackbar:{generation}");
+    if let Some((generation, _)) = &app.toast {
+        frame.announcement_key = format!("toast:{generation}");
     }
     Some(frame)
 }
 
 pub(crate) fn announcement(app: &App) -> String {
-    if let Some((_, message)) = &app.snackbar {
+    if let Some((_, message)) = &app.toast {
         return message.clone();
     }
     if app.select.is_some() {
@@ -865,11 +865,11 @@ fn screen_frame(app: &App) -> Frame {
             }
         }
     }
-    if let Some((generation, message)) = &app.snackbar {
+    if let Some((generation, message)) = &app.toast {
         push(
             app,
             &mut frame.nodes,
-            format!("snackbar:{generation}"),
+            format!("toast:{generation}"),
             Target::Dismiss,
             Role::Text,
             message,

@@ -46,7 +46,9 @@ pub(crate) mod metrics {
     pub(crate) const MENU_VERTICAL_PADDING: f32 = 8.0;
     pub(crate) const CONTENT_TOP_GAP: f32 = 16.0;
     pub(crate) const ACTION_GAP: f32 = 8.0;
-    pub(crate) const SNACKBAR_HEIGHT: f32 = 48.0;
+    pub(crate) const TOAST_MAX_WIDTH: f32 = 480.0;
+    pub(crate) const TOAST_RADIUS: f32 = 8.0;
+    pub(crate) const TOAST_MARGIN: f32 = 16.0;
     pub(crate) const ICON_SIZE: f32 = 24.0;
     pub(crate) const TOUCH_TARGET: f32 = 48.0;
     pub(crate) const SLIDER_HEIGHT: f32 = 48.0;

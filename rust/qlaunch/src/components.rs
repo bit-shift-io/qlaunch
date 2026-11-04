@@ -854,25 +854,33 @@ pub(crate) fn select_menu<'a>(
     .into()
 }
 
-pub(crate) fn snackbar<'a>(text_settings: &Text, message: &str) -> Element<'a, Message> {
+/// The rounded dark card behind the toast, shared so a test can pin its colour.
+pub(crate) fn toast_style() -> container::Style {
+    container::Style {
+        background: Some(theme::color::SURFACE_CONTAINER_HIGHEST.into()),
+        text_color: Some(theme::color::ON_SURFACE),
+        border: iced::border::rounded(theme::metrics::TOAST_RADIUS),
+        shadow: iced::Shadow {
+            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.30),
+            offset: iced::Vector::new(0.0, 6.0),
+            blur_radius: 12.0,
+        },
+        ..Default::default()
+    }
+}
+
+pub(crate) fn toast<'a>(text_settings: &Text, message: &str) -> Element<'a, Message> {
     let style = text_settings.role(TextRole::BodyMedium);
     container(
         text(message.to_string())
             .size(style.size)
             .line_height(style.line_height())
             .font(style.font)
-            .color(theme::color::ON_INVERSE_SURFACE),
+            .color(theme::color::ON_SURFACE),
     )
-    .width(Fill)
-    .height(theme::metrics::SNACKBAR_HEIGHT)
-    .padding([0, 16])
-    .center_y(Length::Fill)
-    .style(|_| container::Style {
-        background: Some(theme::color::INVERSE_SURFACE.into()),
-        text_color: Some(theme::color::ON_INVERSE_SURFACE),
-        border: iced::border::rounded(4),
-        ..Default::default()
-    })
+    .max_width(theme::metrics::TOAST_MAX_WIDTH)
+    .padding([14, 16])
+    .style(|_| toast_style())
     .into()
 }
 
@@ -904,6 +912,25 @@ mod tests {
                 .width,
             0.0
         );
+    }
+
+    #[test]
+    fn toast_style_is_a_dark_surface() {
+        let style = toast_style();
+        assert_eq!(
+            style.background,
+            Some(theme::color::SURFACE_CONTAINER_HIGHEST.into())
+        );
+        assert_eq!(style.text_color, Some(theme::color::ON_SURFACE));
+    }
+
+    #[test]
+    #[ignore = "requires a headless wgpu adapter; run explicitly with --ignored"]
+    fn toast_hugs_its_text_height() {
+        let node = control_layout(toast(&Text::new(), "Backup saved."));
+        // 1000 px is the layout limit in `control_layout`; a Fill height would hit it.
+        assert!(node.bounds().height < 100.0, "toast stretched: {node:?}");
+        assert!(node.bounds().width <= 360.0, "toast exceeded the width limit");
     }
 
     #[test]

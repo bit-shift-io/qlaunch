@@ -129,6 +129,13 @@ Rendering is split so geometry is testable independently of drawing:
 | `metrics.rs`, `probe.rs` | Frame-phase timing and the `frame-work` probe. |
 | `storage.rs` | Reading shared Downloads backups. |
 
+### Shared components
+
+Reusable UI lives in `components.rs`, with every colour, size and text style coming
+from `theme.rs`. New screens and dialogs compose these; they do not invent one-off
+styling. Brief result messages use the shared toast (`App.toast`, `Message::Toast`),
+never a bespoke surface.
+
 Window/lifecycle rule: the launcher keeps **one** iced window and never closes it
 on background (`window_action` returns `Nothing`), because Android can deliver a
 destroyed activity's late `onStop` after its replacement's `onStart`. See the

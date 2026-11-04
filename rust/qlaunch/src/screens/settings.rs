@@ -878,7 +878,7 @@ mod tests {
         );
         let _ = app.update(Message::SettingsDone(Err("cannot save".into())));
         assert_eq!(app.settings_drag, None);
-        assert_eq!(app.snackbar.as_ref().unwrap().1, "cannot save");
+        assert_eq!(app.toast.as_ref().unwrap().1, "cannot save");
     }
 
     #[test]

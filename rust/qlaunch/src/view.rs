@@ -12,9 +12,16 @@ use crate::{App, Message, Region, grid, placeholder};
 
 pub fn launcher(app: &App) -> Element<'_, Message> {
     let Some(snapshot) = &app.snapshot else {
-        return container(text(app.error.as_deref().unwrap_or("Loading apps…")))
-            .center(Fill)
-            .into();
+        return container(
+            text(app.error.as_deref().unwrap_or("Loading apps…"))
+                .color(crate::theme::color::ON_SURFACE),
+        )
+        .center(Fill)
+        .style(|_| container::Style {
+            background: Some(crate::theme::color::SURFACE.into()),
+            ..Default::default()
+        })
+        .into();
     };
     let settings = &snapshot.settings;
     let colour = match settings.label_colour {
@@ -162,13 +169,20 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
     } else {
         space().into()
     };
-    let snackbar: Element<'_, Message> = if let Some((_, message)) = &app.snackbar {
+    let toast: Element<'_, Message> = if let Some((_, message)) = &app.toast {
         let typography = crate::theme::Text::new();
-        container(crate::components::snackbar(&typography, message))
+        let margin = crate::theme::metrics::TOAST_MARGIN;
+        container(crate::components::toast(&typography, message))
             .width(Fill)
             .height(Fill)
+            .align_x(iced::alignment::Horizontal::Center)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(app.insets)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: app.insets.right + margin,
+                bottom: app.insets.bottom + margin,
+                left: app.insets.left + margin,
+            })
             .into()
     } else {
         space().into()
@@ -186,7 +200,7 @@ pub fn launcher(app: &App) -> Element<'_, Message> {
     // Keep the base and folder at stable child indices so modal transitions
     // never reconcile a scrollable against a different tree hierarchy.
     let tree: Element<'_, Message> =
-        iced::widget::stack![base, folder, overlay, screen, snackbar, dialog, select].into();
+        iced::widget::stack![base, folder, overlay, screen, toast, dialog, select].into();
     // Times the layout and draw of the whole tree for the `frame-work` log.
     crate::probe::PhaseProbe {
         samples: app.metrics_handle(),

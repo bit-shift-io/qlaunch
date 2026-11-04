@@ -183,7 +183,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn failed_screen_mutation_preserves_error_in_snackbar() {
+    fn failed_screen_mutation_preserves_error_in_toast() {
         let mut app = app();
         app.screens.push(Screen::Groups);
         let _ = app.update(Message::ModelDone {
@@ -191,7 +191,7 @@ pub(crate) mod tests {
             close: false,
         });
         assert_eq!(
-            app.snackbar.as_ref().map(|(_, s)| s.as_str()),
+            app.toast.as_ref().map(|(_, s)| s.as_str()),
             Some("disk is full")
         );
     }
@@ -224,9 +224,9 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn snackbar_text_is_announced() {
+    fn toast_text_is_announced() {
         let mut app = app();
-        let _ = app.update(Message::Snackbar("Backup saved.".into()));
+        let _ = app.update(Message::Toast("Backup saved.".into()));
         assert_eq!(accessibility::announcement(&app), "Backup saved.");
     }
 
@@ -296,14 +296,14 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn snackbar_expires_only_for_its_own_generation() {
+    fn toast_expires_only_for_its_own_generation() {
         let mut app = app();
-        let _ = app.update(Message::Snackbar("hello".into()));
-        let (generation, _) = app.snackbar.clone().unwrap();
-        let _ = app.update(Message::SnackbarExpired(generation + 1));
-        assert!(app.snackbar.is_some());
-        let _ = app.update(Message::SnackbarExpired(generation));
-        assert!(app.snackbar.is_none());
+        let _ = app.update(Message::Toast("hello".into()));
+        let (generation, _) = app.toast.clone().unwrap();
+        let _ = app.update(Message::ToastExpired(generation + 1));
+        assert!(app.toast.is_some());
+        let _ = app.update(Message::ToastExpired(generation));
+        assert!(app.toast.is_none());
     }
 
     #[test]
@@ -333,14 +333,14 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn expired_snackbar_cannot_dismiss_a_later_message() {
+    fn expired_toast_cannot_dismiss_a_later_message() {
         let mut app = app();
-        let _ = app.update(Message::Snackbar("first".into()));
-        let first = app.snackbar.as_ref().unwrap().0;
-        let _ = app.update(Message::SnackbarExpired(first));
-        let _ = app.update(Message::Snackbar("second".into()));
-        let _ = app.update(Message::SnackbarExpired(first));
-        assert_eq!(app.snackbar.as_ref().unwrap().1, "second");
+        let _ = app.update(Message::Toast("first".into()));
+        let first = app.toast.as_ref().unwrap().0;
+        let _ = app.update(Message::ToastExpired(first));
+        let _ = app.update(Message::Toast("second".into()));
+        let _ = app.update(Message::ToastExpired(first));
+        assert_eq!(app.toast.as_ref().unwrap().1, "second");
     }
 
     pub(crate) fn app() -> App {
@@ -1629,8 +1629,8 @@ enum Message {
     SettingsDone(Result<core::ModelSnapshot, String>),
     Push(Screen),
     PopScreen,
-    Snackbar(String),
-    SnackbarExpired(u64),
+    Toast(String),
+    ToastExpired(u64),
     Opened(window::Id),
     Closed,
     Foreground(bool),
@@ -1727,8 +1727,8 @@ struct App {
     pub(crate) settings_drag: Option<(screens::settings::SettingField, f32)>,
     pub(crate) screens: Vec<Screen>,
     suspended_dialogs: Vec<(usize, dialog::Dialog)>,
-    pub(crate) snackbar: Option<(u64, String)>,
-    snackbar_generation: u64,
+    pub(crate) toast: Option<(u64, String)>,
+    toast_generation: u64,
     window: Option<window::Id>,
     background: bool,
     pub(crate) insets: Insets,
@@ -1834,8 +1834,8 @@ impl App {
             settings_drag: None,
             screens: Vec::new(),
             suspended_dialogs: Vec::new(),
-            snackbar: None,
-            snackbar_generation: 0,
+            toast: None,
+            toast_generation: 0,
             window: Some(id),
             background: false,
             insets: Insets::default(),
@@ -3232,7 +3232,7 @@ impl App {
             }
             Message::DashboardPermissionRequested(result) => {
                 if let Err(error) = result {
-                    return self.update(Message::Snackbar(error));
+                    return self.update(Message::Toast(error));
                 }
                 return self.dashboard_refresh();
             }
@@ -3278,7 +3278,7 @@ impl App {
             }
             Message::SimpleDone(result) => {
                 if let Err(error) = result {
-                    return self.update(Message::Snackbar(error));
+                    return self.update(Message::Toast(error));
                 }
             }
             Message::GroupAppToggle(item_id, group_id, checked) => {
@@ -3390,7 +3390,7 @@ impl App {
                 }
             }
             Message::BackupDone(result) => {
-                return self.update(Message::Snackbar(screens::advanced::backup_message(
+                return self.update(Message::Toast(screens::advanced::backup_message(
                     &result,
                 )));
             }
@@ -3418,7 +3418,7 @@ impl App {
                     Ok(()) => screens::advanced::NEEDS_ALL_FILES_ACCESS.to_string(),
                     Err(error) => error,
                 };
-                return self.update(Message::Snackbar(message));
+                return self.update(Message::Toast(message));
             }
             Message::BackupsListed(result) => {
                 if self.screens.last() != Some(&Screen::Advanced) {
@@ -3427,7 +3427,7 @@ impl App {
                 match result {
                     Ok(names) if names.is_empty() => {
                         return self
-                            .update(Message::Snackbar("No backups found in Downloads.".into()));
+                            .update(Message::Toast("No backups found in Downloads.".into()));
                     }
                     Ok(names) => {
                         self.dialog =
@@ -3435,7 +3435,7 @@ impl App {
                                 backups: Some(Ok(names)),
                             }))
                     }
-                    Err(error) => return self.update(Message::Snackbar(error)),
+                    Err(error) => return self.update(Message::Toast(error)),
                 }
             }
             Message::RestoreDone(name, result) => {
@@ -3444,16 +3444,16 @@ impl App {
                     self.apply_snapshot(snapshot, false);
                 }
                 self.dialog = None;
-                return self.update(Message::Snackbar(message));
+                return self.update(Message::Toast(message));
             }
             Message::ResetDone(result) => {
                 self.dialog = None;
                 match result {
                     Ok(snapshot) => {
                         self.apply_snapshot(snapshot, false);
-                        return self.update(Message::Snackbar("The launcher was reset.".into()));
+                        return self.update(Message::Toast("The launcher was reset.".into()));
                     }
-                    Err(error) => return self.update(Message::Snackbar(error)),
+                    Err(error) => return self.update(Message::Toast(error)),
                 }
             }
             Message::SettingDrag(field, value) => self.settings_drag = Some((field, value)),
@@ -3513,7 +3513,7 @@ impl App {
                             ]);
                         }
                     }
-                    Err(error) => return self.update(Message::Snackbar(error)),
+                    Err(error) => return self.update(Message::Toast(error)),
                 }
             }
             Message::Push(screen) => {
@@ -3548,22 +3548,22 @@ impl App {
                 }
                 return commit;
             }
-            Message::Snackbar(message) => {
-                self.snackbar_generation += 1;
-                let generation = self.snackbar_generation;
-                self.snackbar = Some((generation, message));
+            Message::Toast(message) => {
+                self.toast_generation += 1;
+                let generation = self.toast_generation;
+                self.toast = Some((generation, message));
                 return Task::perform(
                     async { tokio::time::sleep(Duration::from_secs(4)).await },
-                    move |_| Message::SnackbarExpired(generation),
+                    move |_| Message::ToastExpired(generation),
                 );
             }
-            Message::SnackbarExpired(generation) => {
+            Message::ToastExpired(generation) => {
                 if self
-                    .snackbar
+                    .toast
                     .as_ref()
                     .is_some_and(|(current, _)| *current == generation)
                 {
-                    self.snackbar = None;
+                    self.toast = None;
                 }
             }
             Message::Opened(id) => {
@@ -3674,7 +3674,7 @@ impl App {
                             Some(dialog::Dialog::Confirm(e)) => e.busy = false,
                             _ => {}
                         }
-                        return self.update(Message::Snackbar(error));
+                        return self.update(Message::Toast(error));
                     }
                 }
             },

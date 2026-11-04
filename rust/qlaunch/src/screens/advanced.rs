@@ -208,19 +208,19 @@ mod tests {
         let _ = app.update(Message::RestoreAccessChecked(false));
         let _ = app.update(Message::RestoreAccessRequested(Ok(())));
         assert!(app.dialog.is_none());
-        let shown = &app.snackbar.as_ref().unwrap().1;
+        let shown = &app.toast.as_ref().unwrap().1;
         assert_eq!(shown, NEEDS_ALL_FILES_ACCESS);
         assert!(shown.contains("All files access"));
     }
 
     #[test]
-    fn empty_backups_shows_a_snackbar_not_an_empty_dialog() {
+    fn empty_backups_shows_a_toast_not_an_empty_dialog() {
         let mut app = crate::tests::app();
         let _ = app.update(Message::Push(crate::Screen::Advanced));
         let _ = app.update(Message::BackupsListed(Ok(vec![])));
         assert!(app.dialog.is_none());
         assert_eq!(
-            app.snackbar.as_ref().unwrap().1,
+            app.toast.as_ref().unwrap().1,
             "No backups found in Downloads."
         );
     }
