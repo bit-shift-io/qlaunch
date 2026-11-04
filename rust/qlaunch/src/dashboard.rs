@@ -72,6 +72,37 @@ pub(crate) fn condition_symbol(code: i32) -> &'static str {
     }
 }
 
+/// Applies a weather refresh result, keeping the last good reading on failure.
+/// An empty error means no location is configured, so the reading is cleared.
+pub(crate) fn apply_weather_result(
+    current: &mut Option<WeatherData>,
+    failed: &mut bool,
+    result: Result<WeatherData, String>,
+) {
+    match result {
+        Ok(weather) => {
+            *current = Some(weather);
+            *failed = false;
+        }
+        Err(error) if error.is_empty() => {
+            *current = None;
+            *failed = false;
+        }
+        Err(_) => *failed = true,
+    }
+}
+
+/// Fallback line for the weather card when there is no reading to show.
+pub(crate) fn weather_placeholder(configured: bool, failed: bool) -> &'static str {
+    if !configured {
+        "Tap to set location"
+    } else if failed {
+        "Weather unavailable"
+    } else {
+        "Updating…"
+    }
+}
+
 // --- Platform calls ---
 
 #[cfg(target_os = "android")]
@@ -284,32 +315,18 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
         )
         .on_release(Message::LaunchDashboardCategory("weather".to_string()))
         .into()
-    } else if let Some(err) = &app.dashboard_weather_error {
-        mouse_area(
-            column![
-                shadowed_text("Weather", 16.0, text_color, true),
-                shadowed_text(err, 12.0, Color::from_rgba8(255, 180, 180, alpha), false,),
-            ]
-            .spacing(2)
-            .align_x(iced::alignment::Horizontal::Center),
-        )
-        .on_release(Message::LaunchDashboardCategory("weather".to_string()))
-        .into()
     } else {
         let configured = app
             .snapshot
             .as_ref()
             .is_some_and(|snapshot| !snapshot.settings.weather_location.trim().is_empty());
-        let (subtitle, message) = if configured {
-            (
-                "Updating…",
-                Message::LaunchDashboardCategory("weather".to_string()),
-            )
+        // A failed update with nothing cached falls back to a short line; the
+        // raw host error was logged at the handler, never drawn here.
+        let subtitle = weather_placeholder(configured, app.dashboard_weather_failed);
+        let message = if configured {
+            Message::LaunchDashboardCategory("weather".to_string())
         } else {
-            (
-                "Tap to set location",
-                Message::Push(crate::Screen::Settings),
-            )
+            Message::Push(crate::Screen::Settings)
         };
         mouse_area(
             column![
@@ -517,8 +534,21 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
 
 #[cfg(test)]
 mod tests {
-    use super::{active_event_color, condition_symbol, filter_past_events, split_time};
-    use qlaunch_core::platform::android::CalendarEventItem;
+    use super::{
+        active_event_color, apply_weather_result, condition_symbol, filter_past_events, split_time,
+        weather_placeholder,
+    };
+    use qlaunch_core::platform::android::{CalendarEventItem, WeatherData};
+
+    fn weather(temp: f32) -> WeatherData {
+        WeatherData {
+            location_label: "Adelaide".to_string(),
+            current_temp: temp,
+            temp_min: 15.0,
+            temp_max: 27.0,
+            condition_code: 1,
+        }
+    }
 
     fn event(id: i64, begin: i64, all_day: bool) -> CalendarEventItem {
         CalendarEventItem {
@@ -581,5 +611,54 @@ mod tests {
         assert_eq!(condition_symbol(95), "⛈️");
         // Unknown codes still draw a neutral symbol rather than nothing.
         assert_eq!(condition_symbol(-1), "🌤️");
+    }
+
+    #[test]
+    fn failed_update_keeps_the_last_reading() {
+        let mut current = Some(weather(24.0));
+        let mut failed = false;
+        apply_weather_result(
+            &mut current,
+            &mut failed,
+            Err("Unable to resolve host".to_string()),
+        );
+        assert_eq!(current.as_ref().map(|w| w.current_temp), Some(24.0));
+        assert!(failed);
+    }
+
+    #[test]
+    fn successful_update_stores_reading_and_clears_failure() {
+        let mut current = None;
+        let mut failed = true;
+        apply_weather_result(&mut current, &mut failed, Ok(weather(19.0)));
+        assert_eq!(current.as_ref().map(|w| w.current_temp), Some(19.0));
+        assert!(!failed);
+    }
+
+    #[test]
+    fn failed_first_update_leaves_no_reading_but_flags_failure() {
+        let mut current = None;
+        let mut failed = false;
+        apply_weather_result(&mut current, &mut failed, Err("boom".to_string()));
+        assert!(current.is_none());
+        assert!(failed);
+    }
+
+    #[test]
+    fn empty_error_clears_reading_and_failure() {
+        // The empty error is the "no location configured" sentinel.
+        let mut current = Some(weather(24.0));
+        let mut failed = true;
+        apply_weather_result(&mut current, &mut failed, Err(String::new()));
+        assert!(current.is_none());
+        assert!(!failed);
+    }
+
+    #[test]
+    fn weather_placeholder_covers_each_card_state() {
+        assert_eq!(weather_placeholder(false, false), "Tap to set location");
+        assert_eq!(weather_placeholder(false, true), "Tap to set location");
+        assert_eq!(weather_placeholder(true, true), "Weather unavailable");
+        assert_eq!(weather_placeholder(true, false), "Updating…");
     }
 }

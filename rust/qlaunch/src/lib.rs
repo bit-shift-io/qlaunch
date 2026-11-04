@@ -1740,7 +1740,9 @@ struct App {
     pub(crate) dashboard_alarm: Option<AlarmInfo>,
     pub(crate) dashboard_calendar: Option<CalendarEventsPayload>,
     pub(crate) dashboard_weather: Option<WeatherData>,
-    pub(crate) dashboard_weather_error: Option<String>,
+    /// True when the most recent weather update failed. Any cached reading is
+    /// still shown; this only selects the fallback line when nothing is cached.
+    pub(crate) dashboard_weather_failed: bool,
     dashboard_weather_generation: u64,
     /// When the calendar was last re-read, and when the weather was last
     /// fetched, so `DashboardTick` can honour the per-source refresh settings.
@@ -1845,7 +1847,7 @@ impl App {
             dashboard_alarm: None,
             dashboard_calendar: None,
             dashboard_weather: None,
-            dashboard_weather_error: None,
+            dashboard_weather_failed: false,
             dashboard_weather_generation: 0,
             dashboard_calendar_last: None,
             dashboard_weather_last: None,
@@ -3214,16 +3216,20 @@ impl App {
                 Ok(payload) => self.dashboard_calendar = Some(payload),
                 Err(error) => log::warn!("dashboard calendar refresh failed: {error}"),
             },
-            Message::DashboardWeather(result) => match result {
-                Ok(weather) => {
-                    self.dashboard_weather = Some(weather);
-                    self.dashboard_weather_error = None;
+            Message::DashboardWeather(result) => {
+                // A failed update keeps the last reading on screen; the raw host
+                // error is logged, never shown, matching the calendar refresh.
+                if let Err(error) = &result
+                    && !error.is_empty()
+                {
+                    log::warn!("dashboard weather refresh failed: {error}");
                 }
-                Err(error) => {
-                    self.dashboard_weather = None;
-                    self.dashboard_weather_error = (!error.is_empty()).then_some(error);
-                }
-            },
+                dashboard::apply_weather_result(
+                    &mut self.dashboard_weather,
+                    &mut self.dashboard_weather_failed,
+                    result,
+                );
+            }
             Message::DashboardPermissionRequested(result) => {
                 if let Err(error) = result {
                     return self.update(Message::Snackbar(error));
@@ -3478,7 +3484,7 @@ impl App {
                         self.apply_snapshot(snapshot, false);
                         if location.is_empty() {
                             self.dashboard_weather = None;
-                            self.dashboard_weather_error = None;
+                            self.dashboard_weather_failed = false;
                         }
                         if dashboard {
                             // The clock is local and cheap, so it always
