@@ -41,3 +41,6 @@ migrate_working_dir/
 # Rust
 /rust/target/
 /android/app/src/main/jniLibs/
+
+# Release artifacts
+/dist/

@@ -34,8 +34,10 @@ android {
         applicationId = providers.gradleProperty("qlaunchAppId").getOrElse("bitshift.qlaunch")
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        // Supplied by scripts/build.sh from the workspace Cargo version.
+        // Fallbacks are deliberately obvious so a bare Gradle build is unversioned.
+        versionCode = providers.gradleProperty("qlaunchVersionCode").getOrElse("1").toInt()
+        versionName = providers.gradleProperty("qlaunchVersionName").getOrElse("0.0.0")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
     }
