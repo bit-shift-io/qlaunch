@@ -9,15 +9,24 @@ use qlaunch_core::platform::android::{
 
 use crate::{App, Message, icons};
 
-/// Timed events may stay visible for this long after they start, so a meeting
-/// that just began isn't yanked off the list mid-glance.
-const PAST_EVENT_GRACE_MS: i64 = 10 * 60 * 1000;
-
-/// Drops timed events whose start is more than [`PAST_EVENT_GRACE_MS`] before
-/// `now_ms`. All-day events are kept: their midnight start is not "late".
+/// Drops events once they end. All-day events use the same rule: their end is
+/// midnight at the close of the day (or the last day of a multi-day event).
 pub(crate) fn filter_past_events(events: &mut Vec<CalendarEventItem>, now_ms: i64) {
-    let cutoff = now_ms - PAST_EVENT_GRACE_MS;
-    events.retain(|event| event.all_day || event.begin >= cutoff);
+    events.retain(|event| now_ms < event.end);
+}
+
+/// The label shown beside an event title. Upcoming events show their start
+/// time; a running event shows `start end` with no am/pm suffix.
+pub(crate) fn event_time_label(event: &CalendarEventItem, now_ms: i64) -> String {
+    if !event.all_day
+        && event.begin <= now_ms
+        && now_ms < event.end
+        && !event.end_time_str.is_empty()
+    {
+        format!("{} {}", event.time_str, event.end_time_str)
+    } else {
+        event.time_str.clone()
+    }
 }
 
 /// Splits a formatted clock time into its digits and an optional am/pm suffix,
@@ -138,26 +147,30 @@ pub(crate) fn calendar_events() -> Result<CalendarEventsPayload, String> {
 
 #[cfg(not(target_os = "android"))]
 pub(crate) fn calendar_events() -> Result<CalendarEventsPayload, String> {
+    let now = now_ms();
+    let upcoming = now + 30 * 60 * 1000;
     Ok(CalendarEventsPayload {
         permission_granted: true,
         events: vec![
             CalendarEventItem {
                 event_id: 1,
                 title: "Design Team Standup".to_string(),
-                begin: 0,
-                end: 0,
+                begin: upcoming,
+                end: upcoming + 30 * 60 * 1000,
                 all_day: false,
                 time_str: "11:30".to_string(),
+                end_time_str: "12:00".to_string(),
                 color: 0xFF4285F4u32 as i32,
                 tomorrow: false,
             },
             CalendarEventItem {
                 event_id: 2,
                 title: "Sprint Review".to_string(),
-                begin: 0,
-                end: 0,
+                begin: upcoming + 60 * 60 * 1000,
+                end: upcoming + 2 * 60 * 60 * 1000,
                 all_day: false,
                 time_str: "14:00".to_string(),
+                end_time_str: "15:00".to_string(),
                 color: 0xFF0B8043u32 as i32,
                 tomorrow: false,
             },
@@ -379,10 +392,11 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
         .on_release(Message::RequestCalendarPermission)
         .into()
     } else if let Some(cal) = &app.dashboard_calendar {
-        // Rows hide a timed event ten minutes after it starts. The card tint
-        // below reads the stored list, unfiltered, so it lasts the whole event.
+        // The card tint below reads the stored list, unfiltered, so it lasts
+        // the whole event even though the row disappears at the same end time.
+        let now = now_ms();
         let mut events = cal.events.clone();
-        filter_past_events(&mut events, now_ms());
+        filter_past_events(&mut events, now);
         if events.is_empty() {
             space().into()
         } else {
@@ -434,9 +448,16 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
                     right: 0.0,
                 });
 
-                let time_text = container(shadowed_text(&event.time_str, 13.0, muted_color, false))
-                    .width(Length::Fixed(38.0))
-                    .align_x(iced::alignment::Horizontal::Right);
+                // Size to the label instead of a fixed column so a running
+                // event's `start end` range cannot wrap, then right-align it
+                // against the card's inner edge.
+                let time_text = container(
+                    text(event_time_label(event, now))
+                        .size(13.0)
+                        .color(muted_color)
+                        .wrapping(iced::widget::text::Wrapping::None),
+                )
+                .align_x(iced::alignment::Horizontal::Right);
                 // Long titles wrap onto extra lines; the row and the scrollable
                 // grow with them.
                 let title_text =
@@ -453,9 +474,10 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
                 let row_item = mouse_area(
                     row![
                         title_with_line,
+                        // Flush with the card's inner edge. The scrollbar may
+                        // briefly cover it while scrolling, which is rare enough
+                        // to be preferable to a permanent gap.
                         time_text,
-                        // Clearance for the scrollbar that appears while scrolling.
-                        space().width(Length::Fixed(12.0)),
                     ]
                     .spacing(8)
                     .width(Fill)
@@ -475,7 +497,7 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
                     // The shared scrollbar state hides it until the user
                     // actually scrolls this panel.
                     .direction(crate::theme::vertical_scrollbar(app.scrollbars_visible()))
-                    .on_scroll(|_| Message::DashboardScrolled)
+                    .on_scroll(|viewport| Message::DashboardScrolled(viewport.absolute_offset().y))
                     .into()
             }
         }
@@ -535,8 +557,8 @@ pub(crate) fn view(app: &App, alpha: f32) -> Element<'_, Message> {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_event_color, apply_weather_result, condition_symbol, filter_past_events, split_time,
-        weather_placeholder,
+        active_event_color, apply_weather_result, condition_symbol, event_time_label,
+        filter_past_events, split_time, weather_placeholder,
     };
     use qlaunch_core::platform::android::{CalendarEventItem, WeatherData};
 
@@ -558,25 +580,56 @@ mod tests {
             end: begin + 3_600_000,
             all_day,
             time_str: "10:00".to_string(),
+            end_time_str: "11:00".to_string(),
             color: 0,
             tomorrow: false,
         }
     }
 
+    fn event_until(id: i64, begin: i64, end: i64, all_day: bool) -> CalendarEventItem {
+        CalendarEventItem {
+            end,
+            ..event(id, begin, all_day)
+        }
+    }
+
     #[test]
-    fn past_events_more_than_ten_minutes_old_are_dropped() {
+    fn events_stay_until_their_end_and_are_then_removed() {
         let now = 100_000_000i64;
         let mut events = vec![
-            event(1, now - 11 * 60 * 1000, false), // 11 min ago: hidden
-            event(2, now - 5 * 60 * 1000, false),  // 5 min ago: still shown
-            event(3, now + 60_000, false),         // future: shown
-            event(4, 0, true),                     // all-day: always shown
+            event_until(1, now - 2 * 3_600_000, now - 1, false), // ended: hidden
+            event_until(2, now - 5 * 60_000, now + 55 * 60_000, false), // running
+            event_until(3, now + 60_000, now + 3_660_000, false), // future
+            event_until(4, 0, now + 3_600_000, true),            // all-day running
         ];
         filter_past_events(&mut events, now);
         assert_eq!(
             events.iter().map(|e| e.event_id).collect::<Vec<_>>(),
             vec![2, 3, 4]
         );
+    }
+
+    #[test]
+    fn running_events_show_their_start_and_end_times() {
+        let now = 100_000_000i64;
+        let running = event(1, now - 60_000, false);
+        assert_eq!(event_time_label(&running, now), "10:00 11:00");
+    }
+
+    #[test]
+    fn upcoming_events_show_only_their_start_time() {
+        let now = 100_000_000i64;
+        let upcoming = event(1, now + 60_000, false);
+        assert_eq!(event_time_label(&upcoming, now), "10:00");
+    }
+
+    #[test]
+    fn all_day_events_keep_their_label_while_running() {
+        let now = 100_000_000i64;
+        let mut all_day = event(1, now - 60_000, true);
+        all_day.time_str = "All day".to_string();
+        all_day.end_time_str.clear();
+        assert_eq!(event_time_label(&all_day, now), "All day");
     }
 
     #[test]

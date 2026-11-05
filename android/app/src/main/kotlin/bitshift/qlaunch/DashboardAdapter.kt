@@ -23,6 +23,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.Executors
 
 object DashboardAdapter {
@@ -70,6 +71,29 @@ object DashboardAdapter {
 
     fun requestCalendarPermission(activity: Activity) {
         activity.requestPermissions(arrayOf(Manifest.permission.READ_CALENDAR), 2002)
+    }
+
+    // Android reports an all-day instance's begin/end as UTC midnight of its
+    // local calendar date. In a UTC+ timezone that lands mid-morning, so an
+    // event meant to last until the close of the day would linger into the next
+    // one (and only become "active" hours late). Rebuild the timestamp as local
+    // midnight of the same date, which also applies DST correctly.
+    internal fun allDayLocalMidnight(utcMillis: Long): Long {
+        val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+            timeInMillis = utcMillis
+        }
+        return Calendar.getInstance().apply {
+            clear()
+            set(
+                utc.get(Calendar.YEAR),
+                utc.get(Calendar.MONTH),
+                utc.get(Calendar.DAY_OF_MONTH),
+                0,
+                0,
+                0
+            )
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
     }
 
     fun getCalendarEventsJson(context: Context): String {
@@ -130,9 +154,11 @@ object DashboardAdapter {
                 while (cursor.moveToNext() && eventsArray.length() < 25) {
                     val eventId = cursor.getLong(idIdx)
                     val title = cursor.getString(titleIdx) ?: "(No title)"
-                    val begin = cursor.getLong(beginIdx)
-                    val end = cursor.getLong(endIdx)
                     val allDay = cursor.getInt(allDayIdx) != 0
+                    // All-day instances come back at UTC midnight; anchor them to
+                    // local midnight so they cover the whole local day.
+                    val begin = cursor.getLong(beginIdx).let { if (allDay) allDayLocalMidnight(it) else it }
+                    val end = cursor.getLong(endIdx).let { if (allDay) allDayLocalMidnight(it) else it }
 
                     var color = if (eventColorIdx >= 0 && !cursor.isNull(eventColorIdx)) {
                         cursor.getInt(eventColorIdx)
@@ -144,9 +170,10 @@ object DashboardAdapter {
                     // Ensure opacity
                     color = color or (0xFF shl 24)
 
-                    // Calendar rows show only the start time (or "All day").
-                    // The end time is deliberately never rendered.
+                    // Calendar rows show the start time, or the whole range
+                    // while the event is running (handled by the Rust view).
                     val timeStr = if (allDay) "All day" else timeFormat.format(Date(begin))
+                    val endTimeStr = if (allDay) "" else timeFormat.format(Date(end))
                     // Tag tomorrow's events so the widget can draw a day divider.
                     val today = Calendar.getInstance()
                     val eventDay = Calendar.getInstance().apply { timeInMillis = begin }
@@ -160,6 +187,7 @@ object DashboardAdapter {
                         put("end", end)
                         put("all_day", allDay)
                         put("time_str", timeStr)
+                        put("end_time_str", endTimeStr)
                         put("color", color)
                         put("tomorrow", tomorrow)
                     }

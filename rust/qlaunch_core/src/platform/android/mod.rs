@@ -160,6 +160,10 @@ pub struct CalendarEventItem {
     pub end: i64,
     pub all_day: bool,
     pub time_str: String,
+    /// The end time formatted like [`Self::time_str`], shown only while the
+    /// event is running.
+    #[serde(default)]
+    pub end_time_str: String,
     pub color: i32,
     /// True when the instance falls on tomorrow rather than today.
     #[serde(default)]

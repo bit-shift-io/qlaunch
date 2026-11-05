@@ -51,14 +51,21 @@ android {
         }
     }
 
+    // Debug and release share the committed test-phone key so a debug install
+    // updates an existing build in place instead of failing on a signature
+    // mismatch. A missing keystore.properties falls back to the local debug key.
+    val signing = if (hasReleaseKey) {
+        signingConfigs.getByName("release")
+    } else {
+        signingConfigs.getByName("debug")
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signing
+        }
         release {
-            // A missing keystore.properties falls back to the local debug key.
-            signingConfig = if (hasReleaseKey) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signing
         }
     }
 }

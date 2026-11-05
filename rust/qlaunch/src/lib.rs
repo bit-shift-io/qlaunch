@@ -667,6 +667,64 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn horizontal_flick_does_not_flash_the_calendar_scrollbar() {
+        let mut app = app();
+        assert!(!app.scrollbars_visible());
+
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
+            id: iced::touch::Finger(0),
+            position: Point::new(300.0, 300.0),
+        }));
+        // The nested calendar scrollable reports jitter before the pager has
+        // classified the gesture as a drag.
+        let _ = app.update(Message::DashboardScrolled(0.5));
+        assert!(
+            !app.scrollbars_visible(),
+            "touch jitter must not reveal the calendar scrollbar"
+        );
+
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerMoved {
+            id: iced::touch::Finger(0),
+            position: Point::new(200.0, 302.0),
+        }));
+        assert!(app.pager.is_dragging());
+        let _ = app.update(Message::DashboardScrolled(1.0));
+        assert!(
+            !app.scrollbars_visible(),
+            "a page swipe must keep the calendar scrollbar hidden"
+        );
+    }
+
+    #[test]
+    fn vertical_calendar_scroll_shows_the_bar_after_the_gesture_leaves_touch_slop() {
+        let mut app = app();
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerPressed {
+            id: iced::touch::Finger(0),
+            position: Point::new(300.0, 300.0),
+        }));
+        let _ = app.update(Message::DashboardScrolled(2.0));
+        assert!(!app.scrollbars_visible());
+        let _ = app.update(Message::Touch(iced::touch::Event::FingerMoved {
+            id: iced::touch::Finger(0),
+            position: Point::new(300.0, 270.0),
+        }));
+        let _ = app.update(Message::DashboardScrolled(30.0));
+        assert!(app.scrollbars_visible());
+        assert!(!app.pager.is_dragging());
+    }
+
+    #[test]
+    fn layout_notifications_do_not_flash_the_calendar_scrollbar() {
+        let mut app = app();
+        let _ = app.update(Message::DashboardScrolled(0.0));
+        assert!(app.scroll_last.is_none());
+        let _ = app.update(Message::DashboardScrolled(0.0));
+        assert!(app.scroll_last.is_none());
+        let _ = app.update(Message::DashboardScrolled(24.0));
+        assert!(app.scroll_last.is_some());
+    }
+
+    #[test]
     fn search_results_report_their_scroll_offset() {
         let mut app = app();
         let _ = app.update(Message::Scrolled(Region::Search, 42.0));
@@ -1050,11 +1108,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn running_calendar_events_survive_for_the_tint_after_their_row_hides() {
+    fn running_calendar_events_stay_in_the_list_until_they_end() {
         let mut app = app();
         let now = crate::dashboard::now_ms();
-        // A long meeting that began thirty minutes ago: its row is already
-        // hidden, but the event is still running.
+        // A long meeting that began thirty minutes ago and is still running.
         let event = qlaunch_core::platform::android::CalendarEventItem {
             event_id: 7,
             title: "Long meeting".into(),
@@ -1062,6 +1119,7 @@ pub(crate) mod tests {
             end: now + 30 * 60 * 1000,
             all_day: false,
             time_str: "10:00".into(),
+            end_time_str: "11:00".into(),
             color: 0xFF4285F4u32 as i32,
             tomorrow: false,
         };
@@ -1070,20 +1128,23 @@ pub(crate) mod tests {
             events: vec![event.clone()],
         })));
 
-        let mut rows = vec![event];
+        let mut rows = vec![event.clone()];
         crate::dashboard::filter_past_events(&mut rows, now);
-        assert!(rows.is_empty(), "the row hides ten minutes after it starts");
+        assert_eq!(rows.len(), 1, "a running event stays until its end time");
 
         let stored = app.dashboard_calendar.as_ref().unwrap();
-        assert_eq!(
-            stored.events.len(),
-            1,
-            "the stored list keeps running events"
-        );
         assert!(
             crate::dashboard::active_event_color(&stored.events, now).is_some(),
             "the tint must last for the whole event"
         );
+
+        let ended = qlaunch_core::platform::android::CalendarEventItem {
+            end: now - 1,
+            ..event
+        };
+        let mut rows = vec![ended];
+        crate::dashboard::filter_past_events(&mut rows, now);
+        assert!(rows.is_empty(), "an ended event is removed");
     }
 
     fn widget_states(tree: &iced::advanced::widget::Tree) -> Vec<usize> {
@@ -1679,7 +1740,7 @@ enum Message {
     DashboardLocationDraft(String),
     DashboardLocationCommit(u64),
     CommitDashboardLocation,
-    DashboardScrolled,
+    DashboardScrolled(f32),
     DashboardPermissionRequested(Result<(), String>),
     RequestCalendarPermission,
     LaunchDashboardCategory(String),
@@ -1769,6 +1830,9 @@ struct App {
     pub(crate) error: Option<String>,
     pub(crate) size: iced::Size,
     scroll: HashMap<Region, f32>,
+    /// The calendar panel's own scroll offset, so layout notifications that
+    /// leave it unchanged do not flash the shared scrollbar.
+    dashboard_scroll: f32,
     elastic: Mutex<HashMap<Region, elastic_scroll::Motion>>,
     scroll_last: Option<Instant>,
     overlay: Option<overlay::Overlay>,
@@ -1868,6 +1932,7 @@ impl App {
             error: None,
             size: iced::Size::new(420.0, 800.0),
             scroll: HashMap::new(),
+            dashboard_scroll: 0.0,
             elastic: Mutex::new(HashMap::new()),
             scroll_last: None,
             overlay: None,
@@ -3249,7 +3314,15 @@ impl App {
                 }
             }
             Message::CommitDashboardLocation => return self.commit_dashboard_location(),
-            Message::DashboardScrolled => self.scroll_last = Some(Instant::now()),
+            Message::DashboardScrolled(offset) => {
+                // Mirror `Scrolled`: jitter before the gesture leaves touch slop
+                // may be a page swipe in disguise, and a notification that
+                // leaves the offset unchanged is just a layout pass.
+                let previous = std::mem::replace(&mut self.dashboard_scroll, offset);
+                if (previous - offset).abs() > f32::EPSILON && !self.gesture.is_pending() {
+                    self.scroll_last = Some(Instant::now());
+                }
+            }
             Message::RequestCalendarPermission => {
                 return work(
                     dashboard::request_calendar_permission,

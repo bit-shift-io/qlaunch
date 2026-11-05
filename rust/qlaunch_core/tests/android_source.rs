@@ -153,6 +153,7 @@ fn parse_calendar_events_json_handles_list() {
                 "end": 1700003600000,
                 "all_day": false,
                 "time_str": "10:00",
+                "end_time_str": "11:00",
                 "color": -12417548
             }
         ]
@@ -163,6 +164,7 @@ fn parse_calendar_events_json_handles_list() {
     assert_eq!(payload.events[0].title, "Sprint Planning");
     assert_eq!(payload.events[0].event_id, 42);
     assert_eq!(payload.events[0].time_str, "10:00");
+    assert_eq!(payload.events[0].end_time_str, "11:00");
     assert!(!payload.events[0].all_day);
 }
 
